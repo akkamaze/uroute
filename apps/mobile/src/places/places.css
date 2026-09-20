@@ -1,0 +1,330 @@
+.places-page {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0 auto;
+  background: var(--color-surface);
+}
+
+.places-page__map {
+  position: relative;
+}
+
+.trip-map--discovery {
+  height: 340px;
+}
+
+.trip-map--discovery .trip-map__controls {
+  top: 4.25rem;
+}
+
+.trip-map--discovery .maplibregl-ctrl-bottom-right {
+  bottom: 2rem;
+}
+
+.place-search {
+  position: absolute;
+  z-index: 4;
+  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  right: 0.75rem;
+  left: 0.75rem;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.place-search__back,
+.place-search__form {
+  min-height: 46px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 2px 10px rgb(32 33 36 / 16%);
+}
+
+.place-search__back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+}
+
+.place-search__form {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0 0.375rem 0 0.75rem;
+}
+
+.place-search__form svg {
+  color: var(--color-muted);
+}
+
+.place-search__form input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.place-search__form button {
+  min-height: 36px;
+  padding: 0 0.75rem;
+  color: var(--color-active);
+  border: 0;
+  border-radius: 10px;
+  background: #edf5ff;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.place-search__results {
+  position: absolute;
+  z-index: 4;
+  top: calc(4.25rem + env(safe-area-inset-top, 0px));
+  right: 0.75rem;
+  left: 4.25rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgb(32 33 36 / 18%);
+}
+
+.place-search__results button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  gap: 0.625rem;
+  align-items: center;
+  padding: 0.625rem 0.875rem;
+  color: var(--color-text);
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: #ffffff;
+  font: inherit;
+  text-align: left;
+}
+
+.place-search__results p {
+  margin: 0;
+  padding: 1rem;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.place-sheet {
+  position: relative;
+  z-index: 3;
+  min-height: calc(100dvh - 312px);
+  margin-top: -28px;
+  padding: 0.5rem var(--space-4) calc(2rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 24px 24px 0 0;
+  background: #ffffff;
+  box-shadow: 0 -4px 18px rgb(32 33 36 / 8%);
+}
+
+.place-sheet__handle {
+  display: block;
+  width: 38px;
+  height: 4px;
+  margin: 0 auto 1rem;
+  border-radius: 999px;
+  background: #d4d9df;
+}
+
+.place-sheet__title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.place-sheet__title h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  line-height: 1.25;
+}
+
+.place-sheet__title p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.place-sheet__title button {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-active);
+  border: 0;
+  border-radius: 50%;
+  background: #edf5ff;
+}
+
+.place-sheet__rating {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  margin: 0.75rem 0 1rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.place-sheet__rating svg {
+  color: #f4a817;
+}
+
+.place-sheet__rating strong {
+  color: var(--color-text);
+}
+
+.place-sheet__photos {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.5rem;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.place-sheet__photos img {
+  width: 100%;
+  height: 124px;
+  object-fit: cover;
+}
+
+.place-sheet__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+  margin: 1rem 0;
+}
+
+.place-sheet__actions button {
+  min-height: 46px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.place-sheet__primary {
+  color: #ffffff;
+  border: 1px solid var(--color-active);
+  background: var(--color-active);
+}
+
+.place-sheet__secondary {
+  color: var(--color-active);
+  border: 1px solid #aebfd5;
+  background: #ffffff;
+}
+
+.place-sheet__row {
+  display: grid;
+  width: 100%;
+  min-height: 56px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  color: var(--color-text);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  text-align: left;
+}
+
+.place-sheet__row > svg:first-child {
+  color: var(--color-active);
+}
+
+.place-sheet__edit,
+.place-sheet__import {
+  border-top: 1px solid var(--color-border);
+}
+
+.place-sheet__edit summary,
+.place-sheet__import summary {
+  min-height: 52px;
+  color: var(--color-active);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.place-sheet__edit summary {
+  display: flex;
+  align-items: center;
+}
+
+.place-sheet__import summary {
+  display: flex;
+  gap: 0.625rem;
+  align-items: center;
+}
+
+.place-sheet__edit-fields {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 0 1rem;
+}
+
+.place-sheet__edit-fields label {
+  display: grid;
+  gap: 0.375rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.place-sheet__edit-fields input,
+.place-sheet__edit-fields textarea {
+  width: 100%;
+  padding: 0.75rem;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 11px;
+  background: #ffffff;
+  font: inherit;
+}
+
+.place-sheet__edit-fields textarea {
+  resize: vertical;
+}
+
+.place-sheet__import p {
+  margin: -0.25rem 0 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.place-sheet__formats {
+  display: flex;
+  gap: 0.5rem;
+  padding-bottom: 1rem;
+}
+
+.place-sheet__formats span {
+  padding: 0.4rem 0.625rem;
+  color: var(--color-active);
+  border-radius: 999px;
+  background: #edf5ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.place-sheet__notice {
+  min-height: 1.25rem;
+  margin: 0.75rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 600px) {
+  .places-page {
+    max-width: 414px;
+  }
+}

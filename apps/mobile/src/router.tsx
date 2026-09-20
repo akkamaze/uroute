@@ -12,6 +12,10 @@ interface LoginSearch {
   profile?: "open";
 }
 
+interface PlaceSearch {
+  place?: string;
+}
+
 const rootRoute = createRootRoute({ component: AppRoot });
 
 const loadingRoute = createRoute({
@@ -58,6 +62,14 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
+const placesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/places",
+  validateSearch: (search: Record<string, unknown>): PlaceSearch =>
+    typeof search.place === "string" ? { place: search.place } : {},
+  component: lazyRouteComponent(() => import("./places/PlaceDetailsPage"), "PlaceDetailsPage"),
+});
+
 const savedRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/saved",
@@ -89,6 +101,7 @@ const routeTree = rootRoute.addChildren([
   loadingRoute,
   welcomeRoute,
   loginRoute,
+  placesRoute,
   mobileShellTree,
 ]);
 

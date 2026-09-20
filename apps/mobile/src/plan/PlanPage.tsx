@@ -1,6 +1,5 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, CloudSun, Coffee, Footprints, Landmark, Plus, Utensils } from "lucide-react";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -28,6 +27,7 @@ function isStressFixtureEnabled(): boolean {
 }
 
 export function PlanPage(): React.JSX.Element {
+  const navigate = useNavigate();
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [selectedDay, setSelectedDay] = useState<number>(13);
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
@@ -131,7 +131,10 @@ export function PlanPage(): React.JSX.Element {
                       ? "timeline__stop timeline__stop--selected"
                       : "timeline__stop"
                   }
-                  onClick={() => setSelectedId(stop.id)}
+                  onClick={() => {
+                    setSelectedId(stop.id);
+                    void navigate({ search: { place: stop.id }, to: "/places" });
+                  }}
                   ref={(element) => {
                     stopRefs.current[stop.id] = element;
                   }}

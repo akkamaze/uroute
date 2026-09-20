@@ -1,4 +1,5 @@
 import { LocateFixed, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
+import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
   setWorkerUrl,
@@ -38,6 +39,7 @@ interface TripMapProps {
   onSelect: (id: string) => void;
   places: PlaceCollection;
   selectedId: string | null;
+  variant?: "discovery" | "planner";
 }
 
 type MapStatus = "loading" | "ready" | "error";
@@ -138,7 +140,12 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
   return source !== undefined && isGeoJsonSource(source) ? source : null;
 }
 
-export function TripMap({ onSelect, places, selectedId }: TripMapProps): React.JSX.Element {
+export function TripMap({
+  onSelect,
+  places,
+  selectedId,
+  variant = "planner",
+}: TripMapProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(places);
@@ -482,7 +489,7 @@ export function TripMap({ onSelect, places, selectedId }: TripMapProps): React.J
   }
 
   return (
-    <div className={`trip-map${expanded ? " trip-map--expanded" : ""}`}>
+    <div className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}>
       <div className="trip-map__canvas" ref={containerRef} />
 
       <div aria-label="Map controls" className="trip-map__controls" role="group">
