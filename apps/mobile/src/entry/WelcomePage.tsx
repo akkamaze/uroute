@@ -34,7 +34,7 @@ function WelcomeIllustration(): React.JSX.Element {
 
 export function WelcomePage(): React.JSX.Element {
   return (
-    <main className="entry-shell entry-shell--welcome">
+    <main className="entry-shell entry-shell--welcome" data-scroll-restoration-id="entry-main">
       <div className="welcome-page">
         <header className="welcome-header">
           <div aria-label="uroute" className="welcome-wordmark" role="img">

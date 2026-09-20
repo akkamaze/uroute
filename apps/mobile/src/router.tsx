@@ -15,6 +15,10 @@ import {
   UserPage,
 } from "./routes";
 
+interface LoginSearch {
+  profile?: "open";
+}
+
 const rootRoute = createRootRoute({ component: AppRoot });
 
 const loadingRoute = createRoute({
@@ -32,6 +36,8 @@ const welcomeRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
+  validateSearch: (search: Record<string, unknown>): LoginSearch =>
+    search.profile === "open" ? { profile: "open" } : {},
   component: lazyRouteComponent(() => import("./entry/LoginPage"), "LoginPage"),
 });
 
@@ -93,7 +99,11 @@ const routeTree = rootRoute.addChildren([
   mobileShellTree,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  scrollRestoration: true,
+  scrollToTopSelectors: [".mobile-shell__main", ".entry-shell"],
+});
 
 declare module "@tanstack/react-router" {
   interface Register {

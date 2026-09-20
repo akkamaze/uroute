@@ -42,7 +42,7 @@ export function MobileShell(): React.JSX.Element {
 
   return (
     <div className="mobile-shell">
-      <main className="mobile-shell__main">
+      <main className="mobile-shell__main" data-scroll-restoration-id="mobile-main">
         <Outlet />
       </main>
 

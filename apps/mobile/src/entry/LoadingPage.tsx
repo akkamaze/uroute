@@ -46,7 +46,7 @@ export function LoadingPage(): React.JSX.Element {
   }
 
   return (
-    <main className="entry-shell">
+    <main className="entry-shell" data-scroll-restoration-id="entry-main">
       <div className="loading-preview">
         <LoadingBrand />
 

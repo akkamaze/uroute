@@ -1,9 +1,23 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import {
+  useCanGoBack,
+  useNavigate,
+  useRouter,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { BrandMark } from "../brand";
 import "./entry.css";
+
+interface ProfileDialogHistoryState {
+  profileDialogEntry?: true;
+}
+
+function isProfileDialogHistoryEntry(state: object): state is object & ProfileDialogHistoryState {
+  return "profileDialogEntry" in state && state.profileDialogEntry === true;
+}
 
 function GoogleMark(): React.JSX.Element {
   return (
@@ -31,14 +45,62 @@ function GoogleMark(): React.JSX.Element {
 export function LoginPage(): React.JSX.Element {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const signInButtonRef = useRef<HTMLButtonElement>(null);
+  const canGoBack = useCanGoBack();
   const navigate = useNavigate();
+  const router = useRouter();
+  const search = useSearch({ from: "/login" });
+  const isProfileDialogEntry = useRouterState({
+    select: (state) => isProfileDialogHistoryEntry(state.location.state),
+  });
+  const profileDialogOpen = search.profile === "open";
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+
+    if (dialog === null) {
+      return;
+    }
+
+    if (profileDialogOpen && !dialog.open) {
+      dialog.showModal();
+    } else if (!profileDialogOpen && dialog.open) {
+      dialog.close();
+    }
+  }, [profileDialogOpen]);
 
   function openProfileDialog(): void {
-    dialogRef.current?.showModal();
+    void navigate({
+      resetScroll: false,
+      search: { profile: "open" },
+      state: (current) => {
+        const next = { ...current, profileDialogEntry: true as const };
+
+        return next;
+      },
+      to: "/login",
+    });
   }
 
   function closeProfileDialog(): void {
-    dialogRef.current?.close();
+    if (isProfileDialogEntry && canGoBack) {
+      router.history.back();
+
+      return;
+    }
+
+    void navigate({
+      replace: true,
+      resetScroll: false,
+      search: {},
+      state: (current) => {
+        const next: Record<string, unknown> = { ...current };
+
+        delete next.profileDialogEntry;
+
+        return next;
+      },
+      to: "/login",
+    });
   }
 
   function restoreSignInFocus(): void {
@@ -51,18 +113,32 @@ export function LoginPage(): React.JSX.Element {
     }
   }
 
-  function chooseMina(): void {
+  function closeFromEscape(event: React.SyntheticEvent<HTMLDialogElement>): void {
+    event.preventDefault();
     closeProfileDialog();
-    void navigate({ to: "/trips" });
+  }
+
+  function goBack(): void {
+    if (canGoBack) {
+      router.history.back();
+
+      return;
+    }
+
+    void navigate({ replace: true, to: "/welcome" });
+  }
+
+  function chooseMina(): void {
+    void navigate({ replace: true, to: "/trips" });
   }
 
   return (
-    <main className="entry-shell entry-shell--login">
+    <main className="entry-shell entry-shell--login" data-scroll-restoration-id="entry-main">
       <div className="login-page">
         <header className="login-header">
-          <Link aria-label="Back to welcome" className="login-back" to="/welcome">
+          <button aria-label="Go back" className="login-back" onClick={goBack} type="button">
             <ChevronLeft aria-hidden="true" size={24} strokeWidth={1.8} />
-          </Link>
+          </button>
         </header>
 
         <section className="login-content">
@@ -103,6 +179,7 @@ export function LoginPage(): React.JSX.Element {
       <dialog
         aria-labelledby="profile-dialog-title"
         className="profile-dialog"
+        onCancel={closeFromEscape}
         onClick={closeFromBackdrop}
         onClose={restoreSignInFocus}
         ref={dialogRef}
