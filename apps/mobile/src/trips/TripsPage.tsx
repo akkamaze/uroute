@@ -228,32 +228,34 @@ export function TripsPage(): React.JSX.Element {
         ))}
       </div>
 
-      <div aria-live="polite" className="trip-results">
-        {visibleTrips.length === 0 ? (
-          <div className="trip-results__empty">
-            <h2>
-              {period === "past" && normalizedQuery.length === 0
-                ? "No past trips yet"
-                : "No trips found"}
-            </h2>
-            <p>
-              {period === "past" && normalizedQuery.length === 0
-                ? "Finished trips will appear here."
-                : "Try another city."}
-            </p>
-          </div>
-        ) : (
-          visibleTrips.map((trip) =>
-            trip.featured ? (
-              <FeaturedTrip key={trip.name} trip={trip} />
-            ) : (
-              <CompactTrip key={trip.name} trip={trip} />
-            ),
-          )
-        )}
-      </div>
+      <div className="trips-page__scroll">
+        <div aria-live="polite" className="trip-results">
+          {visibleTrips.length === 0 ? (
+            <div className="trip-results__empty">
+              <h2>
+                {period === "past" && normalizedQuery.length === 0
+                  ? "No past trips yet"
+                  : "No trips found"}
+              </h2>
+              <p>
+                {period === "past" && normalizedQuery.length === 0
+                  ? "Finished trips will appear here."
+                  : "Try another city."}
+              </p>
+            </div>
+          ) : (
+            visibleTrips.map((trip) =>
+              trip.featured ? (
+                <FeaturedTrip key={trip.name} trip={trip} />
+              ) : (
+                <CompactTrip key={trip.name} trip={trip} />
+              ),
+            )
+          )}
+        </div>
 
-      {period === "upcoming" && normalizedQuery.length === 0 ? <BeforeYouGo /> : null}
+        {period === "upcoming" && normalizedQuery.length === 0 ? <BeforeYouGo /> : null}
+      </div>
 
       <dialog
         aria-labelledby="new-trip-title"
