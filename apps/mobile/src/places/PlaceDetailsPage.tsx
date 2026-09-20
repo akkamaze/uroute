@@ -689,6 +689,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 Trip
                 <span className="add-place-panel__select">
                   <select
+                    enterKeyHint="next"
                     onChange={(event) => changeTrip(event.target.value as TripId)}
                     value={tripId}
                   >
@@ -706,6 +707,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 Day
                 <span className="add-place-panel__select">
                   <select
+                    enterKeyHint="done"
                     onChange={(event) => {
                       setTripDay(event.target.value);
                       setAddError("");

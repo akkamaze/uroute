@@ -58,6 +58,9 @@ export function getRevealScrollTop(
 
 function editableField(): HTMLElement | null {
   const field = document.activeElement;
+  if (field instanceof HTMLSelectElement) {
+    return field.disabled ? null : field;
+  }
   if (field instanceof HTMLTextAreaElement) {
     return field.disabled || field.readOnly ? null : field;
   }

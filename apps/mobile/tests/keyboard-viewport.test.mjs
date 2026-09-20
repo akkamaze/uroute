@@ -77,6 +77,9 @@ test("controller reveals only an opted-in owner, preserves manual scrolling, res
     readOnly = false;
   }
   class Textarea extends Element {}
+  class Select extends Element {
+    disabled = false;
+  }
   const owner = new Element();
   Object.assign(owner, {
     scrollTop: 0,
@@ -116,6 +119,7 @@ test("controller reveals only an opted-in owner, preserves manual scrolling, res
     Element,
     HTMLInputElement: Input,
     HTMLTextAreaElement: Textarea,
+    HTMLSelectElement: Select,
   });
   let cleanup;
   try {
@@ -137,6 +141,19 @@ test("controller reveals only an opted-in owner, preserves manual scrolling, res
     await wait();
     expect(properties.get("--keyboard-viewport-bottom")).toBe("0px");
     expect(attributes.has("data-keyboard-editing")).toBe(false);
+    const select = new Select();
+    Object.assign(select, { owner, rect: { top: 500, bottom: 552 } });
+    owner.scrollTop = 0;
+    document.activeElement = select;
+    document.dispatchEvent(new globalThis.Event("focusin"));
+    await wait();
+    expect(owner.scrollTop).toBe(108);
+    expect(attributes.has("data-keyboard-editing")).toBe(true);
+    select.disabled = true;
+    document.dispatchEvent(new globalThis.Event("focusout"));
+    await wait();
+    expect(attributes.has("data-keyboard-editing")).toBe(false);
+
     cleanup();
     expect(properties.size).toBe(0);
     viewport.dispatchEvent(new globalThis.Event("resize"));

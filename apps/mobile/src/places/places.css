@@ -419,6 +419,7 @@
   border-radius: 12px;
   background: #ffffff;
   font: inherit;
+  font-size: 1rem;
 }
 
 .add-place-panel__select svg {
@@ -538,7 +539,8 @@
 }
 
 /* Only the editor surface contracts; the map and document keep their viewport. */
-.place-sheet:has(.place-sheet__edit-fields :focus) {
+.place-sheet:has(.place-sheet__edit-fields :focus),
+.place-sheet[data-mode="add"] {
   top: calc(var(--keyboard-viewport-top, 0px) + 72px + env(safe-area-inset-top, 0px));
   bottom: var(--keyboard-viewport-bottom, 0px);
 }
