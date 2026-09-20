@@ -57,7 +57,7 @@ export function WelcomePage(): React.JSX.Element {
             Keep your whole trip in one place.
           </p>
 
-          <Link className="welcome-primary-action" to="/trips">
+          <Link className="welcome-primary-action" to="/login">
             <span>Get started</span>
             <ArrowRight aria-hidden="true" size={20} strokeWidth={1.8} />
           </Link>
