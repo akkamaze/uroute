@@ -1,6 +1,5 @@
 import { Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 
-import { Brand } from "./brand";
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
 
 const navigationItems = [
@@ -57,16 +56,4 @@ export function MobileShell(): React.JSX.Element {
 
 export function RootRedirect(): React.JSX.Element {
   return <Navigate replace to="/loading" />;
-}
-
-export function UserPage(): React.JSX.Element {
-  return (
-    <section className="preview-page">
-      <Brand />
-
-      <h1>You</h1>
-
-      <p>Preview state: Your profile content will appear here.</p>
-    </section>
-  );
 }
