@@ -171,7 +171,7 @@ export function LoginPage(): React.JSX.Element {
           </button>
 
           <p className="login-footer__notice">
-            Google sign-in is not connected yet. Continue with a sample profile.
+            Google sign-in is not connected yet. Choose a local profile to continue.
           </p>
         </footer>
       </div>
