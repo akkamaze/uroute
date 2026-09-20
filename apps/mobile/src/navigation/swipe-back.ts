@@ -1,6 +1,7 @@
 interface NavigationSnapshot {
   fromPath: string;
   node: HTMLElement;
+  scrollOffsets: Array<{ index: number; left: number; top: number }>;
   toPath: string;
 }
 
@@ -54,6 +55,12 @@ export function captureNavigationSnapshot(toPath: string): void {
   }
 
   const node = source.cloneNode(true) as HTMLElement;
+  const sourceElements = [source, ...source.querySelectorAll<HTMLElement>("*")];
+  const scrollOffsets = sourceElements.flatMap((element, index) =>
+    element.scrollTop === 0 && element.scrollLeft === 0
+      ? []
+      : [{ index, left: element.scrollLeft, top: element.scrollTop }],
+  );
   copyCanvasPixels(source, node);
   node.removeAttribute("id");
   node.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
@@ -61,12 +68,24 @@ export function captureNavigationSnapshot(toPath: string): void {
   node.setAttribute("aria-hidden", "true");
   node.setAttribute("inert", "");
 
-  snapshots.push({ fromPath, node, toPath });
+  snapshots.push({ fromPath, node, scrollOffsets, toPath });
   notify();
 }
 
 export function getNavigationSnapshot(pathname: string): NavigationSnapshot | undefined {
   return snapshots.at(-1)?.toPath === pathname ? snapshots.at(-1) : undefined;
+}
+
+export function restoreSnapshotScroll(snapshot: NavigationSnapshot): void {
+  const clonedElements = [snapshot.node, ...snapshot.node.querySelectorAll<HTMLElement>("*")];
+
+  snapshot.scrollOffsets.forEach(({ index, left, top }) => {
+    const element = clonedElements[index];
+
+    if (element !== undefined) {
+      element.scrollTo({ left, top });
+    }
+  });
 }
 
 export function consumeNavigationSnapshot(pathname: string): void {

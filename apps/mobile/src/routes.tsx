@@ -6,6 +6,7 @@ import {
   captureNavigationSnapshot,
   consumeNavigationSnapshot,
   getNavigationSnapshot,
+  restoreSnapshotScroll,
   shouldCaptureForwardNavigation,
   subscribeNavigationSnapshots,
   synchronizeNavigationSnapshots,
@@ -67,6 +68,7 @@ export function AppRoot(): React.JSX.Element {
 
     if (snapshot !== undefined) {
       backdrop.append(snapshot.node);
+      window.requestAnimationFrame(() => restoreSnapshotScroll(snapshot));
     }
   }, [snapshot]);
 
