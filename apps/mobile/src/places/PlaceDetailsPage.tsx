@@ -15,6 +15,7 @@ import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
+import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 
 import "./places.css";
 
@@ -128,7 +129,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [draftQuery, setDraftQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [searchActive, setSearchActive] = useState(false);
-  const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const savedIds = useSavedPlaceIds();
   const [notice, setNotice] = useState("");
   const [visitTime, setVisitTime] = useState(initialPlace.time);
   const [notes, setNotes] = useState("");
@@ -199,17 +200,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function toggleSaved(): void {
-    setSavedIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(selectedPlace.id)) {
-        next.delete(selectedPlace.id);
-      } else {
-        next.add(selectedPlace.id);
-      }
-
-      return next;
-    });
+    toggleSavedPlace(selectedPlace.id);
   }
 
   function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {

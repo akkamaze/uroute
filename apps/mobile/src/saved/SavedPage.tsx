@@ -3,9 +3,8 @@ import { Bookmark, ChevronRight, Search } from "lucide-react";
 import { useState } from "react";
 
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
+import { removeSavedPlace, useSavedPlaceIds } from "./saved-store";
 import "./saved.css";
-
-const initialSavedPlaces = FRIDAY_STOPS.slice(0, 2);
 
 interface SavedPlaceRowProps {
   onRemove: (placeId: string) => void;
@@ -47,14 +46,15 @@ function SavedPlaceRow({ onRemove, place }: SavedPlaceRowProps): React.JSX.Eleme
 
 export function SavedPage(): React.JSX.Element {
   const [query, setQuery] = useState("");
-  const [savedPlaces, setSavedPlaces] = useState<readonly PlannedStop[]>(initialSavedPlaces);
+  const savedIds = useSavedPlaceIds();
+  const savedPlaces = FRIDAY_STOPS.filter((place) => savedIds.has(place.id));
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visiblePlaces = savedPlaces.filter((place) =>
     `${place.name} ${place.type} ${place.area}`.toLocaleLowerCase().includes(normalizedQuery),
   );
 
   function removePlace(placeId: string): void {
-    setSavedPlaces((places) => places.filter((place) => place.id !== placeId));
+    removeSavedPlace(placeId);
   }
 
   return (
