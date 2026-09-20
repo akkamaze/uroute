@@ -15,7 +15,7 @@ const JOURNAL_DRAFTS_KEY = "uroute.mock.journal-drafts";
 
 function loadDrafts(): readonly JournalDraft[] {
   try {
-    const stored = window.sessionStorage.getItem(JOURNAL_DRAFTS_KEY);
+    const stored = window.localStorage.getItem(JOURNAL_DRAFTS_KEY);
 
     if (stored === null) {
       return [];
@@ -69,7 +69,7 @@ export function JournalPage(): React.JSX.Element {
 
   useEffect(() => {
     try {
-      window.sessionStorage.setItem(JOURNAL_DRAFTS_KEY, JSON.stringify(drafts));
+      window.localStorage.setItem(JOURNAL_DRAFTS_KEY, JSON.stringify(drafts));
     } catch {
       // The mock remains usable when session storage is unavailable.
     }
