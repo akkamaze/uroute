@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
@@ -15,6 +15,13 @@ import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
+import {
+  addPlaceToKyotoDay,
+  getKyotoPlan,
+  isKyotoDay,
+  useKyotoPlan,
+  type KyotoDay,
+} from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 
 import "./places.css";
@@ -42,16 +49,6 @@ const TRIP_DAYS = {
     ],
     label: "Kyoto · 12–16 Nov 2026",
     name: "Kyoto",
-  },
-  danang: {
-    days: [
-      { id: "2026-12-04", label: "Friday, 4 December" },
-      { id: "2026-12-05", label: "Saturday, 5 December" },
-      { id: "2026-12-06", label: "Sunday, 6 December" },
-      { id: "2026-12-07", label: "Monday, 7 December" },
-    ],
-    label: "Da Nang · 4–7 Dec 2026",
-    name: "Da Nang",
   },
 } as const;
 
@@ -125,19 +122,28 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const search = useSearch({ from: "/places" });
   const initialPlace = getPlace(search.place);
   const initialId = initialPlace.id;
+  const plan = useKyotoPlan();
+  const initialVisit =
+    search.day === undefined
+      ? undefined
+      : plan.days[search.day].find((visit) => visit.placeId === initialId);
   const [selectedId, setSelectedId] = useState(initialId);
   const [draftQuery, setDraftQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [searchActive, setSearchActive] = useState(false);
   const savedIds = useSavedPlaceIds();
   const [notice, setNotice] = useState("");
-  const [visitTime, setVisitTime] = useState(initialPlace.time);
-  const [notes, setNotes] = useState("");
+  const [addedDay, setAddedDay] = useState<KyotoDay | null>(null);
+  const [addError, setAddError] = useState("");
+  const [visitTime, setVisitTime] = useState(initialVisit?.time ?? "");
+  const [notes, setNotes] = useState(initialVisit?.notes ?? "");
+  const [timeEdited, setTimeEdited] = useState(false);
+  const [notesEdited, setNotesEdited] = useState(false);
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
   const addPanelOpen = search.add === "open";
   const visibleSheetSnap = addPanelOpen ? "expanded" : sheetSnap;
   const [tripId, setTripId] = useState<TripId>("kyoto");
-  const [tripDay, setTripDay] = useState("2026-11-13");
+  const [tripDay, setTripDay] = useState(`2026-11-${search.day ?? 13}`);
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
@@ -163,14 +169,16 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }, []);
 
   function selectPlace(id: string): void {
-    const nextPlace = getPlace(id);
-
     setSelectedId(id);
     setDraftQuery("");
     setSubmittedQuery("");
     setSearchActive(false);
-    setVisitTime(nextPlace.time);
+    setVisitTime("");
+    setTimeEdited(false);
+    setNotesEdited(false);
     setNotes("");
+    setNotice("");
+    setAddedDay(null);
     void navigate({ replace: true, search: { place: id }, to: "/places" });
   }
 
@@ -196,10 +204,11 @@ export function PlaceDetailsPage(): React.JSX.Element {
 
   function openAddDialog(): void {
     previousContentScrollRef.current = sheetContentRef.current?.scrollTop ?? 0;
+    setAddError("");
     addOpenedHereRef.current = true;
     void navigate({
       to: "/places",
-      search: { place: selectedId, add: "open" },
+      search: { ...search, place: selectedId, add: "open" },
       resetScroll: false,
     });
   }
@@ -210,7 +219,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     } else {
       void navigate({
         to: "/places",
-        search: { place: selectedId },
+        search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
         replace: true,
         resetScroll: false,
       });
@@ -218,6 +227,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function changeTrip(nextTripId: TripId): void {
+    setAddError("");
     setTripId(nextTripId);
     setTripDay(TRIP_DAYS[nextTripId].days[0].id);
   }
@@ -225,8 +235,31 @@ export function PlaceDetailsPage(): React.JSX.Element {
   function addToTrip(): void {
     const trip = TRIP_DAYS[tripId];
     const day = trip.days.find((candidate) => candidate.id === tripDay) ?? trip.days[0];
+    const date = Number(day.id.slice(-2));
+    if (!isKyotoDay(date)) {
+      return;
+    }
+    const result = addPlaceToKyotoDay(date, {
+      placeId: selectedPlace.id,
+      time: timeEdited ? visitTime : "",
+      notes: notesEdited ? notes : "",
+    });
+    if (result === "invalid") {
+      setAddError("Check the visit time and keep notes under 5,000 characters.");
 
-    setNotice(`Added to ${trip.name} · ${day.label} for this session.`);
+      return;
+    }
+    if (result === "duplicate") {
+      setAddError(`Already in your plan for ${day.label}. Choose another day.`);
+
+      return;
+    }
+    setAddedDay(date);
+    setTimeEdited(false);
+    setNotesEdited(false);
+    setNotice(
+      `Added to ${trip.name} · ${day.label}.${getKyotoPlan().persistenceFailed ? " Kept for this session; device storage is unavailable." : ""}`,
+    );
     closeAddPanel();
   }
 
@@ -514,7 +547,13 @@ export function PlaceDetailsPage(): React.JSX.Element {
               <label>
                 Day
                 <span className="add-place-panel__select">
-                  <select onChange={(event) => setTripDay(event.target.value)} value={tripDay}>
+                  <select
+                    onChange={(event) => {
+                      setTripDay(event.target.value);
+                      setAddError("");
+                    }}
+                    value={tripDay}
+                  >
                     {TRIP_DAYS[tripId].days.map((day) => (
                       <option key={day.id} value={day.id}>
                         {day.label}
@@ -525,12 +564,29 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 </span>
               </label>
 
+              {addError === "" ? null : (
+                <p role="alert" className="add-place-panel__error">
+                  {addError}
+                </p>
+              )}
+
               <button className="add-place-panel__confirm" type="submit">
                 Add to plan
               </button>
             </form>
           ) : (
             <>
+              {notice === "" ? null : (
+                <p aria-live="polite" className="place-sheet__notice">
+                  {notice}
+                  {addedDay === null ? null : (
+                    <Link to="/plan" search={{ day: addedDay }}>
+                      View day
+                    </Link>
+                  )}
+                </p>
+              )}
+
               <div className="place-sheet__photos">
                 <img alt={selectedPlace.name} src={selectedPlace.image} />
                 <img alt={`${selectedPlace.name} surroundings`} src={selectedPlace.secondImage} />
@@ -547,7 +603,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 </button>
                 <button
                   className="place-sheet__secondary"
-                  onClick={() => setNotice("Live directions are not connected yet.")}
+                  onClick={() => {
+                    setAddedDay(null);
+                    setNotice("Live directions are not connected yet.");
+                  }}
                   type="button"
                 >
                   Directions
@@ -573,7 +632,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
                   <label>
                     Visit time
                     <input
-                      onChange={(event) => setVisitTime(event.target.value)}
+                      onChange={(event) => {
+                        setVisitTime(event.target.value);
+                        setTimeEdited(true);
+                      }}
                       type="time"
                       value={visitTime}
                     />
@@ -581,7 +643,11 @@ export function PlaceDetailsPage(): React.JSX.Element {
                   <label>
                     Notes
                     <textarea
-                      onChange={(event) => setNotes(event.target.value)}
+                      onChange={(event) => {
+                        setNotes(event.target.value);
+                        setNotesEdited(true);
+                      }}
+                      maxLength={5000}
                       placeholder="Add a note for this visit"
                       rows={2}
                       value={notes}
@@ -589,10 +655,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
                   </label>
                 </div>
               </details>
-
-              <p aria-live="polite" className="place-sheet__notice">
-                {notice}
-              </p>
             </>
           )}
         </div>

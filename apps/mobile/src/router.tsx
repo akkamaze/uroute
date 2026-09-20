@@ -7,12 +7,14 @@ import {
 
 import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
+import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 
 interface LoginSearch {
   profile?: "open";
 }
 
 interface PlaceSearch {
+  day?: KyotoDay;
   add?: "open";
   place?: string;
 }
@@ -74,7 +76,10 @@ const tripsRoute = createRoute({
 const planRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan",
-  validateSearch: (search: Record<string, unknown>): { map?: "full"; stress?: "1200" } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { day?: KyotoDay; map?: "full"; stress?: "1200" } => ({
+    ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(search.map === "full" ? { map: "full" } : {}),
     ...(String(search.stress) === "1200" ? { stress: "1200" } : {}),
   }),
@@ -99,6 +104,7 @@ const placesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/places",
   validateSearch: (search: Record<string, unknown>): PlaceSearch => ({
+    ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(typeof search.place === "string" ? { place: search.place } : {}),
     ...(search.add === "open" ? { add: "open" } : {}),
   }),

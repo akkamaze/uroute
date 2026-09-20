@@ -11,16 +11,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  createEmptyPlaces,
-  createSamplePlaces,
-  createStressPlaces,
-  type PlaceCollection,
-} from "./map-data";
+import { createSamplePlaces, createStressPlaces, type PlaceCollection } from "./map-data";
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import { TripMap } from "./TripMap";
 import { TripHeader } from "./TripHeader";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
+import { reorderKyotoDay, useKyotoPlan, type KyotoDay } from "./plan-store";
 
 const TRIP_DAYS = [
   { date: 12, fullWeekday: "Thursday", weekday: "Thu" },
@@ -81,22 +77,27 @@ export function PlanPage(): React.JSX.Element {
   const pointerReorderRef = useRef<PointerReorderState | null>(null);
   const touchTimerRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
-  const [selectedDay, setSelectedDay] = useState<number>(13);
+  const selectedDay = search.day ?? 13;
+  const plan = useKyotoPlan();
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
   const [showMap, setShowMap] = useState(false);
   const mapVisible = showMap || mapExpanded;
-  const [stops, setStops] = useState<PlannedStop[]>([...FRIDAY_STOPS]);
+  const stops = useMemo(
+    () =>
+      plan.days[selectedDay].flatMap((visit) => {
+        const place = FRIDAY_STOPS.find((candidate) => candidate.id === visit.placeId);
+
+        return place === undefined ? [] : [{ ...place, time: visit.time }];
+      }),
+    [plan.days, selectedDay],
+  );
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [reorderNotice, setReorderNotice] = useState("");
   const [reorderHintVisible, setReorderHintVisible] = useState(true);
   const stressFixtureEnabled = isStressFixtureEnabled();
   const places = useMemo<PlaceCollection>(() => {
-    if (selectedDay !== 13) {
-      return createEmptyPlaces();
-    }
-
-    if (stressFixtureEnabled) {
+    if (stressFixtureEnabled && selectedDay === 13) {
       return createStressPlaces();
     }
 
@@ -105,13 +106,19 @@ export function PlanPage(): React.JSX.Element {
 
     return {
       ...samples,
-      features: samples.features.map((place) => ({
-        ...place,
-        properties: {
-          ...place.properties,
-          marker: `place-${order.get(place.properties.id) ?? 1}`,
-        },
-      })),
+      features: samples.features
+        .filter((place) => order.has(place.properties.id))
+        .sort(
+          (left, right) =>
+            (order.get(left.properties.id) ?? 0) - (order.get(right.properties.id) ?? 0),
+        )
+        .map((place) => ({
+          ...place,
+          properties: {
+            ...place.properties,
+            marker: `place-${order.get(place.properties.id) ?? 1}`,
+          },
+        })),
     };
   }, [selectedDay, stops, stressFixtureEnabled]);
   const selectedPlace = places.features.find((place) => place.properties.id === selectedId);
@@ -134,31 +141,12 @@ export function PlanPage(): React.JSX.Element {
   }
 
   function finishReorder(sourceId: string, targetId: string): void {
-    if (sourceId === targetId) {
-      return;
-    }
-
-    setStops((currentStops) => {
-      const sourceIndex = currentStops.findIndex((stop) => stop.id === sourceId);
-      const targetIndex = currentStops.findIndex((stop) => stop.id === targetId);
-
-      if (sourceIndex < 0 || targetIndex < 0) {
-        return currentStops;
-      }
-
-      const nextStops = [...currentStops];
-      const [movedStop] = nextStops.splice(sourceIndex, 1);
-
-      if (movedStop === undefined) {
-        return currentStops;
-      }
-
-      nextStops.splice(targetIndex, 0, movedStop);
+    const movedStop = stops.find((stop) => stop.id === sourceId);
+    const targetIndex = stops.findIndex((stop) => stop.id === targetId);
+    if (movedStop !== undefined && reorderKyotoDay(selectedDay, sourceId, targetId)) {
       setReorderHintVisible(false);
       setReorderNotice(`${movedStop.name} moved to position ${targetIndex + 1}.`);
-
-      return nextStops;
-    });
+    }
   }
 
   function resetDragState(): void {
@@ -323,9 +311,9 @@ export function PlanPage(): React.JSX.Element {
     finishReorder(stopId, target.id);
   }
 
-  function selectDay(day: number): void {
-    setSelectedDay(day);
-    setSelectedId(day === 13 && !stressFixtureEnabled ? "kiyomizu" : null);
+  function selectDay(day: KyotoDay): void {
+    void navigate({ to: "/plan", search: { ...search, day }, replace: true, resetScroll: false });
+    setSelectedId(stressFixtureEnabled ? null : (plan.days[day][0]?.placeId ?? null));
   }
 
   function selectFromMap(id: string): void {
@@ -356,7 +344,10 @@ export function PlanPage(): React.JSX.Element {
     } else {
       void navigate({
         to: "/plan",
-        search: search.stress === "1200" ? { stress: "1200" } : {},
+        search: {
+          day: selectedDay,
+          ...(search.stress === "1200" ? { stress: "1200" as const } : {}),
+        },
         replace: true,
         resetScroll: false,
       });
@@ -446,8 +437,18 @@ export function PlanPage(): React.JSX.Element {
           </button>
         </header>
 
-        {selectedDay === 13 ? (
-          <div aria-describedby="reorder-help" aria-label="Friday itinerary" className="timeline">
+        {plan.persistenceFailed ? (
+          <p role="status" className="day-plan__storage-notice">
+            Changes are kept for this session. Device storage is unavailable.
+          </p>
+        ) : null}
+
+        {stops.length > 0 ? (
+          <div
+            aria-describedby="reorder-help"
+            aria-label={`${selectedDayLabel} itinerary`}
+            className="timeline"
+          >
             {reorderHintVisible ? (
               <p className="timeline__reorder-hint">
                 <GripVertical aria-hidden="true" size={17} strokeWidth={1.8} />
@@ -492,7 +493,10 @@ export function PlanPage(): React.JSX.Element {
 
                       setSelectedId(stop.id);
                       captureNavigationSnapshot("/places");
-                      void navigate({ search: { place: stop.id }, to: "/places" });
+                      void navigate({
+                        search: { place: stop.id, day: selectedDay },
+                        to: "/places",
+                      });
                     }}
                     onKeyDown={(event) => {
                       if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
@@ -513,7 +517,7 @@ export function PlanPage(): React.JSX.Element {
                     }}
                     type="button"
                   >
-                    <span className="timeline__time">{stop.time}</span>
+                    <span className="timeline__time">{stop.time || "Anytime"}</span>
                     <span className={`timeline__icon timeline__icon--${stop.category}`}>
                       {renderStopIcon(stop)}
                     </span>
