@@ -69,7 +69,17 @@ export function RootRedirect(): React.JSX.Element {
 }
 
 export function TripsPage(): React.JSX.Element {
-  return <PreviewPage description="Trips content will appear here." title="Trips" />;
+  return (
+    <section className="preview-page">
+      <h1>Trips</h1>
+
+      <p>Preview state: Trips content will appear here.</p>
+
+      <Link className="preview-link" to="/plan">
+        Open plan
+      </Link>
+    </section>
+  );
 }
 
 export function SavedPage(): React.JSX.Element {

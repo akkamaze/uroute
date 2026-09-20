@@ -1,4 +1,9 @@
-import { createRootRoute, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  lazyRouteComponent,
+} from "@tanstack/react-router";
 
 import { JournalPage, MobileShell, RootRedirect, SavedPage, TripsPage, UserPage } from "./routes";
 
@@ -14,6 +19,12 @@ const tripsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/trips",
   component: TripsPage,
+});
+
+const planRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/plan",
+  component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
 const savedRoute = createRoute({
@@ -37,6 +48,7 @@ const userRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   tripsRoute,
+  planRoute,
   savedRoute,
   journalRoute,
   userRoute,
