@@ -20,7 +20,9 @@ const navigationItems = [
 }[];
 
 function isNavigationItemActive(to: string, pathname: string): boolean {
-  return pathname === to || (to === "/trips" && pathname === "/plan");
+  return (
+    pathname === to || (to === "/trips" && ["/bookings", "/expenses", "/plan"].includes(pathname))
+  );
 }
 
 function PreviewPage({ description, title }: PreviewPageProps): React.JSX.Element {

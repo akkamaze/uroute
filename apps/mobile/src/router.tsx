@@ -62,6 +62,12 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
+const bookingsRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/bookings",
+  component: lazyRouteComponent(() => import("./plan/BookingsPage"), "BookingsPage"),
+});
+
 const placesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/places",
@@ -91,6 +97,7 @@ const userRoute = createRoute({
 const mobileShellTree = mobileShellRoute.addChildren([
   tripsRoute,
   planRoute,
+  bookingsRoute,
   savedRoute,
   journalRoute,
   userRoute,

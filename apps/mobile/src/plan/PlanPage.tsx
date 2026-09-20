@@ -1,5 +1,5 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, CloudSun, Coffee, Footprints, Landmark, Plus, Utensils } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { CloudSun, Coffee, Footprints, Landmark, Plus, Utensils } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -9,6 +9,7 @@ import {
   type PlaceCollection,
 } from "./map-data";
 import { TripMap } from "./TripMap";
+import { TripHeader } from "./TripHeader";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 
 const TRIP_DAYS = [
@@ -68,18 +69,7 @@ export function PlanPage(): React.JSX.Element {
 
   return (
     <section className="plan-page">
-      <header className="plan-header">
-        <Link aria-label="Back to trips" className="plan-header__back" to="/trips">
-          <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
-        </Link>
-
-        <div className="plan-header__title">
-          <h1>Kyoto</h1>
-          <p>12–16 Nov 2026</p>
-        </div>
-
-        <span aria-hidden="true" />
-      </header>
+      <TripHeader active="plan" />
 
       <div aria-label="Trip days" className="day-strip" role="group">
         {TRIP_DAYS.map((day) => (
