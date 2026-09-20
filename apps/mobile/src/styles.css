@@ -16,6 +16,7 @@
   --color-text: #202124;
   --color-muted: #6b7280;
   --color-active: #1677ff;
+  --color-on-accent: #ffffff;
   --color-border: #edf0f3;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -105,10 +106,6 @@ a {
 
 .bottom-navigation__link--active {
   color: var(--color-active);
-}
-
-.bottom-navigation__link--active .bottom-navigation__icon--trips {
-  fill: currentColor;
 }
 
 .brand {
