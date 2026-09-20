@@ -80,7 +80,11 @@ const planRoute = createRoute({
     search: Record<string, unknown>,
   ): { day?: KyotoDay; map?: "full"; stress?: "1200" } => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
-    ...(search.map === "full" ? { map: "full" } : {}),
+    ...(search.members === "open"
+      ? { members: "open" }
+      : search.map === "full"
+        ? { map: "full" }
+        : {}),
     ...(String(search.stress) === "1200" ? { stress: "1200" } : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
@@ -89,14 +93,20 @@ const planRoute = createRoute({
 const bookingsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/bookings",
+  validateSearch: (search: Record<string, unknown>): { members?: "open" } =>
+    search.members === "open" ? { members: "open" } : {},
   component: lazyRouteComponent(() => import("./plan/BookingsPage"), "BookingsPage"),
 });
 
 const expensesRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/expenses",
-  validateSearch: (search: Record<string, unknown>): EditorSearch =>
-    search.editor === "open" ? { editor: "open" } : {},
+  validateSearch: (search: Record<string, unknown>): EditorSearch & { members?: "open" } =>
+    search.members === "open"
+      ? { members: "open" }
+      : search.editor === "open"
+        ? { editor: "open" }
+        : {},
   component: lazyRouteComponent(() => import("./plan/ExpensesPage"), "ExpensesPage"),
 });
 

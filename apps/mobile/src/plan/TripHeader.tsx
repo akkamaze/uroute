@@ -1,5 +1,8 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { ArrowLeft, X } from "lucide-react";
+import { useEffect, useId, useRef } from "react";
+
+import "./trip-members.css";
 
 export type TripSection = "bookings" | "expenses" | "plan";
 
@@ -15,6 +18,47 @@ const SECTIONS = [
 ] as const;
 
 export function TripHeader({ active, inactive = false }: TripHeaderProps): React.JSX.Element {
+  const navigate = useNavigate();
+  const search = useSearch({ strict: false });
+  const membersOpen = search.members === "open";
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const openedHereRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  const to = SECTIONS.find((section) => section.id === active)?.to ?? "/plan";
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null) {
+      return;
+    }
+    if (membersOpen && !dialog.open) {
+      wasOpenRef.current = true;
+      dialog.showModal();
+    } else if (!membersOpen && wasOpenRef.current) {
+      dialog.close();
+      buttonRef.current?.focus({ preventScroll: true });
+      openedHereRef.current = false;
+      wasOpenRef.current = false;
+    }
+  }, [membersOpen]);
+
+  function openMembers(): void {
+    openedHereRef.current = true;
+    void navigate({ to, search: { ...search, members: "open" }, resetScroll: false });
+  }
+
+  function closeMembers(): void {
+    if (openedHereRef.current) {
+      window.history.back();
+    } else {
+      const nextSearch = { ...search };
+      delete nextSearch.members;
+      void navigate({ to, search: nextSearch, replace: true, resetScroll: false });
+    }
+  }
+
   return (
     <>
       <header aria-hidden={inactive} className="plan-header" inert={inactive}>
@@ -27,7 +71,13 @@ export function TripHeader({ active, inactive = false }: TripHeaderProps): React
           <p>12–16 Nov 2026</p>
         </div>
 
-        <button aria-label="Trip members" className="plan-header__members" type="button">
+        <button
+          aria-label="Trip members"
+          className="plan-header__members"
+          onClick={openMembers}
+          ref={buttonRef}
+          type="button"
+        >
           <img alt="" src="/images/members.png" />
         </button>
       </header>
@@ -56,6 +106,43 @@ export function TripHeader({ active, inactive = false }: TripHeaderProps): React
           );
         })}
       </nav>
+
+      <dialog
+        aria-labelledby={titleId}
+        className="trip-members"
+        onCancel={(event) => {
+          event.preventDefault();
+          closeMembers();
+        }}
+        ref={dialogRef}
+      >
+        <header>
+          <div>
+            <h2 id={titleId}>Trip members</h2>
+            <p>Kyoto · 4 travelers</p>
+          </div>
+          <button aria-label="Close trip members" onClick={closeMembers} type="button">
+            <X aria-hidden="true" size={20} strokeWidth={1.8} />
+          </button>
+        </header>
+        <ul>
+          <li>
+            <img alt="" src="/images/avatar.png" />
+            <div>
+              <strong>Mina</strong>
+              <span>You</span>
+            </div>
+          </li>
+          <li>
+            <img alt="" className="trip-members__companions" src="/images/members.png" />
+            <div>
+              <strong>Travel companions</strong>
+              <span>3 other travelers</span>
+            </div>
+          </li>
+        </ul>
+        <p className="trip-members__dates">12–16 November 2026</p>
+      </dialog>
     </>
   );
 }
