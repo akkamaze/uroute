@@ -166,6 +166,7 @@ export function useSwipeBack(): {
 
       if (
         phase !== "idle" ||
+        surface.querySelector("dialog[open], [role='dialog'][aria-modal='true']") !== null ||
         snapshot === undefined ||
         event.button !== 0 ||
         !(target instanceof Element) ||
