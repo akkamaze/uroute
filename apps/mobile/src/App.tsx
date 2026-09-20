@@ -1,9 +1,7 @@
-export function App(): React.JSX.Element {
-  return (
-    <main>
-      <h1>uroute</h1>
+import { RouterProvider } from "@tanstack/react-router";
 
-      <p>Mobile application workspace.</p>
-    </main>
-  );
+import { router } from "./router";
+
+export function App(): React.JSX.Element {
+  return <RouterProvider router={router} />;
 }
