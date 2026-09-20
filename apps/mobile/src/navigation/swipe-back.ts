@@ -64,6 +64,9 @@ export function captureNavigationSnapshot(toPath: string): void {
   copyCanvasPixels(source, node);
   node.removeAttribute("id");
   node.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  node.querySelectorAll("[data-scroll-restoration-id]").forEach((element) => {
+    element.removeAttribute("data-scroll-restoration-id");
+  });
   node.querySelectorAll("video").forEach((video) => video.pause());
   node.setAttribute("aria-hidden", "true");
   node.setAttribute("inert", "");
@@ -86,15 +89,6 @@ export function restoreSnapshotScroll(snapshot: NavigationSnapshot): void {
       element.scrollTo({ left, top });
     }
   });
-}
-
-export function consumeNavigationSnapshot(pathname: string): void {
-  const snapshot = snapshots.at(-1);
-
-  if (snapshot?.toPath === pathname) {
-    snapshots.pop();
-    notify();
-  }
 }
 
 export function synchronizeNavigationSnapshots(pathname: string): void {

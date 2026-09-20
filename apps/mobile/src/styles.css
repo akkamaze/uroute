@@ -82,24 +82,40 @@ body {
   z-index: 1;
   background: var(--color-surface);
   box-shadow: -12px 0 28px rgb(20 32 46 / 18%);
-  transform: translateX(var(--back-translate, 0));
-  will-change: transform;
+  transform: translate3d(var(--back-translate, 0), 0, 0);
 }
 
-.app-navigation__surface--back,
-.app-navigation__surface--reset {
+.app-navigation[data-swipe-phase="back"] .app-navigation__surface,
+.app-navigation[data-swipe-phase="reset"] .app-navigation__surface {
   transition: transform 190ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.app-navigation--back .app-navigation__backdrop,
-.app-navigation--reset .app-navigation__backdrop {
+.app-navigation[data-swipe-phase="back"] .app-navigation__backdrop,
+.app-navigation[data-swipe-phase="reset"] .app-navigation__backdrop {
   transition:
     opacity 190ms cubic-bezier(0.2, 0, 0, 1),
     transform 190ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-.app-navigation--dragging {
+.app-navigation[data-swipe-phase="dragging"] {
   user-select: none;
+}
+
+.app-navigation[data-swipe-phase="dragging"] .app-navigation__surface,
+.app-navigation[data-swipe-phase="back"] .app-navigation__surface,
+.app-navigation[data-swipe-phase="reset"] .app-navigation__surface {
+  will-change: transform;
+}
+
+/* Keep vertical scrolling native without applying a pan constraint to map ancestors. */
+.plan-header,
+.trip-sections,
+.day-strip,
+.day-plan,
+.trip-secondary,
+.place-search,
+.place-search__results {
+  touch-action: pan-y pinch-zoom;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -107,8 +123,10 @@ body {
     transform: none;
   }
 
-  .app-navigation__surface--back,
-  .app-navigation__surface--reset {
+  .app-navigation[data-swipe-phase="back"] .app-navigation__surface,
+  .app-navigation[data-swipe-phase="reset"] .app-navigation__surface,
+  .app-navigation[data-swipe-phase="back"] .app-navigation__backdrop,
+  .app-navigation[data-swipe-phase="reset"] .app-navigation__backdrop {
     transition-duration: 1ms;
   }
 }

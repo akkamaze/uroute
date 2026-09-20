@@ -369,6 +369,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         data-dragging={dragOffset === 0 ? undefined : "true"}
         data-mode={addPanelOpen ? "add" : undefined}
         data-snap={sheetSnap}
+        onLostPointerCapture={cancelSheetDrag}
         onPointerCancel={cancelSheetDrag}
         onPointerDown={startSheetDrag}
         onPointerMove={moveSheet}

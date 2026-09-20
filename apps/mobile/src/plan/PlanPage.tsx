@@ -48,6 +48,7 @@ const TRAVEL_BY_PAIR = new Map(
 interface TouchReorderState {
   active: boolean;
   sourceId: string;
+  startX: number;
   startY: number;
   targetId: string;
 }
@@ -243,6 +244,7 @@ export function PlanPage(): React.JSX.Element {
     touchReorderRef.current = {
       active: false,
       sourceId: stopId,
+      startX: touch.clientX,
       startY: touch.clientY,
       targetId: stopId,
     };
@@ -268,7 +270,10 @@ export function PlanPage(): React.JSX.Element {
     }
 
     if (!reorder.active) {
-      if (Math.abs(touch.clientY - reorder.startY) > TOUCH_SCROLL_THRESHOLD_PX) {
+      if (
+        Math.hypot(touch.clientX - reorder.startX, touch.clientY - reorder.startY) >
+        TOUCH_SCROLL_THRESHOLD_PX
+      ) {
         resetDragState();
       }
 
