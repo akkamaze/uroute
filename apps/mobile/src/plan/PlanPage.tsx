@@ -20,9 +20,10 @@ const TRIP_DAYS = [
 ] as const;
 
 function isStressFixtureEnabled(): boolean {
-  return (
-    import.meta.env.DEV && new URLSearchParams(window.location.search).get("stress") === "1200"
-  );
+  const fixtureAvailable =
+    import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_FIXTURE === "true";
+
+  return fixtureAvailable && new URLSearchParams(window.location.search).get("stress") === "1200";
 }
 
 export function PlanPage(): React.JSX.Element {

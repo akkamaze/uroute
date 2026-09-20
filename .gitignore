@@ -13,6 +13,7 @@ AGENTS.md
 .env
 .env.*
 !.env.example
+!apps/mobile/.env.test-device
 *.local
 .DS_Store
 Thumbs.db

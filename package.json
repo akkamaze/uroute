@@ -13,6 +13,7 @@
     "preview:mobile": "vite preview apps/mobile --host 0.0.0.0 --port 5182 --strictPort",
     "build": "tsc -b apps/mobile && vite build apps/mobile && tsc -b apps/web && vite build apps/web",
     "build:mobile": "tsc -b apps/mobile && vite build apps/mobile",
+    "build:mobile:test": "tsc -b apps/mobile && vite build apps/mobile --mode test-device --outDir builds/test-device --emptyOutDir",
     "build:web": "tsc -b apps/web && vite build apps/web",
     "typecheck": "tsc -b apps/mobile apps/web --pretty false",
     "typecheck:mobile": "tsc -b apps/mobile --pretty false",
