@@ -1,0 +1,37 @@
+{
+  "name": "uroute",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "vite apps/mobile --host 0.0.0.0 --port 5180 --strictPort",
+    "dev:web": "vite apps/web --host 0.0.0.0 --port 5181 --strictPort",
+    "build": "tsc -b apps/mobile && vite build apps/mobile && tsc -b apps/web && vite build apps/web",
+    "build:mobile": "tsc -b apps/mobile && vite build apps/mobile",
+    "build:web": "tsc -b apps/web && vite build apps/web",
+    "typecheck": "tsc -b apps/mobile apps/web --pretty false",
+    "typecheck:mobile": "tsc -b apps/mobile --pretty false",
+    "typecheck:web": "tsc -b apps/web --pretty false",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "eslint": "^9.35.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.42.0",
+    "vite": "^7.1.4"
+  }
+}
