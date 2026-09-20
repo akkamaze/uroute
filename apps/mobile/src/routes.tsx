@@ -13,10 +13,10 @@ import {
 } from "./navigation/swipe-back";
 import { preferPortraitOrientation } from "./orientation";
 
-const EDGE_GESTURE_WIDTH_PX = 28;
-const DRAG_INTENT_THRESHOLD_PX = 8;
-const COMPLETE_DISTANCE_RATIO = 0.38;
-const COMPLETE_VELOCITY_PX_PER_MS = 0.65;
+const DRAG_INTENT_THRESHOLD_PX = 5;
+const COMPLETE_DISTANCE_RATIO = 0.24;
+const COMPLETE_VELOCITY_PX_PER_MS = 0.35;
+const SETTLE_DURATION_MS = 190;
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
@@ -43,6 +43,8 @@ export function AppRoot(): React.JSX.Element {
     () => undefined,
   );
   const backdropRef = useRef<HTMLDivElement>(null);
+  const navigationRef = useRef<HTMLDivElement>(null);
+  const dragFrameRef = useRef<number | null>(null);
   const gestureRef = useRef<{
     active: boolean;
     pointerId: number;
@@ -51,7 +53,7 @@ export function AppRoot(): React.JSX.Element {
     startY: number;
     x: number;
   } | null>(null);
-  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const [settling, setSettling] = useState<"back" | "idle" | "reset">("idle");
   useEffect(() => {
     synchronizeNavigationSnapshots(pathname);
@@ -71,6 +73,41 @@ export function AppRoot(): React.JSX.Element {
       window.requestAnimationFrame(() => restoreSnapshotScroll(snapshot));
     }
   }, [snapshot]);
+
+  useEffect(
+    () => () => {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+      }
+    },
+    [],
+  );
+
+  function renderDragPosition(x: number): void {
+    const navigation = navigationRef.current;
+
+    if (navigation === null) {
+      return;
+    }
+
+    const clampedX = Math.max(0, Math.min(x, window.innerWidth));
+    navigation.style.setProperty("--back-translate", `${clampedX}px`);
+    navigation.style.setProperty(
+      "--back-progress",
+      String(clampedX / Math.max(1, window.innerWidth)),
+    );
+  }
+
+  function scheduleDragPosition(x: number): void {
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+    }
+
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      renderDragPosition(x);
+    });
+  }
 
   function captureLinkNavigation(event: React.MouseEvent<HTMLDivElement>): void {
     if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
@@ -94,17 +131,18 @@ export function AppRoot(): React.JSX.Element {
   }
 
   function startSwipeBack(event: React.PointerEvent<HTMLDivElement>): void {
-    if (
-      snapshot === undefined ||
-      event.clientX > EDGE_GESTURE_WIDTH_PX ||
-      event.isPrimary === false
-    ) {
+    const target = event.target as Element;
+
+    if (snapshot === undefined || event.isPrimary === false) {
       return;
     }
 
-    if (event.pointerType === "mouse") {
-      event.preventDefault();
-      window.getSelection()?.removeAllRanges();
+    if (
+      target.closest(
+        "input, textarea, select, [contenteditable='true'], .maplibregl-canvas-container, [data-swipe-back-ignore]",
+      ) !== null
+    ) {
+      return;
     }
 
     gestureRef.current = {
@@ -115,7 +153,6 @@ export function AppRoot(): React.JSX.Element {
       startY: event.clientY,
       x: 0,
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
     setSettling("idle");
   }
 
@@ -130,24 +167,25 @@ export function AppRoot(): React.JSX.Element {
     const deltaY = Math.abs(event.clientY - gesture.startY);
 
     if (!gesture.active) {
-      if (deltaY > DRAG_INTENT_THRESHOLD_PX && deltaY > deltaX) {
+      if (deltaY > DRAG_INTENT_THRESHOLD_PX && deltaY > deltaX * 1.15) {
         gestureRef.current = null;
-        event.currentTarget.releasePointerCapture(event.pointerId);
 
         return;
       }
 
-      if (deltaX < DRAG_INTENT_THRESHOLD_PX || deltaX <= deltaY) {
+      if (deltaX < DRAG_INTENT_THRESHOLD_PX || deltaX <= deltaY * 1.15) {
         return;
       }
 
       gesture.active = true;
       event.currentTarget.setPointerCapture(event.pointerId);
+      window.getSelection()?.removeAllRanges();
+      setDragging(true);
     }
 
     event.preventDefault();
     gesture.x = Math.min(deltaX, window.innerWidth);
-    setDragX(gesture.x);
+    scheduleDragPosition(gesture.x);
   }
 
   function finishSwipeBack(event: React.PointerEvent<HTMLDivElement>): void {
@@ -163,6 +201,8 @@ export function AppRoot(): React.JSX.Element {
       return;
     }
 
+    setDragging(false);
+
     const elapsed = Math.max(1, performance.now() - gesture.startTime);
     const velocity = gesture.x / elapsed;
     const complete =
@@ -171,49 +211,42 @@ export function AppRoot(): React.JSX.Element {
 
     if (!complete) {
       setSettling("reset");
-      setDragX(0);
-      window.setTimeout(() => setSettling("idle"), 220);
+      window.requestAnimationFrame(() => renderDragPosition(0));
+      window.setTimeout(() => setSettling("idle"), SETTLE_DURATION_MS);
 
       return;
     }
 
     setSettling("back");
-    setDragX(window.innerWidth);
+    window.requestAnimationFrame(() => renderDragPosition(window.innerWidth));
     window.setTimeout(() => {
       consumeNavigationSnapshot(pathname);
       window.history.back();
-      setDragX(0);
+      renderDragPosition(0);
       setSettling("idle");
-    }, 220);
+    }, SETTLE_DURATION_MS);
   }
-
-  const progress = Math.min(1, dragX / Math.max(1, window.innerWidth));
 
   return (
     <div
-      className={`app-navigation${dragX > 0 ? " app-navigation--dragging" : ""}`}
+      className={[
+        "app-navigation",
+        dragging ? "app-navigation--dragging" : "",
+        settling !== "idle" ? `app-navigation--${settling}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       onClickCapture={captureLinkNavigation}
-      style={
-        {
-          "--back-progress": progress,
-          "--back-translate": `${dragX}px`,
-        } as React.CSSProperties
-      }
+      onPointerCancelCapture={finishSwipeBack}
+      onPointerDownCapture={startSwipeBack}
+      onPointerMoveCapture={moveSwipeBack}
+      onPointerUpCapture={finishSwipeBack}
+      ref={navigationRef}
     >
       <div className="app-navigation__backdrop" ref={backdropRef} />
       <div className={`app-navigation__surface app-navigation__surface--${settling}`}>
         <Outlet />
       </div>
-      {snapshot === undefined ? null : (
-        <div
-          aria-hidden="true"
-          className="app-navigation__edge"
-          onPointerCancel={finishSwipeBack}
-          onPointerDown={startSwipeBack}
-          onPointerMove={moveSwipeBack}
-          onPointerUp={finishSwipeBack}
-        />
-      )}
     </div>
   );
 }
