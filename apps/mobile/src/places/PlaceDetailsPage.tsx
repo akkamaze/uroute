@@ -10,7 +10,7 @@ import {
   Search,
   Star,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces } from "../plan/map-data";
@@ -26,6 +26,13 @@ import {
 } from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 
+import {
+  getSheetVisibleHeight,
+  getSheetOffset,
+  getDragOffset,
+  resolveSheetSnap,
+  type SheetSnap,
+} from "./place-sheet-geometry";
 import { attachContentSheetDrag } from "./content-sheet-drag";
 import "./places.css";
 
@@ -38,8 +45,6 @@ function getPlace(id: string | undefined): PlannedStop {
 
   return place;
 }
-
-type SheetSnap = "collapsed" | "expanded" | "middle";
 
 const TRIP_DAYS = {
   kyoto: {
@@ -57,70 +62,18 @@ const TRIP_DAYS = {
 
 type TripId = keyof typeof TRIP_DAYS;
 
-const SHEET_FLING_VELOCITY = 0.75;
-const SHEET_MIN_FLING_DISTANCE = 64;
-const SHEET_MIN_DRAG_INTENT = 18;
+function subscribeWindowResize(listener: () => void): () => void {
+  window.addEventListener("resize", listener);
 
-function getSheetVisibleHeight(snap: SheetSnap): number {
-  if (snap === "expanded") {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  if (snap === "middle") {
-    return (window.innerHeight - 72) * 0.55;
-  }
-
-  return 132;
+  return () => window.removeEventListener("resize", listener);
 }
 
-function getSheetOffset(snap: SheetSnap): number {
-  if (snap === "expanded") {
-    return 0;
-  }
-
-  const sheetHeight = window.innerHeight - 72;
-
-  return Math.max(0, sheetHeight - getSheetVisibleHeight(snap));
-}
-
-function getDragOffset(snap: SheetSnap, delta: number): number {
-  const baseOffset = getSheetOffset(snap);
-  const maximumOffset = getSheetOffset("collapsed");
-
-  return Math.min(maximumOffset - baseOffset, Math.max(-baseOffset, delta));
-}
-
-function resolveSheetSnap(current: SheetSnap, delta: number, duration: number): SheetSnap {
-  const sheetHeight = window.innerHeight - 72;
-  const releasedOffset = getSheetOffset(current) + getDragOffset(current, delta);
-  const releasedRatio = releasedOffset / sheetHeight;
-  const velocity = delta / Math.max(1, duration);
-  const flingDistance = Math.max(SHEET_MIN_FLING_DISTANCE, window.innerHeight * 0.08);
-
-  if (Math.abs(delta) >= flingDistance && Math.abs(velocity) >= SHEET_FLING_VELOCITY) {
-    return delta < 0 ? "expanded" : "collapsed";
-  }
-
-  if (current === "collapsed" && delta <= -SHEET_MIN_DRAG_INTENT && releasedRatio > 0.28) {
-    return "middle";
-  }
-
-  if (current === "expanded" && delta >= SHEET_MIN_DRAG_INTENT && releasedRatio < 0.7) {
-    return "middle";
-  }
-
-  if (releasedRatio <= 0.28) {
-    return "expanded";
-  }
-
-  if (releasedRatio >= 0.7) {
-    return "collapsed";
-  }
-
-  return "middle";
+function getWindowHeight(): number {
+  return window.innerHeight;
 }
 
 export function PlaceDetailsPage(): React.JSX.Element {
+  const layoutHeight = useSyncExternalStore(subscribeWindowResize, getWindowHeight);
   const navigate = useNavigate();
   const search = useSearch({ from: "/places" });
   const selectionHistoryBoundary = useRouterState({
@@ -164,6 +117,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const addBackButtonRef = useRef<HTMLButtonElement>(null);
   const sheetContentRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
   const addOpenedHereRef = useRef(false);
   const addWasOpenRef = useRef(false);
   const previousContentScrollRef = useRef(0);
@@ -416,6 +370,18 @@ export function PlaceDetailsPage(): React.JSX.Element {
     toggleSavedPlace(selectedPlace.id);
   }
 
+  function settleSheet(next: SheetSnap): void {
+    const field = document.activeElement;
+    if (
+      next !== "expanded" &&
+      field instanceof HTMLElement &&
+      sheetContentRef.current?.contains(field)
+    ) {
+      field.blur();
+    }
+    setSheetSnap(next);
+  }
+
   useEffect(() => {
     const content = sheetContentRef.current;
     if (sheetSnap !== "expanded" || addPanelOpen || mapExpanded || content === null) {
@@ -423,14 +389,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
 
     return attachContentSheetDrag(content, {
-      onDrag: (delta) => setDragOffset(getDragOffset("expanded", delta)),
+      onDrag: (delta) => setDragOffset(getDragOffset("expanded", delta, layoutHeight)),
       onRelease: (delta, duration) => {
         setDragOffset(0);
-        setSheetSnap(resolveSheetSnap("expanded", delta, duration));
+        settleSheet(resolveSheetSnap("expanded", delta, duration, layoutHeight));
       },
       onCancel: () => setDragOffset(0),
     });
-  }, [sheetSnap, addPanelOpen, mapExpanded]);
+  }, [sheetSnap, addPanelOpen, mapExpanded, layoutHeight]);
 
   function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {
     const target = event.target as HTMLElement;
@@ -484,7 +450,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
       dragMovedRef.current = true;
     }
 
-    setDragOffset(getDragOffset(sheetSnap, delta));
+    setDragOffset(getDragOffset(sheetSnap, delta, layoutHeight));
   }
 
   function cancelSheetDrag(): void {
@@ -509,7 +475,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     dragStartRef.current = null;
     setDragOffset(0);
 
-    setSheetSnap(resolveSheetSnap(sheetSnap, delta, duration));
+    settleSheet(resolveSheetSnap(sheetSnap, delta, duration, layoutHeight));
   }
 
   function cycleSheet(): void {
@@ -523,17 +489,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
       return;
     }
 
-    setSheetSnap((current) => {
-      if (current === "collapsed") {
-        return "middle";
-      }
-
-      if (current === "middle") {
-        return "expanded";
-      }
-
-      return "middle";
-    });
+    settleSheet(
+      sheetSnap === "collapsed" ? "middle" : sheetSnap === "middle" ? "expanded" : "middle",
+    );
   }
 
   return (
@@ -569,7 +527,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
           bottomInset={
             mapExpanded || visibleSheetSnap === "expanded"
               ? 0
-              : getSheetVisibleHeight(visibleSheetSnap)
+              : getSheetVisibleHeight(visibleSheetSnap, layoutHeight)
           }
           expanded={mapExpanded}
           onExpandedChange={changeMapExpanded}
@@ -652,7 +610,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
         onPointerDown={startSheetDrag}
         onPointerMove={moveSheet}
         onPointerUp={finishSheetDrag}
-        style={{ transform: `translateY(${getSheetOffset(visibleSheetSnap) + dragOffset}px)` }}
+        style={{
+          transform: `translateY(${getSheetOffset(visibleSheetSnap, layoutHeight) + dragOffset}px)`,
+        }}
       >
         <div className="place-sheet__drag-zone">
           <button
@@ -701,7 +661,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <div className="place-sheet__content" ref={sheetContentRef}>
+        <div className="place-sheet__content" data-keyboard-scroll ref={sheetContentRef}>
           {addPanelOpen ? (
             <form
               className="add-place-panel"
@@ -840,13 +800,20 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 <summary>
                   {initialVisit === undefined ? "Visit details" : "Edit visit details"}
                 </summary>
-                <div className="place-sheet__edit-fields">
+                <div className="place-sheet__edit-fields" onFocus={() => setSheetSnap("expanded")}>
                   {initialVisit === undefined ? null : (
                     <p className="place-sheet__visit-context">{visitDayLabel}</p>
                   )}
                   <label>
                     Visit time
                     <input
+                      enterKeyHint="next"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                          event.preventDefault();
+                          notesRef.current?.focus({ preventScroll: true });
+                        }
+                      }}
                       onChange={(event) => {
                         setVisitTime(event.target.value);
                         setTimeEdited(true);
@@ -860,6 +827,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
                   <label>
                     Notes
                     <textarea
+                      enterKeyHint="enter"
+                      inputMode="text"
+                      ref={notesRef}
                       onChange={(event) => {
                         setNotes(event.target.value);
                         setNotesEdited(true);

@@ -27,7 +27,7 @@
 .place-search {
   position: absolute;
   z-index: 4;
-  top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  top: calc(var(--keyboard-viewport-top, 0px) + 0.75rem + env(safe-area-inset-top, 0px));
   right: 0.75rem;
   left: 0.75rem;
   display: grid;
@@ -76,12 +76,17 @@
 }
 
 .place-search__results {
+  max-height: max(
+    0px,
+    calc(var(--keyboard-viewport-height, 100dvh) - 5rem - env(safe-area-inset-top, 0px))
+  );
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   position: absolute;
   z-index: 4;
-  top: calc(4.25rem + env(safe-area-inset-top, 0px));
+  top: calc(var(--keyboard-viewport-top, 0px) + 4.25rem + env(safe-area-inset-top, 0px));
   right: 0.75rem;
   left: 0.75rem;
-  overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: 14px;
   background: #ffffff;
@@ -336,6 +341,7 @@
   border-radius: 11px;
   background: #ffffff;
   font: inherit;
+  font-size: 1rem;
 }
 
 .place-sheet__edit-fields textarea {
@@ -529,4 +535,23 @@
 .place-sheet__save-visit:focus-visible {
   outline: 2px solid var(--color-active);
   outline-offset: 2px;
+}
+
+/* Only the editor surface contracts; the map and document keep their viewport. */
+.place-sheet:has(.place-sheet__edit-fields :focus) {
+  top: calc(var(--keyboard-viewport-top, 0px) + 72px + env(safe-area-inset-top, 0px));
+  bottom: var(--keyboard-viewport-bottom, 0px);
+}
+
+.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title {
+  min-height: 44px;
+}
+
+.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title h1 {
+  font-size: 1.25rem;
+}
+
+.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title p,
+.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__rating {
+  display: none;
 }
