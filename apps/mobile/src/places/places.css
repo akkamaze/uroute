@@ -172,6 +172,7 @@
 }
 
 .place-sheet__content {
+  flex: 1;
   min-height: 0;
   padding-bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
@@ -498,4 +499,34 @@
   color: #a33228;
   font-size: 0.8125rem;
   line-height: 1.5;
+}
+
+.place-sheet__visit-context,
+.place-sheet__visit-status {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.place-sheet__visit-status:empty {
+  display: none;
+}
+.place-sheet__save-visit {
+  min-height: 46px;
+  padding: 0.625rem 1rem;
+  color: #ffffff;
+  border: 0;
+  border-radius: 11px;
+  background: var(--color-active);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.place-sheet__save-visit:disabled {
+  color: var(--color-muted);
+  background: #edf0f3;
+}
+.place-sheet__save-visit:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 2px;
 }

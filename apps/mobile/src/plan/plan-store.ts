@@ -139,3 +139,19 @@ export function reorderKyotoDay(day: KyotoDay, sourceId: string, targetId: strin
 
   return true;
 }
+
+export function updateKyotoVisit(day: number, visit: PlannedVisit): boolean {
+  if (!isKyotoDay(day) || !isVisit(visit)) {
+    return false;
+  }
+  const visits = snapshot.days[day];
+  if (!visits.some((entry) => entry.placeId === visit.placeId)) {
+    return false;
+  }
+  publish({
+    ...snapshot.days,
+    [day]: visits.map((entry) => (entry.placeId === visit.placeId ? { ...visit } : entry)),
+  });
+
+  return true;
+}
