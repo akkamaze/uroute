@@ -36,6 +36,23 @@ function getSheetOffset(snap: SheetSnap): number {
   return Math.max(0, sheetHeight - SHEET_VISIBLE_HEIGHT[snap]);
 }
 
+function getDragOffset(snap: SheetSnap, delta: number): number {
+  const baseOffset = getSheetOffset(snap);
+  const maximumOffset = getSheetOffset("collapsed");
+
+  return Math.min(maximumOffset - baseOffset, Math.max(-baseOffset, delta));
+}
+
+function getNearestSnap(offset: number): SheetSnap {
+  const snaps: readonly SheetSnap[] = ["expanded", "middle", "collapsed"];
+
+  return snaps.reduce((nearest, candidate) =>
+    Math.abs(getSheetOffset(candidate) - offset) < Math.abs(getSheetOffset(nearest) - offset)
+      ? candidate
+      : nearest,
+  );
+}
+
 export function PlaceDetailsPage(): React.JSX.Element {
   const navigate = useNavigate();
   const router = useRouter();
@@ -53,6 +70,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
+  const dragStartTimeRef = useRef(0);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
@@ -108,6 +126,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
 
     event.preventDefault();
     dragStartRef.current = event.clientY;
+    dragStartTimeRef.current = performance.now();
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -115,6 +134,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     event.stopPropagation();
     event.preventDefault();
     dragStartRef.current = event.clientY;
+    dragStartTimeRef.current = performance.now();
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -134,10 +154,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
 
     const delta = event.clientY - dragStartRef.current;
-    const baseOffset = getSheetOffset(sheetSnap);
-    const maximumOffset = getSheetOffset("collapsed");
 
-    setDragOffset(Math.min(maximumOffset - baseOffset, Math.max(-baseOffset, delta)));
+    setDragOffset(getDragOffset(sheetSnap, delta));
   }
 
   function finishSheetDrag(event: React.PointerEvent<HTMLElement>): void {
@@ -146,14 +164,19 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
 
     const delta = event.clientY - dragStartRef.current;
+    const duration = Math.max(1, performance.now() - dragStartTimeRef.current);
+    const velocity = delta / duration;
+    const releasedOffset = getSheetOffset(sheetSnap) + getDragOffset(sheetSnap, delta);
 
     dragStartRef.current = null;
     setDragOffset(0);
 
-    if (delta < -56) {
-      setSheetSnap(sheetSnap === "collapsed" ? "middle" : "expanded");
-    } else if (delta > 56) {
-      setSheetSnap(sheetSnap === "expanded" ? "middle" : "collapsed");
+    if (velocity < -0.5) {
+      setSheetSnap("expanded");
+    } else if (velocity > 0.5) {
+      setSheetSnap("collapsed");
+    } else {
+      setSheetSnap(getNearestSnap(releasedOffset));
     }
   }
 
