@@ -74,10 +74,6 @@ export function RootRedirect(): React.JSX.Element {
   return <Navigate replace to="/loading" />;
 }
 
-export function SavedPage(): React.JSX.Element {
-  return <PreviewPage description="Saved content will appear here." title="Saved" />;
-}
-
 export function JournalPage(): React.JSX.Element {
   return <PreviewPage description="Journal content will appear here." title="Journal" />;
 }
