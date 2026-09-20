@@ -173,7 +173,9 @@ export function PlanPage(): React.JSX.Element {
                 {stop.travelAfter === undefined ? null : (
                   <div className="timeline__travel">
                     <span aria-hidden="true" className="timeline__line" />
-                    <Footprints aria-hidden="true" size={19} strokeWidth={1.8} />
+                    <span aria-hidden="true" className="timeline__travel-marker">
+                      <Footprints size={19} strokeWidth={1.8} />
+                    </span>
                     <span>Walk · {stop.travelAfter.detail}</span>
                   </div>
                 )}

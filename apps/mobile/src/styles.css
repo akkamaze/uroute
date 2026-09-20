@@ -730,9 +730,16 @@ a {
   font-size: 0.8125rem;
 }
 
-.timeline__travel svg {
+.timeline__travel-marker {
+  z-index: 1;
+  display: inline-flex;
+  width: 30px;
+  height: 32px;
   grid-column: 2;
+  align-items: center;
+  justify-content: center;
   justify-self: center;
+  background: var(--color-surface);
 }
 
 .timeline__travel > span:last-child {
