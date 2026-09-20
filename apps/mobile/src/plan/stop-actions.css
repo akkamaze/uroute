@@ -1,0 +1,151 @@
+.stop-actions {
+  width: calc(100% - 24px);
+  max-width: 390px;
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  margin: auto auto max(12px, env(safe-area-inset-bottom, 0px));
+  padding: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: 0 20px 64px rgb(32 33 36 / 18%);
+}
+.stop-actions::backdrop {
+  background: rgb(32 33 36 / 34%);
+}
+.stop-actions header {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.stop-actions h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  line-height: 1.4;
+}
+.stop-actions header p,
+.stop-actions__unavailable {
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.stop-actions__close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  margin: -6px -6px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-muted);
+}
+.stop-actions__action {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 4px;
+  color: var(--color-text);
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9375rem;
+  text-align: left;
+}
+.stop-actions__action--remove {
+  color: #a33228;
+}
+.stop-actions button:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 2px;
+}
+.timeline__options {
+  position: absolute;
+  z-index: 2;
+  top: 7px;
+  right: 4px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text);
+}
+.timeline__options svg {
+  box-sizing: content-box;
+  padding: 5px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 1px 4px rgb(32 33 36 / 14%);
+}
+.timeline__options:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 0;
+}
+.plan-undo {
+  position: fixed;
+  z-index: 8;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  width: calc(100% - 32px);
+  max-width: 390px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 24px rgb(32 33 36 / 16%);
+  transform: translateX(-50%);
+}
+.plan-undo > span {
+  min-width: 0;
+  flex: 1;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+.plan-undo strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-undo button {
+  min-width: 44px;
+  min-height: 44px;
+  flex: none;
+  padding: 0 4px;
+  color: var(--color-active);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.plan-undo button:last-child {
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+}
+.plan-undo button:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 0;
+}

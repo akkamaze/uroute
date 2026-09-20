@@ -6,6 +6,8 @@ import {
   GripVertical,
   Landmark,
   Map as MapIcon,
+  MoreHorizontal,
+  X,
   Plus,
   Utensils,
 } from "lucide-react";
@@ -16,7 +18,15 @@ import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import { TripMap } from "./TripMap";
 import { TripHeader } from "./TripHeader";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
-import { reorderKyotoDay, useKyotoPlan, type KyotoDay } from "./plan-store";
+import {
+  removeKyotoVisit,
+  restoreKyotoVisit,
+  reorderKyotoDay,
+  useKyotoPlan,
+  type KyotoDay,
+  type RemovedVisit,
+} from "./plan-store";
+import { StopActionsDialog } from "./StopActionsDialog";
 
 const TRIP_DAYS = [
   { date: 12, fullWeekday: "Thursday", weekday: "Thu" },
@@ -69,6 +79,11 @@ export function PlanPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/plan" });
   const mapExpanded = search.map === "full";
+  const actionStop = FRIDAY_STOPS.find((place) => place.id === search.stop);
+  const actionsOpenedHereRef = useRef(false);
+  const lastActionIdRef = useRef<string | undefined>(undefined);
+  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [removedVisit, setRemovedVisit] = useState<RemovedVisit | null>(null);
   const mapOpenedHereRef = useRef(false);
   const wasMapExpandedRef = useRef(false);
   const mapViewButtonRef = useRef<HTMLButtonElement>(null);
@@ -132,6 +147,72 @@ export function PlanPage(): React.JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    if (actionStop !== undefined) {
+      lastActionIdRef.current = actionStop.id;
+    } else if (lastActionIdRef.current !== undefined) {
+      const opener = optionRefs.current[lastActionIdRef.current];
+      (opener ?? mapViewButtonRef.current)?.focus({ preventScroll: true });
+      lastActionIdRef.current = undefined;
+      actionsOpenedHereRef.current = false;
+    }
+  }, [actionStop]);
+
+  function openStopActions(id: string): void {
+    actionsOpenedHereRef.current = true;
+    void navigate({
+      to: "/plan",
+      search: { ...search, day: selectedDay, stop: id },
+      resetScroll: false,
+    });
+  }
+
+  function closeStopActions(): void {
+    if (actionsOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/plan",
+        search: {
+          day: selectedDay,
+          ...(search.stress === "1200" ? { stress: "1200" as const } : {}),
+        },
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }
+
+  function removeStop(): void {
+    if (actionStop === undefined) {
+      return;
+    }
+    const removed = removeKyotoVisit(selectedDay, actionStop.id);
+    if (removed !== undefined) {
+      setRemovedVisit(removed);
+      if (selectedId === actionStop.id) {
+        setSelectedId(null);
+      }
+    }
+    closeStopActions();
+  }
+
+  function undoRemoval(): void {
+    if (removedVisit === null) {
+      return;
+    }
+    const restored = restoreKyotoVisit(removedVisit);
+    setReorderNotice(
+      restored ? "Place restored to its original position." : "This place is already in your day.",
+    );
+    setRemovedVisit(null);
+    if (restored && selectedDay === removedVisit.day) {
+      window.requestAnimationFrame(() =>
+        stopRefs.current[removedVisit.visit.placeId]?.focus({ preventScroll: true }),
+      );
+    }
+  }
 
   function clearTouchTimer(): void {
     if (touchTimerRef.current !== null) {
@@ -529,6 +610,19 @@ export function PlanPage(): React.JSX.Element {
                     </span>
                     <img alt="" className="timeline__photo" src={stop.image} />
                   </button>
+                  <button
+                    aria-label={`More options for ${stop.name}`}
+                    className="timeline__options"
+                    data-swipe-back-ignore="true"
+                    disabled={draggedId !== null}
+                    onClick={() => openStopActions(stop.id)}
+                    ref={(element) => {
+                      optionRefs.current[stop.id] = element;
+                    }}
+                    type="button"
+                  >
+                    <MoreHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />
+                  </button>
 
                   {travel === undefined ? null : (
                     <div className="timeline__travel">
@@ -551,10 +645,59 @@ export function PlanPage(): React.JSX.Element {
           </div>
         )}
 
-        <button aria-label="Add a place" className="day-plan__add" type="button">
-          <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
-        </button>
+        {removedVisit === null ? (
+          <button aria-label="Add a place" className="day-plan__add" type="button">
+            <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
+          </button>
+        ) : null}
       </section>
+
+      <StopActionsDialog
+        dayLabel={`${selectedDayLabel}, ${selectedDay} November`}
+        inPlan={stops.some((stop) => stop.id === actionStop?.id)}
+        name={actionStop?.name ?? "Place options"}
+        onClose={closeStopActions}
+        onOpenDetails={() => {
+          if (actionStop === undefined) {
+            return;
+          }
+          captureNavigationSnapshot("/places");
+          void navigate({
+            to: "/places",
+            search: { place: actionStop.id, day: selectedDay },
+            replace: true,
+          });
+        }}
+        onRemove={removeStop}
+        open={actionStop !== undefined}
+      />
+
+      {removedVisit === null ? null : (
+        <div
+          aria-hidden={mapExpanded}
+          className="plan-undo"
+          data-swipe-back-ignore="true"
+          inert={mapExpanded}
+          role="status"
+        >
+          <span>
+            <strong>
+              {FRIDAY_STOPS.find((place) => place.id === removedVisit.visit.placeId)?.name}
+            </strong>
+            Removed from {removedVisit.day} November
+          </span>
+          <button onClick={undoRemoval} type="button">
+            Undo
+          </button>
+          <button
+            aria-label="Dismiss removal message"
+            onClick={() => setRemovedVisit(null)}
+            type="button"
+          >
+            <X aria-hidden="true" size={18} strokeWidth={1.8} />
+          </button>
+        </div>
+      )}
 
       <span aria-hidden={mapExpanded} aria-live="polite" className="sr-only">
         {selectedPlace === undefined

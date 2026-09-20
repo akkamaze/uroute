@@ -8,6 +8,7 @@ import {
 import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
+import { FRIDAY_STOPS } from "./plan/plan-data";
 
 interface LoginSearch {
   profile?: "open";
@@ -81,13 +82,15 @@ const planRoute = createRoute({
   path: "/plan",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { day?: KyotoDay; members?: "open"; map?: "full"; stress?: "1200" } => ({
+  ): { day?: KyotoDay; members?: "open"; stop?: string; map?: "full"; stress?: "1200" } => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(search.members === "open"
       ? { members: "open" }
-      : search.map === "full"
-        ? { map: "full" }
-        : {}),
+      : typeof search.stop === "string" && FRIDAY_STOPS.some((place) => place.id === search.stop)
+        ? { stop: search.stop }
+        : search.map === "full"
+          ? { map: "full" }
+          : {}),
     ...(String(search.stress) === "1200" ? { stress: "1200" } : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),

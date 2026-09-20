@@ -155,3 +155,36 @@ export function updateKyotoVisit(day: number, visit: PlannedVisit): boolean {
 
   return true;
 }
+
+export interface RemovedVisit {
+  day: KyotoDay;
+  index: number;
+  visit: PlannedVisit;
+}
+
+export function removeKyotoVisit(day: KyotoDay, placeId: string): RemovedVisit | undefined {
+  const visits = snapshot.days[day];
+  const index = visits.findIndex((visit) => visit.placeId === placeId);
+  const visit = visits[index];
+  if (visit === undefined) {
+    return undefined;
+  }
+  publish({ ...snapshot.days, [day]: visits.filter((entry) => entry.placeId !== placeId) });
+
+  return { day, index, visit: { ...visit } };
+}
+
+export function restoreKyotoVisit(removed: RemovedVisit): boolean {
+  if (!isKyotoDay(removed.day) || !isVisit(removed.visit)) {
+    return false;
+  }
+  const visits = snapshot.days[removed.day];
+  if (visits.some((visit) => visit.placeId === removed.visit.placeId)) {
+    return false;
+  }
+  const next = [...visits];
+  next.splice(Math.max(0, Math.min(removed.index, next.length)), 0, { ...removed.visit });
+  publish({ ...snapshot.days, [removed.day]: next });
+
+  return true;
+}
