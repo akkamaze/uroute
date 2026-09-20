@@ -9,7 +9,7 @@ import {
   Search,
   Star,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces } from "../plan/map-data";
@@ -134,14 +134,20 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [visitTime, setVisitTime] = useState(initialPlace.time);
   const [notes, setNotes] = useState("");
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
-  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const addPanelOpen = search.add === "open";
+  const visibleSheetSnap = addPanelOpen ? "expanded" : sheetSnap;
   const [tripId, setTripId] = useState<TripId>("kyoto");
   const [tripDay, setTripDay] = useState("2026-11-13");
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
   const dragMovedRef = useRef(false);
-  const previousSheetSnapRef = useRef<SheetSnap>("middle");
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const addBackButtonRef = useRef<HTMLButtonElement>(null);
+  const sheetContentRef = useRef<HTMLDivElement>(null);
+  const addOpenedHereRef = useRef(false);
+  const addWasOpenRef = useRef(false);
+  const previousContentScrollRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
@@ -175,15 +181,40 @@ export function PlaceDetailsPage(): React.JSX.Element {
     searchInputRef.current?.blur();
   }
 
+  useLayoutEffect(() => {
+    if (addPanelOpen) {
+      addWasOpenRef.current = true;
+      addBackButtonRef.current?.focus({ preventScroll: true });
+      sheetContentRef.current?.scrollTo({ top: 0 });
+    } else if (addWasOpenRef.current) {
+      addWasOpenRef.current = false;
+      addOpenedHereRef.current = false;
+      addButtonRef.current?.focus({ preventScroll: true });
+      sheetContentRef.current?.scrollTo({ top: previousContentScrollRef.current });
+    }
+  }, [addPanelOpen]);
+
   function openAddDialog(): void {
-    previousSheetSnapRef.current = sheetSnap;
-    setAddPanelOpen(true);
-    setSheetSnap("expanded");
+    previousContentScrollRef.current = sheetContentRef.current?.scrollTop ?? 0;
+    addOpenedHereRef.current = true;
+    void navigate({
+      to: "/places",
+      search: { place: selectedId, add: "open" },
+      resetScroll: false,
+    });
   }
 
   function closeAddPanel(): void {
-    setAddPanelOpen(false);
-    setSheetSnap(previousSheetSnapRef.current);
+    if (addOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/places",
+        search: { place: selectedId },
+        replace: true,
+        resetScroll: false,
+      });
+    }
   }
 
   function changeTrip(nextTripId: TripId): void {
@@ -303,14 +334,30 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   return (
-    <main className="places-page">
-      <section className="places-page__map">
+    <main
+      className="places-page"
+      data-swipe-back-ignore={addPanelOpen ? "true" : undefined}
+      onKeyDown={(event) => {
+        if (addPanelOpen && event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeAddPanel();
+        }
+      }}
+    >
+      <section
+        aria-hidden={addPanelOpen || undefined}
+        className="places-page__map"
+        inert={addPanelOpen}
+      >
         <TripMap
-          bottomInset={sheetSnap === "expanded" ? 0 : getSheetVisibleHeight(sheetSnap)}
+          bottomInset={
+            visibleSheetSnap === "expanded" ? 0 : getSheetVisibleHeight(visibleSheetSnap)
+          }
           onSelect={selectPlace}
           places={places}
           selectedId={selectedPlace.id}
-          showLocate={sheetSnap !== "expanded"}
+          showLocate={visibleSheetSnap !== "expanded"}
           variant="discovery"
         />
 
@@ -368,13 +415,13 @@ export function PlaceDetailsPage(): React.JSX.Element {
         className="place-sheet"
         data-dragging={dragOffset === 0 ? undefined : "true"}
         data-mode={addPanelOpen ? "add" : undefined}
-        data-snap={sheetSnap}
+        data-snap={visibleSheetSnap}
         onLostPointerCapture={cancelSheetDrag}
         onPointerCancel={cancelSheetDrag}
         onPointerDown={startSheetDrag}
         onPointerMove={moveSheet}
         onPointerUp={finishSheetDrag}
-        style={{ transform: `translateY(${getSheetOffset(sheetSnap) + dragOffset}px)` }}
+        style={{ transform: `translateY(${getSheetOffset(visibleSheetSnap) + dragOffset}px)` }}
       >
         <div className="place-sheet__drag-zone">
           <button
@@ -382,6 +429,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
               sheetSnap === "expanded" ? "Collapse place details" : "Expand place details"
             }
             className="place-sheet__handle-button"
+            disabled={addPanelOpen}
             onClick={cycleSheet}
             onPointerCancel={cancelSheetDrag}
             onPointerDown={startHandleDrag}
@@ -422,7 +470,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
           </p>
         </div>
 
-        <div className="place-sheet__content">
+        <div className="place-sheet__content" ref={sheetContentRef}>
           {addPanelOpen ? (
             <form
               className="add-place-panel"
@@ -432,7 +480,12 @@ export function PlaceDetailsPage(): React.JSX.Element {
               }}
             >
               <div className="add-place-panel__heading">
-                <button aria-label="Back to place details" onClick={closeAddPanel} type="button">
+                <button
+                  aria-label="Back to place details"
+                  onClick={closeAddPanel}
+                  ref={addBackButtonRef}
+                  type="button"
+                >
                   <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.8} />
                 </button>
                 <div>
@@ -484,7 +537,12 @@ export function PlaceDetailsPage(): React.JSX.Element {
               </div>
 
               <div className="place-sheet__actions">
-                <button className="place-sheet__primary" onClick={openAddDialog} type="button">
+                <button
+                  className="place-sheet__primary"
+                  onClick={openAddDialog}
+                  ref={addButtonRef}
+                  type="button"
+                >
                   Add to trip
                 </button>
                 <button

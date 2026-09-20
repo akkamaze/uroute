@@ -13,6 +13,7 @@ interface LoginSearch {
 }
 
 interface PlaceSearch {
+  add?: "open";
   place?: string;
 }
 
@@ -97,8 +98,10 @@ const expensesRoute = createRoute({
 const placesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/places",
-  validateSearch: (search: Record<string, unknown>): PlaceSearch =>
-    typeof search.place === "string" ? { place: search.place } : {},
+  validateSearch: (search: Record<string, unknown>): PlaceSearch => ({
+    ...(typeof search.place === "string" ? { place: search.place } : {}),
+    ...(search.add === "open" ? { add: "open" } : {}),
+  }),
   component: lazyRouteComponent(() => import("./places/PlaceDetailsPage"), "PlaceDetailsPage"),
 });
 
