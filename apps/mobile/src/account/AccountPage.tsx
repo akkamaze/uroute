@@ -1,17 +1,39 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { Bookmark, BriefcaseBusiness, ChevronRight, Download, LogOut } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 
+import { InstallHelpDialog } from "../pwa/InstallHelpDialog";
+import { useInstallState } from "../pwa/install-state";
 import "./account.css";
 
 export function AccountPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const [message, setMessage] = useState("");
-
+  const search = useSearch({ from: "/mobile-shell/user" });
+  const installation = useInstallState();
+  const installOpen = search.install === "open";
+  const installButtonRef = useRef<HTMLButtonElement>(null);
+  const openedHereRef = useRef(false);
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (installOpen) {
+      wasOpenRef.current = true;
+    } else if (wasOpenRef.current) {
+      installButtonRef.current?.focus();
+      wasOpenRef.current = false;
+      openedHereRef.current = false;
+    }
+  }, [installOpen]);
   function showInstallHelp(): void {
-    setMessage("Use your browser menu to install uroute on this device.");
+    openedHereRef.current = true;
+    void navigate({ to: "/user", search: { install: "open" }, resetScroll: false });
   }
-
+  function closeInstallHelp(): void {
+    if (openedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({ to: "/user", search: {}, replace: true, resetScroll: false });
+    }
+  }
   function signOut(): void {
     void navigate({ replace: true, to: "/login" });
   }
@@ -51,13 +73,15 @@ export function AccountPage(): React.JSX.Element {
           <ChevronRight aria-hidden="true" size={19} strokeWidth={1.8} />
         </Link>
 
-        <button onClick={showInstallHelp} type="button">
+        <button onClick={showInstallHelp} ref={installButtonRef} type="button">
           <span className="account-menu__icon">
             <Download aria-hidden="true" size={22} strokeWidth={1.8} />
           </span>
           <span className="account-menu__copy">
-            <strong>Install uroute</strong>
-            <span>Add the app to this device</span>
+            <strong>{installation.installed ? "App installed" : "Install uroute"}</strong>
+            <span>
+              {installation.installed ? "Ready on this device" : "Add the app to this device"}
+            </span>
           </span>
           <ChevronRight aria-hidden="true" size={19} strokeWidth={1.8} />
         </button>
@@ -73,11 +97,7 @@ export function AccountPage(): React.JSX.Element {
         </button>
       </nav>
 
-      {message.length > 0 ? (
-        <p aria-live="polite" className="account-page__message">
-          {message}
-        </p>
-      ) : null}
+      <InstallHelpDialog onClose={closeInstallHelp} open={installOpen} />
     </section>
   );
 }

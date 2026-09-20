@@ -116,6 +116,8 @@ const journalRoute = createRoute({
 const userRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/user",
+  validateSearch: (search: Record<string, unknown>): { install?: "open" } =>
+    search.install === "open" ? { install: "open" } : {},
   component: lazyRouteComponent(() => import("./account/AccountPage"), "AccountPage"),
 });
 

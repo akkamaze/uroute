@@ -1,47 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 
 import "./pwa-prompts.css";
 
-interface InstallPromptEvent extends Event {
-  prompt(): Promise<{ outcome: "accepted" | "dismissed" }>;
-}
-
-type InstallGuidance = "android" | "ios";
-
-function isInstallPromptEvent(event: Event): event is InstallPromptEvent {
-  return "prompt" in event && typeof event.prompt === "function";
-}
-
-function getInstallGuidance(): InstallGuidance | null {
-  if (!window.isSecureContext) {
-    return null;
-  }
-
-  const userAgent = navigator.userAgent;
-  const iosDevice =
-    /iPad|iPhone|iPod/.test(userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const installed =
-    window.matchMedia("(display-mode: standalone)").matches ||
-    ("standalone" in navigator && navigator.standalone === true);
-
-  if (installed) {
-    return null;
-  }
-
-  if (iosDevice) {
-    return "ios";
-  }
-
-  return /Android/.test(userAgent) ? "android" : null;
-}
+import { requestInstall, useInstallState } from "./install-state";
 
 export function PwaPrompts(): React.JSX.Element | null {
-  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [installGuidance, setInstallGuidance] = useState<InstallGuidance | null>(
-    getInstallGuidance,
-  );
+  const installation = useInstallState();
+  const [installationDismissed, setInstallationDismissed] = useState(false);
+  const installPrompt =
+    installationDismissed || installation.installed ? null : installation.prompt;
+  const installGuidance =
+    installationDismissed ||
+    installation.installed ||
+    !installation.secure ||
+    installation.platform === "desktop"
+      ? null
+      : installation.platform;
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -53,36 +28,11 @@ export function PwaPrompts(): React.JSX.Element | null {
     },
   });
 
-  useEffect(() => {
-    function captureInstallPrompt(event: Event): void {
-      if (!isInstallPromptEvent(event)) {
-        return;
-      }
-
-      event.preventDefault();
-      setInstallPrompt(event);
-    }
-
-    function clearInstallPrompt(): void {
-      setInstallPrompt(null);
-      setInstallGuidance(null);
-    }
-
-    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
-    window.addEventListener("appinstalled", clearInstallPrompt);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
-      window.removeEventListener("appinstalled", clearInstallPrompt);
-    };
-  }, []);
-
   function closeStatus(): void {
     setNeedRefresh(false);
     setOfflineReady(false);
     setErrorMessage(null);
-    setInstallPrompt(null);
-    setInstallGuidance(null);
+    setInstallationDismissed(true);
   }
 
   async function installApp(): Promise<void> {
@@ -91,11 +41,11 @@ export function PwaPrompts(): React.JSX.Element | null {
     }
 
     try {
-      await installPrompt.prompt();
+      await requestInstall();
     } catch {
       setErrorMessage("The install prompt could not be opened.");
     } finally {
-      setInstallPrompt(null);
+      setInstallationDismissed(true);
     }
   }
 

@@ -1,0 +1,133 @@
+.install-help {
+  position: fixed;
+  width: calc(100% - 32px);
+  max-width: 382px;
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  margin: auto;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: 0 20px 64px rgb(32 33 36 / 18%);
+}
+.install-help::backdrop {
+  background: rgb(32 33 36 / 34%);
+}
+.install-help__surface {
+  padding: 20px;
+}
+.install-help header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.install-help h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+.install-help__close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  margin: -8px -8px -8px 0;
+  padding: 0;
+  color: var(--color-muted);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.install-help p {
+  margin: 8px 0 20px;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.install-help__platforms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f5f7fa;
+}
+.install-help__platforms button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.install-help__platforms button[aria-pressed="true"] {
+  color: var(--color-active);
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(32 33 36 / 8%);
+  font-weight: 600;
+}
+.install-help__steps {
+  display: grid;
+  gap: 18px;
+  margin: 24px 0 20px;
+  padding: 0;
+  list-style: none;
+}
+.install-help__steps li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.install-help__steps svg {
+  margin-top: 1px;
+  color: var(--color-active);
+}
+.install-help .install-help__note {
+  font-size: 0.75rem;
+}
+.install-help__install,
+.install-help__done {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  color: #ffffff;
+  background: var(--color-active);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.install-help__install {
+  margin: 0 0 20px;
+}
+.install-help__install:disabled {
+  opacity: 0.65;
+  cursor: progress;
+}
+.install-help__done {
+  color: var(--color-active);
+  background: #edf5ff;
+}
+.install-help .install-help__notice {
+  padding: 12px;
+  border-radius: 10px;
+  color: #315273;
+  background: #edf5ff;
+}
