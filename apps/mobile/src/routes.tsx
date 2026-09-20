@@ -2,6 +2,7 @@ import { Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
+import { attachKeyboardViewport } from "./keyboard/keyboard-viewport";
 import { useSwipeBack } from "./navigation/use-swipe-back";
 import { allowAnyOrientation, preferPortraitOrientation } from "./orientation";
 
@@ -23,6 +24,7 @@ function isNavigationItemActive(to: string, pathname: string): boolean {
 }
 
 export function AppRoot(): React.JSX.Element {
+  useEffect(attachKeyboardViewport, []);
   const { backdropRef, navigationRef } = useSwipeBack();
 
   return (
