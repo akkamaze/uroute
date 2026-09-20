@@ -10,6 +10,7 @@ import {
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useRef, useState } from "react";
 
+import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
 
 const POINT_SOURCE_ID = "trip-places";
@@ -488,6 +489,20 @@ export function TripMap({
     }
   }
 
+  function toggleExpanded(): void {
+    setExpanded((current) => {
+      const next = !current;
+
+      if (next) {
+        allowAnyOrientation();
+      } else if (variant === "planner") {
+        preferPortraitOrientation();
+      }
+
+      return next;
+    });
+  }
+
   return (
     <div
       className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}
@@ -509,7 +524,7 @@ export function TripMap({
         <button
           aria-label={expanded ? "Collapse map" : "Expand map"}
           className="trip-map__fullscreen"
-          onClick={() => setExpanded((current) => !current)}
+          onClick={toggleExpanded}
           type="button"
         >
           {expanded ? (

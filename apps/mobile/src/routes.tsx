@@ -1,6 +1,8 @@
 import { Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
+import { preferPortraitOrientation } from "./orientation";
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
@@ -25,6 +27,10 @@ export function AppRoot(): React.JSX.Element {
 
 export function MobileShell(): React.JSX.Element {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  useEffect(() => {
+    preferPortraitOrientation();
+  }, [pathname]);
 
   return (
     <div className="mobile-shell">

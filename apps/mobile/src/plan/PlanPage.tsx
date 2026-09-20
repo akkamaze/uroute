@@ -1,5 +1,13 @@
 import { useNavigate } from "@tanstack/react-router";
-import { CloudSun, Coffee, Footprints, Landmark, Plus, Utensils } from "lucide-react";
+import {
+  CloudSun,
+  Coffee,
+  Footprints,
+  Landmark,
+  Map as MapIcon,
+  Plus,
+  Utensils,
+} from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
 import {
@@ -32,6 +40,7 @@ export function PlanPage(): React.JSX.Element {
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [selectedDay, setSelectedDay] = useState<number>(13);
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
+  const [showMap, setShowMap] = useState(true);
   const stressFixtureEnabled = isStressFixtureEnabled();
   const places = useMemo<PlaceCollection>(() => {
     if (selectedDay !== 13) {
@@ -68,7 +77,7 @@ export function PlanPage(): React.JSX.Element {
   }
 
   return (
-    <section className="plan-page">
+    <section className={showMap ? "plan-page" : "plan-page plan-page--plan-only"}>
       <TripHeader active="plan" />
 
       <div aria-label="Trip days" className="day-strip" role="group">
@@ -104,9 +113,21 @@ export function PlanPage(): React.JSX.Element {
             {selectedDayLabel}, {selectedDay} November
           </h2>
 
-          <span className="day-plan__weather">
-            <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
-            18°
+          <span className="day-plan__tools">
+            <span className="day-plan__weather">
+              <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
+              18°
+            </span>
+            <button
+              aria-expanded={showMap}
+              aria-label={showMap ? "Show plan only" : "Show map and plan"}
+              className="day-plan__view-toggle"
+              onClick={() => setShowMap((current) => !current)}
+              type="button"
+            >
+              <MapIcon aria-hidden="true" size={17} strokeWidth={1.8} />
+              {showMap ? "Plan only" : "Show map"}
+            </button>
           </span>
         </header>
 
