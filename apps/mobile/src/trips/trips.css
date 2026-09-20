@@ -242,6 +242,15 @@
 }
 
 .preparation-row {
+  width: 100%;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
   display: flex;
   min-height: 66px;
   gap: 25px;
@@ -255,7 +264,8 @@
   color: var(--color-active);
 }
 
-.preparation-row > div {
+.preparation-row__copy {
+  display: grid;
   min-width: 0;
   flex: 1;
 }
@@ -265,7 +275,10 @@
   font-weight: 500;
 }
 
-.preparation-row p {
+.preparation-row__copy > span {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
   margin-top: 0.125rem;
 }
 

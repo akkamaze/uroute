@@ -1,7 +1,8 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronRight, ClipboardCheck, Plus, Search, Tickets, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import "./trips.css";
 
@@ -75,38 +76,66 @@ function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
   );
 }
 
-function BeforeYouGo(): React.JSX.Element {
+function BeforeYouGo({
+  onOpenPacking,
+}: {
+  onOpenPacking: (event: React.MouseEvent<HTMLButtonElement>) => void;
+}): React.JSX.Element {
   return (
     <section className="before-you-go">
       <h2>Before you go</h2>
-
-      <div className="preparation-row">
+      <Link className="preparation-row" to="/bookings">
         <Tickets aria-hidden="true" className="preparation-row__icon" size={30} strokeWidth={1.7} />
-        <div>
+        <span className="preparation-row__copy">
           <strong>Bookings</strong>
-          <p>Add flights and stay details</p>
-        </div>
+          <span>Flights and stays for Kyoto</span>
+        </span>
         <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
-      </div>
-
-      <div className="preparation-row">
+      </Link>
+      <button className="preparation-row" onClick={onOpenPacking} type="button">
         <ClipboardCheck
           aria-hidden="true"
           className="preparation-row__icon"
           size={30}
           strokeWidth={1.7}
         />
-        <div>
+        <span className="preparation-row__copy">
           <strong>Packing list</strong>
-          <p>Get ready for Kyoto</p>
-        </div>
+          <span>Get ready for Kyoto</span>
+        </span>
         <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
-      </div>
+      </button>
     </section>
   );
 }
-
 export function TripsPage(): React.JSX.Element {
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/mobile-shell/trips" });
+  const packingOpen = search.packing === "open";
+  const packingOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const packingOpenedHereRef = useRef(false);
+  const packingWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (packingOpen) {
+      packingWasOpenRef.current = true;
+    } else if (packingWasOpenRef.current) {
+      packingOpenerRef.current?.focus();
+      packingWasOpenRef.current = false;
+      packingOpenedHereRef.current = false;
+    }
+  }, [packingOpen]);
+  function openPacking(event: React.MouseEvent<HTMLButtonElement>): void {
+    packingOpenerRef.current = event.currentTarget;
+    packingOpenedHereRef.current = true;
+    void navigate({ to: "/trips", search: { packing: "open" }, resetScroll: false });
+  }
+  function closePacking(): void {
+    if (packingOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({ to: "/trips", search: {}, replace: true, resetScroll: false });
+    }
+  }
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
   const [draftTrips, setDraftTrips] = useState<readonly TripSummary[]>([]);
@@ -284,8 +313,12 @@ export function TripsPage(): React.JSX.Element {
           )}
         </div>
 
-        {period === "upcoming" && normalizedQuery.length === 0 ? <BeforeYouGo /> : null}
+        {period === "upcoming" && normalizedQuery.length === 0 ? (
+          <BeforeYouGo onOpenPacking={openPacking} />
+        ) : null}
       </div>
+
+      <PackingListDialog onClose={closePacking} open={packingOpen} />
 
       <dialog
         aria-labelledby="new-trip-title"
