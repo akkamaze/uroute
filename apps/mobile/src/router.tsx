@@ -16,6 +16,10 @@ interface PlaceSearch {
   place?: string;
 }
 
+interface JournalSearch extends EditorSearch {
+  draft?: number;
+}
+
 interface EditorSearch {
   editor?: "open";
 }
@@ -97,8 +101,15 @@ const savedRoute = createRoute({
 const journalRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/journal",
-  validateSearch: (search: Record<string, unknown>): EditorSearch =>
-    search.editor === "open" ? { editor: "open" } : {},
+  validateSearch: (search: Record<string, unknown>): JournalSearch =>
+    search.editor === "open"
+      ? {
+          editor: "open",
+          ...(Number.isSafeInteger(Number(search.draft)) && Number(search.draft) > 0
+            ? { draft: Number(search.draft) }
+            : {}),
+        }
+      : {},
   component: lazyRouteComponent(() => import("./journal/JournalPage"), "JournalPage"),
 });
 
