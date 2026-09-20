@@ -12,8 +12,14 @@
   min-height: 0;
   flex: 1;
   padding-bottom: 28px;
-  overflow-y: auto;
+  overflow-y: hidden;
   overscroll-behavior-y: none;
+  touch-action: pan-x pinch-zoom;
+}
+
+.trips-page__scroll--scrollable {
+  overflow-y: auto;
+  touch-action: pan-y pinch-zoom;
 }
 
 .trips-page__title {
@@ -386,7 +392,27 @@
     padding-top: 16px;
   }
 
+  .trips-page__scroll {
+    padding-bottom: 8px;
+  }
+
   .featured-trip__image {
-    height: 158px;
+    height: 132px;
+  }
+
+  .featured-trip__members {
+    min-height: 47px;
+  }
+
+  .compact-trip {
+    min-height: 78px;
+  }
+
+  .before-you-go > h2 {
+    margin-top: 4px;
+  }
+
+  .preparation-row {
+    min-height: 58px;
   }
 }

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, ClipboardCheck, Plus, Search, Tickets, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import "./trips.css";
@@ -115,8 +115,10 @@ export function TripsPage(): React.JSX.Element {
   const [startDate, setStartDate] = useState("2027-01-10");
   const [endDate, setEndDate] = useState("2027-01-14");
   const [formMessage, setFormMessage] = useState("");
+  const [resultsScrollable, setResultsScrollable] = useState(false);
   const newTripDialogRef = useRef<HTMLDialogElement>(null);
   const destinationRef = useRef<HTMLInputElement>(null);
+  const resultsScrollRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const allTrips: readonly TripSummary[] = [...draftTrips, ...trips];
   const visibleTrips = allTrips.filter(
@@ -137,6 +139,27 @@ export function TripsPage(): React.JSX.Element {
       dialog.close();
     }
   }, [newTripOpen]);
+
+  useLayoutEffect(() => {
+    const scroller = resultsScrollRef.current;
+
+    if (scroller === null) {
+      return undefined;
+    }
+
+    const scrollElement = scroller;
+
+    function updateScrollable(): void {
+      setResultsScrollable(scrollElement.scrollHeight > scrollElement.clientHeight + 1);
+    }
+
+    updateScrollable();
+    const observer = new ResizeObserver(updateScrollable);
+    observer.observe(scrollElement);
+    Array.from(scrollElement.children).forEach((child) => observer.observe(child));
+
+    return () => observer.disconnect();
+  }, [normalizedQuery, period, visibleTrips.length]);
 
   function selectPeriod(nextPeriod: TripPeriod): void {
     setPeriod(nextPeriod);
@@ -228,7 +251,14 @@ export function TripsPage(): React.JSX.Element {
         ))}
       </div>
 
-      <div className="trips-page__scroll">
+      <div
+        className={
+          resultsScrollable
+            ? "trips-page__scroll trips-page__scroll--scrollable"
+            : "trips-page__scroll"
+        }
+        ref={resultsScrollRef}
+      >
         <div aria-live="polite" className="trip-results">
           {visibleTrips.length === 0 ? (
             <div className="trip-results__empty">
