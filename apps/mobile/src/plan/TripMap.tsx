@@ -38,6 +38,8 @@ const BASEMAP_STYLE = {
 
 interface TripMapProps {
   bottomInset?: number;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   id?: string;
   inactive?: boolean;
   onSelect: (id: string) => void;
@@ -160,6 +162,8 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
 
 export function TripMap({
   bottomInset = 0,
+  expanded: controlledExpanded,
+  onExpandedChange,
   id,
   inactive = false,
   onSelect,
@@ -175,7 +179,10 @@ export function TripMap({
   const selectRef = useRef(onSelect);
   const selectedIdRef = useRef(selectedId);
   const previousSelectionRef = useRef<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setLocalExpanded] = useState(false);
+  const expanded = controlledExpanded ?? localExpanded;
+  const expandButtonRef = useRef<HTMLButtonElement>(null);
+  const wasExpandedRef = useRef(false);
   const [retryCount, setRetryCount] = useState(0);
   const [status, setStatus] = useState<MapStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
@@ -516,18 +523,30 @@ export function TripMap({
     }
   }
 
-  function toggleExpanded(): void {
-    setExpanded((current) => {
-      const next = !current;
-
-      if (next) {
-        allowAnyOrientation();
-      } else if (variant === "planner") {
-        preferPortraitOrientation();
+  useEffect(() => {
+    if (expanded) {
+      wasExpandedRef.current = true;
+    } else if (wasExpandedRef.current) {
+      if (!inactive) {
+        expandButtonRef.current?.focus();
       }
+      wasExpandedRef.current = false;
+    }
+  }, [expanded, inactive]);
 
-      return next;
-    });
+  function toggleExpanded(): void {
+    const next = !expanded;
+    if (onExpandedChange !== undefined) {
+      onExpandedChange(next);
+
+      return;
+    }
+    setLocalExpanded(next);
+    if (next) {
+      allowAnyOrientation();
+    } else if (variant === "planner") {
+      preferPortraitOrientation();
+    }
   }
 
   return (
@@ -555,6 +574,7 @@ export function TripMap({
           aria-label={expanded ? "Collapse map" : "Expand map"}
           className="trip-map__fullscreen"
           onClick={toggleExpanded}
+          ref={expandButtonRef}
           type="button"
         >
           {expanded ? (

@@ -73,6 +73,10 @@ const tripsRoute = createRoute({
 const planRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan",
+  validateSearch: (search: Record<string, unknown>): { map?: "full"; stress?: "1200" } => ({
+    ...(search.map === "full" ? { map: "full" } : {}),
+    ...(String(search.stress) === "1200" ? { stress: "1200" } : {}),
+  }),
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 

@@ -3,7 +3,7 @@ import { useEffect } from "react";
 
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
 import { useSwipeBack } from "./navigation/use-swipe-back";
-import { preferPortraitOrientation } from "./orientation";
+import { allowAnyOrientation, preferPortraitOrientation } from "./orientation";
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
@@ -38,9 +38,18 @@ export function AppRoot(): React.JSX.Element {
 export function MobileShell(): React.JSX.Element {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
+  const expandedMap = useRouterState({
+    select: (state) =>
+      state.location.pathname === "/plan" &&
+      new URLSearchParams(state.location.searchStr).get("map") === "full",
+  });
   useEffect(() => {
-    preferPortraitOrientation();
-  }, [pathname]);
+    if (expandedMap) {
+      allowAnyOrientation();
+    } else {
+      preferPortraitOrientation();
+    }
+  }, [pathname, expandedMap]);
 
   return (
     <div className="mobile-shell">
@@ -48,7 +57,12 @@ export function MobileShell(): React.JSX.Element {
         <Outlet />
       </main>
 
-      <nav aria-label="Primary" className="bottom-navigation">
+      <nav
+        aria-hidden={expandedMap}
+        aria-label="Primary"
+        className="bottom-navigation"
+        inert={expandedMap}
+      >
         {navigationItems.map(({ icon, label, to }) => {
           const active = isNavigationItemActive(to, pathname);
 

@@ -5,6 +5,7 @@ export type TripSection = "bookings" | "expenses" | "plan";
 
 interface TripHeaderProps {
   active: TripSection;
+  inactive?: boolean;
 }
 
 const SECTIONS = [
@@ -13,10 +14,10 @@ const SECTIONS = [
   { id: "expenses", label: "Expenses", to: "/expenses" },
 ] as const;
 
-export function TripHeader({ active }: TripHeaderProps): React.JSX.Element {
+export function TripHeader({ active, inactive = false }: TripHeaderProps): React.JSX.Element {
   return (
     <>
-      <header className="plan-header">
+      <header aria-hidden={inactive} className="plan-header" inert={inactive}>
         <Link aria-label="Back to trips" className="plan-header__back" to="/trips">
           <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
         </Link>
@@ -31,7 +32,12 @@ export function TripHeader({ active }: TripHeaderProps): React.JSX.Element {
         </button>
       </header>
 
-      <nav aria-label="Trip sections" className="trip-sections">
+      <nav
+        aria-hidden={inactive}
+        aria-label="Trip sections"
+        className="trip-sections"
+        inert={inactive}
+      >
         {SECTIONS.map((section) => {
           const className =
             active === section.id

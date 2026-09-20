@@ -1,4 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   CloudSun,
   Coffee,
@@ -71,6 +71,11 @@ function isStressFixtureEnabled(): boolean {
 
 export function PlanPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const search = useSearch({ from: "/mobile-shell/plan" });
+  const mapExpanded = search.map === "full";
+  const mapOpenedHereRef = useRef(false);
+  const wasMapExpandedRef = useRef(false);
+  const mapViewButtonRef = useRef<HTMLButtonElement>(null);
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const touchReorderRef = useRef<TouchReorderState | null>(null);
   const pointerReorderRef = useRef<PointerReorderState | null>(null);
@@ -79,6 +84,7 @@ export function PlanPage(): React.JSX.Element {
   const [selectedDay, setSelectedDay] = useState<number>(13);
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
   const [showMap, setShowMap] = useState(false);
+  const mapVisible = showMap || mapExpanded;
   const [stops, setStops] = useState<PlannedStop[]>([...FRIDAY_STOPS]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -329,6 +335,33 @@ export function PlanPage(): React.JSX.Element {
     });
   }
 
+  useEffect(() => {
+    if (mapExpanded) {
+      wasMapExpandedRef.current = true;
+    } else if (wasMapExpandedRef.current) {
+      mapOpenedHereRef.current = false;
+      wasMapExpandedRef.current = false;
+      if (!showMap) {
+        mapViewButtonRef.current?.focus();
+      }
+    }
+  }, [mapExpanded, showMap]);
+
+  function changeMapExpanded(next: boolean): void {
+    if (next) {
+      mapOpenedHereRef.current = true;
+      void navigate({ to: "/plan", search: { ...search, map: "full" }, resetScroll: false });
+    } else if (mapOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/plan",
+        search: search.stress === "1200" ? { stress: "1200" } : {},
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }
   function renderStopIcon(stop: PlannedStop): React.JSX.Element {
     if (stop.category === "coffee") {
       return <Coffee aria-hidden="true" size={22} strokeWidth={1.8} />;
@@ -342,10 +375,16 @@ export function PlanPage(): React.JSX.Element {
   }
 
   return (
-    <section className={showMap ? "plan-page" : "plan-page plan-page--plan-only"}>
-      <TripHeader active="plan" />
+    <section className={mapVisible ? "plan-page" : "plan-page plan-page--plan-only"}>
+      <TripHeader active="plan" inactive={mapExpanded} />
 
-      <div aria-label="Trip days" className="day-strip" role="group">
+      <div
+        aria-hidden={mapExpanded}
+        aria-label="Trip days"
+        className="day-strip"
+        inert={mapExpanded}
+        role="group"
+      >
         {TRIP_DAYS.map((day) => (
           <button
             aria-pressed={selectedDay === day.date}
@@ -365,20 +404,24 @@ export function PlanPage(): React.JSX.Element {
       </div>
 
       {stressFixtureEnabled ? (
-        <p className="stress-fixture-label">
+        <p aria-hidden={mapExpanded} className="stress-fixture-label">
           Synthetic stress fixture · {places.features.length.toLocaleString()} points
         </p>
       ) : null}
 
+      {mapExpanded ? <div aria-hidden="true" className="plan-map-placeholder" /> : null}
+
       <TripMap
         id="plan-map"
-        inactive={!showMap}
+        expanded={mapExpanded}
+        inactive={!mapVisible}
+        onExpandedChange={changeMapExpanded}
         onSelect={selectFromMap}
         places={places}
         selectedId={selectedId}
       />
 
-      <section className="day-plan">
+      <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
         <header className="day-plan__header">
           <span className="day-plan__heading">
             <h2>
@@ -392,8 +435,9 @@ export function PlanPage(): React.JSX.Element {
           <button
             aria-controls="plan-map"
             aria-label="Map view"
-            aria-pressed={showMap}
+            aria-pressed={mapVisible}
             className="day-plan__view-toggle"
+            ref={mapViewButtonRef}
             onClick={() => setShowMap((current) => !current)}
             type="button"
           >
@@ -508,7 +552,7 @@ export function PlanPage(): React.JSX.Element {
         </button>
       </section>
 
-      <span aria-live="polite" className="sr-only">
+      <span aria-hidden={mapExpanded} aria-live="polite" className="sr-only">
         {selectedPlace === undefined
           ? "No place selected"
           : `${selectedPlace.properties.name} selected`}

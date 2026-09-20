@@ -532,6 +532,11 @@ a {
   text-align: center;
 }
 
+.plan-map-placeholder {
+  height: 220px;
+  flex: none;
+}
+
 .trip-map {
   position: relative;
   height: 220px;
