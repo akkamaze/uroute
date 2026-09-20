@@ -69,7 +69,7 @@ export function MobileShell(): React.JSX.Element {
 }
 
 export function RootRedirect(): React.JSX.Element {
-  return <Navigate replace to="/trips" />;
+  return <Navigate replace to="/loading" />;
 }
 
 export function TripsPage(): React.JSX.Element {

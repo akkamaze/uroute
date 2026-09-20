@@ -23,6 +23,12 @@ const loadingRoute = createRoute({
   component: lazyRouteComponent(() => import("./entry/LoadingPage"), "LoadingPage"),
 });
 
+const welcomeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/welcome",
+  component: lazyRouteComponent(() => import("./entry/WelcomePage"), "WelcomePage"),
+});
+
 const mobileShellRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "mobile-shell",
@@ -30,7 +36,7 @@ const mobileShellRoute = createRoute({
 });
 
 const indexRoute = createRoute({
-  getParentRoute: () => mobileShellRoute,
+  getParentRoute: () => rootRoute,
   path: "/",
   component: RootRedirect,
 });
@@ -66,7 +72,6 @@ const userRoute = createRoute({
 });
 
 const mobileShellTree = mobileShellRoute.addChildren([
-  indexRoute,
   tripsRoute,
   planRoute,
   savedRoute,
@@ -74,7 +79,7 @@ const mobileShellTree = mobileShellRoute.addChildren([
   userRoute,
 ]);
 
-const routeTree = rootRoute.addChildren([loadingRoute, mobileShellTree]);
+const routeTree = rootRoute.addChildren([indexRoute, loadingRoute, welcomeRoute, mobileShellTree]);
 
 export const router = createRouter({ routeTree });
 

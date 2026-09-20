@@ -33,7 +33,7 @@ export function LoadingPage(): React.JSX.Element {
 
   useEffect(() => {
     const transitionTimer = window.setTimeout(() => {
-      void navigate({ to: "/trips", replace: true });
+      void navigate({ to: "/welcome", replace: true });
     }, TRANSITION_DELAY_MS);
 
     return () => {
@@ -41,8 +41,8 @@ export function LoadingPage(): React.JSX.Element {
     };
   }, [navigate]);
 
-  function continueToTrips(): void {
-    void navigate({ to: "/trips", replace: true });
+  function continueToWelcome(): void {
+    void navigate({ to: "/welcome", replace: true });
   }
 
   return (
@@ -51,10 +51,10 @@ export function LoadingPage(): React.JSX.Element {
         <LoadingBrand />
 
         <p aria-live="polite" className="loading-preview__status" role="status">
-          Loading your trip…
+          Opening uroute…
         </p>
 
-        <button className="loading-preview__continue" onClick={continueToTrips} type="button">
+        <button className="loading-preview__continue" onClick={continueToWelcome} type="button">
           Continue
         </button>
       </div>
