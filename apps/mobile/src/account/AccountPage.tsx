@@ -20,7 +20,7 @@ export function AccountPage(): React.JSX.Element {
   return (
     <section className="account-page">
       <header className="account-page__header">
-        <h1>You</h1>
+        <h1>Account</h1>
       </header>
 
       <section className="account-profile" aria-label="Profile">
