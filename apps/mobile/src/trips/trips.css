@@ -20,10 +20,18 @@
 
 .trips-page__new {
   display: inline-flex;
+  min-width: 64px;
+  min-height: 44px;
   gap: 0.1875rem;
   align-items: center;
+  justify-content: flex-end;
+  margin-right: -0.5rem;
+  padding: 0 0.5rem;
   color: var(--color-active);
+  border: 0;
+  background: transparent;
   font-size: 0.875rem;
+  cursor: pointer;
 }
 
 .trip-search {
@@ -255,6 +263,110 @@
 
 .trip-results__empty p {
   margin-top: var(--space-2);
+}
+
+.new-trip-dialog {
+  width: min(calc(100% - 34px), 380px);
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 18px 54px rgb(32 33 36 / 24%);
+}
+
+.new-trip-dialog::backdrop {
+  background: rgb(32 33 36 / 42%);
+}
+
+.new-trip-form {
+  display: flex;
+  gap: 0.875rem;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+.new-trip-form > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.new-trip-form h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.new-trip-form header p {
+  margin: 0.25rem 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+
+.new-trip-form header button {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin: -0.5rem -0.5rem 0 0;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.new-trip-form label {
+  display: flex;
+  gap: 0.375rem;
+  flex-direction: column;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.new-trip-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.75rem;
+  color: var(--color-text);
+  border: 1px solid #d9dee7;
+  border-radius: 11px;
+  outline: 0;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 400;
+}
+
+.new-trip-form input:focus {
+  border-color: var(--color-active);
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 12%);
+}
+
+.new-trip-form__dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.625rem;
+}
+
+.new-trip-form__message {
+  margin: -0.25rem 0 0;
+  color: #b42318;
+  font-size: 0.8125rem;
+}
+
+.new-trip-form__save {
+  min-height: 50px;
+  color: #ffffff;
+  border: 0;
+  border-radius: 12px;
+  background: var(--color-active);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @media (max-height: 760px) {

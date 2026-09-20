@@ -1,12 +1,35 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, ClipboardCheck, Plus, Search, Tickets, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import "./trips.css";
 
 interface TripCardProps {
   trip: TripSummary;
+}
+
+function formatDateRange(start: Date, end: Date): string {
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === end.getMonth();
+  const day = new Intl.DateTimeFormat("en", { day: "numeric" });
+  const month = new Intl.DateTimeFormat("en", { month: "short" });
+
+  if (sameMonth) {
+    return `${day.format(start)}–${day.format(end)} ${month.format(end)} ${end.getFullYear()}`;
+  }
+
+  if (sameYear) {
+    return `${day.format(start)} ${month.format(start)}–${day.format(end)} ${month.format(end)} ${end.getFullYear()}`;
+  }
+
+  const full = new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+
+  return `${full.format(start)}–${full.format(end)}`;
 }
 
 function FeaturedTrip({ trip }: TripCardProps): React.JSX.Element {
@@ -86,23 +109,90 @@ function BeforeYouGo(): React.JSX.Element {
 export function TripsPage(): React.JSX.Element {
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
+  const [draftTrips, setDraftTrips] = useState<readonly TripSummary[]>([]);
+  const [newTripOpen, setNewTripOpen] = useState(false);
+  const [destination, setDestination] = useState("");
+  const [startDate, setStartDate] = useState("2027-01-10");
+  const [endDate, setEndDate] = useState("2027-01-14");
+  const [formMessage, setFormMessage] = useState("");
+  const newTripDialogRef = useRef<HTMLDialogElement>(null);
+  const destinationRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleTrips = trips.filter(
+  const allTrips: readonly TripSummary[] = [...draftTrips, ...trips];
+  const visibleTrips = allTrips.filter(
     (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
   );
 
+  useEffect(() => {
+    const dialog = newTripDialogRef.current;
+
+    if (dialog === null) {
+      return;
+    }
+
+    if (newTripOpen && !dialog.open) {
+      dialog.showModal();
+      destinationRef.current?.focus();
+    } else if (!newTripOpen && dialog.open) {
+      dialog.close();
+    }
+  }, [newTripOpen]);
+
   function selectPeriod(nextPeriod: TripPeriod): void {
     setPeriod(nextPeriod);
+  }
+
+  function closeNewTrip(): void {
+    setNewTripOpen(false);
+    setFormMessage("");
+  }
+
+  function createDraftTrip(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const name = destination.trim();
+
+    if (name.length === 0 || startDate.length === 0 || endDate.length === 0) {
+      setFormMessage("Add a destination and travel dates.");
+
+      return;
+    }
+
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+    const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+
+    if (duration < 1) {
+      setFormMessage("End date must be on or after the start date.");
+
+      return;
+    }
+
+    setDraftTrips((current) => [
+      {
+        dateLabel: formatDateRange(start, end),
+        durationLabel: `${duration} ${duration === 1 ? "day" : "days"}`,
+        featured: false,
+        imageAlt: "A beach destination",
+        imageSrc: "/images/danang.png",
+        name,
+        period: "upcoming",
+      },
+      ...current,
+    ]);
+    setDestination("");
+    setPeriod("upcoming");
+    setQuery("");
+    closeNewTrip();
   }
 
   return (
     <section className="trips-page">
       <div className="trips-page__title">
         <h1>Your trips</h1>
-        <span className="trips-page__new">
+        <button className="trips-page__new" onClick={() => setNewTripOpen(true)} type="button">
           <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
           New
-        </span>
+        </button>
       </div>
 
       <label className="trip-search">
@@ -164,6 +254,72 @@ export function TripsPage(): React.JSX.Element {
       </div>
 
       {period === "upcoming" && normalizedQuery.length === 0 ? <BeforeYouGo /> : null}
+
+      <dialog
+        aria-labelledby="new-trip-title"
+        className="new-trip-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          closeNewTrip();
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            closeNewTrip();
+          }
+        }}
+        ref={newTripDialogRef}
+      >
+        <form className="new-trip-form" onSubmit={createDraftTrip}>
+          <header>
+            <div>
+              <h2 id="new-trip-title">New trip</h2>
+              <p>Start with a destination and dates.</p>
+            </div>
+            <button aria-label="Close new trip" onClick={closeNewTrip} type="button">
+              <X aria-hidden="true" size={22} strokeWidth={1.8} />
+            </button>
+          </header>
+
+          <label>
+            Destination
+            <input
+              onChange={(event) => setDestination(event.target.value)}
+              placeholder="Where are you going?"
+              ref={destinationRef}
+              value={destination}
+            />
+          </label>
+
+          <div className="new-trip-form__dates">
+            <label>
+              Start date
+              <input
+                onChange={(event) => setStartDate(event.target.value)}
+                type="date"
+                value={startDate}
+              />
+            </label>
+            <label>
+              End date
+              <input
+                onChange={(event) => setEndDate(event.target.value)}
+                type="date"
+                value={endDate}
+              />
+            </label>
+          </div>
+
+          {formMessage.length > 0 ? (
+            <p aria-live="polite" className="new-trip-form__message">
+              {formMessage}
+            </p>
+          ) : null}
+
+          <button className="new-trip-form__save" type="submit">
+            Create draft trip
+          </button>
+        </form>
+      </dialog>
     </section>
   );
 }
