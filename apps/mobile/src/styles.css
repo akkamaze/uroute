@@ -63,22 +63,6 @@ a {
   overscroll-behavior-y: contain;
 }
 
-.preview-page {
-  padding: var(--space-6) var(--space-4);
-}
-
-.preview-page h1 {
-  margin: 0;
-  font-size: 2rem;
-  line-height: 1.2;
-}
-
-.preview-page p {
-  margin: var(--space-3) 0 0;
-  color: var(--color-muted);
-  line-height: 1.5;
-}
-
 .bottom-navigation {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

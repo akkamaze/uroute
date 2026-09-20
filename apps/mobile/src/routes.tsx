@@ -3,11 +3,6 @@ import { Link, Navigate, Outlet, useRouterState } from "@tanstack/react-router";
 import { Brand } from "./brand";
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
 
-interface PreviewPageProps {
-  description: string;
-  title: string;
-}
-
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
   { icon: "saved", label: "Saved", to: "/saved" },
@@ -22,16 +17,6 @@ const navigationItems = [
 function isNavigationItemActive(to: string, pathname: string): boolean {
   return (
     pathname === to || (to === "/trips" && ["/bookings", "/expenses", "/plan"].includes(pathname))
-  );
-}
-
-function PreviewPage({ description, title }: PreviewPageProps): React.JSX.Element {
-  return (
-    <section className="preview-page">
-      <h1>{title}</h1>
-
-      <p>Preview state: {description}</p>
-    </section>
   );
 }
 
@@ -72,10 +57,6 @@ export function MobileShell(): React.JSX.Element {
 
 export function RootRedirect(): React.JSX.Element {
   return <Navigate replace to="/loading" />;
-}
-
-export function JournalPage(): React.JSX.Element {
-  return <PreviewPage description="Journal content will appear here." title="Journal" />;
 }
 
 export function UserPage(): React.JSX.Element {

@@ -5,7 +5,7 @@ import {
   lazyRouteComponent,
 } from "@tanstack/react-router";
 
-import { AppRoot, JournalPage, MobileShell, RootRedirect, UserPage } from "./routes";
+import { AppRoot, MobileShell, RootRedirect, UserPage } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 
 interface LoginSearch {
@@ -91,7 +91,7 @@ const savedRoute = createRoute({
 const journalRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/journal",
-  component: JournalPage,
+  component: lazyRouteComponent(() => import("./journal/JournalPage"), "JournalPage"),
 });
 
 const userRoute = createRoute({
