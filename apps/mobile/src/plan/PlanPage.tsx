@@ -17,6 +17,7 @@ import {
   createStressPlaces,
   type PlaceCollection,
 } from "./map-data";
+import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import { TripMap } from "./TripMap";
 import { TripHeader } from "./TripHeader";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
@@ -441,6 +442,7 @@ export function PlanPage(): React.JSX.Element {
                       }
 
                       setSelectedId(stop.id);
+                      captureNavigationSnapshot("/places");
                       void navigate({ search: { place: stop.id }, to: "/places" });
                     }}
                     onKeyDown={(event) => {
