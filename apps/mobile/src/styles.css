@@ -646,6 +646,17 @@ a {
   color: #f4a817;
 }
 
+.timeline__reorder-hint {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  padding: 0 0.5rem 0.5rem;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
 .timeline__entry {
   position: relative;
 }

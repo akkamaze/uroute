@@ -3,6 +3,7 @@ import {
   CloudSun,
   Coffee,
   Footprints,
+  GripVertical,
   Landmark,
   Map as MapIcon,
   Plus,
@@ -30,6 +31,18 @@ const TRIP_DAYS = [
 
 const TOUCH_REORDER_DELAY_MS = 260;
 const TOUCH_SCROLL_THRESHOLD_PX = 8;
+
+const TRAVEL_BY_PAIR = new Map(
+  FRIDAY_STOPS.flatMap((stop, index) => {
+    const nextStop = FRIDAY_STOPS[index + 1];
+
+    if (nextStop === undefined || stop.travelAfter === undefined) {
+      return [];
+    }
+
+    return [[`${stop.id}:${nextStop.id}`, stop.travelAfter] as const];
+  }),
+);
 
 interface TouchReorderState {
   active: boolean;
@@ -68,6 +81,7 @@ export function PlanPage(): React.JSX.Element {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [reorderNotice, setReorderNotice] = useState("");
+  const [reorderHintVisible, setReorderHintVisible] = useState(true);
   const stressFixtureEnabled = isStressFixtureEnabled();
   const places = useMemo<PlaceCollection>(() => {
     if (selectedDay !== 13) {
@@ -132,6 +146,7 @@ export function PlanPage(): React.JSX.Element {
       }
 
       nextStops.splice(targetIndex, 0, movedStop);
+      setReorderHintVisible(false);
       setReorderNotice(`${movedStop.name} moved to position ${targetIndex + 1}.`);
 
       return nextStops;
@@ -382,78 +397,96 @@ export function PlanPage(): React.JSX.Element {
         </header>
 
         {selectedDay === 13 ? (
-          <div aria-label="Friday itinerary" className="timeline">
-            {stops.map((stop, index) => (
-              <div
-                className={
-                  dropTargetId === stop.id && draggedId !== stop.id
-                    ? "timeline__entry timeline__entry--drop-target"
-                    : "timeline__entry"
-                }
-                key={stop.id}
-              >
-                <button
-                  aria-roledescription="sortable stop"
-                  aria-pressed={selectedId === stop.id}
-                  className={[
-                    "timeline__stop",
-                    selectedId === stop.id ? "timeline__stop--selected" : "",
-                    draggedId === stop.id ? "timeline__stop--dragging" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  data-stop-id={stop.id}
-                  onClick={() => {
-                    if (suppressClickRef.current) {
-                      return;
-                    }
+          <div aria-describedby="reorder-help" aria-label="Friday itinerary" className="timeline">
+            {reorderHintVisible ? (
+              <p className="timeline__reorder-hint">
+                <GripVertical aria-hidden="true" size={17} strokeWidth={1.8} />
+                Hold and drag a place to reorder
+              </p>
+            ) : null}
+            <span className="sr-only" id="reorder-help">
+              Hold and drag a place to reorder. With a keyboard, focus a place and press Alt plus
+              Arrow Up or Alt plus Arrow Down.
+            </span>
+            {stops.map((stop, index) => {
+              const nextStop = stops[index + 1];
+              const travel =
+                nextStop === undefined
+                  ? undefined
+                  : TRAVEL_BY_PAIR.get(`${stop.id}:${nextStop.id}`);
 
-                    setSelectedId(stop.id);
-                    void navigate({ search: { place: stop.id }, to: "/places" });
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-                      event.preventDefault();
-                      moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
-                    }
-                  }}
-                  onPointerCancel={endPointerReorder}
-                  onPointerDown={(event) => startPointerReorder(event, stop.id)}
-                  onPointerMove={movePointerReorder}
-                  onPointerUp={endPointerReorder}
-                  onTouchCancel={resetDragState}
-                  onTouchEnd={endTouchReorder}
-                  onTouchMove={moveTouchReorder}
-                  onTouchStart={(event) => startTouchReorder(event, stop.id)}
-                  ref={(element) => {
-                    stopRefs.current[stop.id] = element;
-                  }}
-                  type="button"
+              return (
+                <div
+                  className={
+                    dropTargetId === stop.id && draggedId !== stop.id
+                      ? "timeline__entry timeline__entry--drop-target"
+                      : "timeline__entry"
+                  }
+                  key={stop.id}
                 >
-                  <span className="timeline__time">{stop.time}</span>
-                  <span className={`timeline__icon timeline__icon--${stop.category}`}>
-                    {renderStopIcon(stop)}
-                  </span>
-                  <span className="timeline__info">
-                    <strong>{stop.name}</strong>
-                    <span>
-                      {stop.type} · {stop.duration}
-                    </span>
-                  </span>
-                  <img alt="" className="timeline__photo" src={stop.image} />
-                </button>
+                  <button
+                    aria-roledescription="sortable stop"
+                    aria-pressed={selectedId === stop.id}
+                    className={[
+                      "timeline__stop",
+                      selectedId === stop.id ? "timeline__stop--selected" : "",
+                      draggedId === stop.id ? "timeline__stop--dragging" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    data-stop-id={stop.id}
+                    onClick={() => {
+                      if (suppressClickRef.current) {
+                        return;
+                      }
 
-                {FRIDAY_STOPS[index]?.travelAfter === undefined ? null : (
-                  <div className="timeline__travel">
-                    <span aria-hidden="true" className="timeline__line" />
-                    <span aria-hidden="true" className="timeline__travel-marker">
-                      <Footprints size={19} strokeWidth={1.8} />
+                      setSelectedId(stop.id);
+                      void navigate({ search: { place: stop.id }, to: "/places" });
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+                        event.preventDefault();
+                        moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
+                      }
+                    }}
+                    onPointerCancel={endPointerReorder}
+                    onPointerDown={(event) => startPointerReorder(event, stop.id)}
+                    onPointerMove={movePointerReorder}
+                    onPointerUp={endPointerReorder}
+                    onTouchCancel={resetDragState}
+                    onTouchEnd={endTouchReorder}
+                    onTouchMove={moveTouchReorder}
+                    onTouchStart={(event) => startTouchReorder(event, stop.id)}
+                    ref={(element) => {
+                      stopRefs.current[stop.id] = element;
+                    }}
+                    type="button"
+                  >
+                    <span className="timeline__time">{stop.time}</span>
+                    <span className={`timeline__icon timeline__icon--${stop.category}`}>
+                      {renderStopIcon(stop)}
                     </span>
-                    <span>Walk · {FRIDAY_STOPS[index].travelAfter.detail}</span>
-                  </div>
-                )}
-              </div>
-            ))}
+                    <span className="timeline__info">
+                      <strong>{stop.name}</strong>
+                      <span>
+                        {stop.type} · {stop.duration}
+                      </span>
+                    </span>
+                    <img alt="" className="timeline__photo" src={stop.image} />
+                  </button>
+
+                  {travel === undefined ? null : (
+                    <div className="timeline__travel">
+                      <span aria-hidden="true" className="timeline__line" />
+                      <span aria-hidden="true" className="timeline__travel-marker">
+                        <Footprints size={19} strokeWidth={1.8} />
+                      </span>
+                      <span>Walk · {travel.detail}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="day-plan__empty">
