@@ -40,7 +40,7 @@ export function PlanPage(): React.JSX.Element {
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [selectedDay, setSelectedDay] = useState<number>(13);
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
-  const [showMap, setShowMap] = useState(true);
+  const [showMap, setShowMap] = useState(false);
   const stressFixtureEnabled = isStressFixtureEnabled();
   const places = useMemo<PlaceCollection>(() => {
     if (selectedDay !== 13) {
@@ -105,30 +105,36 @@ export function PlanPage(): React.JSX.Element {
         </p>
       ) : null}
 
-      <TripMap onSelect={selectFromMap} places={places} selectedId={selectedId} />
+      <TripMap
+        id="plan-map"
+        inactive={!showMap}
+        onSelect={selectFromMap}
+        places={places}
+        selectedId={selectedId}
+      />
 
       <section className="day-plan">
         <header className="day-plan__header">
-          <h2>
-            {selectedDayLabel}, {selectedDay} November
-          </h2>
-
-          <span className="day-plan__tools">
+          <span className="day-plan__heading">
+            <h2>
+              {selectedDayLabel}, {selectedDay} November
+            </h2>
             <span className="day-plan__weather">
               <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
               18°
             </span>
-            <button
-              aria-expanded={showMap}
-              aria-label={showMap ? "Show plan only" : "Show map and plan"}
-              className="day-plan__view-toggle"
-              onClick={() => setShowMap((current) => !current)}
-              type="button"
-            >
-              <MapIcon aria-hidden="true" size={17} strokeWidth={1.8} />
-              {showMap ? "Plan only" : "Show map"}
-            </button>
           </span>
+          <button
+            aria-controls="plan-map"
+            aria-label="Map view"
+            aria-pressed={showMap}
+            className="day-plan__view-toggle"
+            onClick={() => setShowMap((current) => !current)}
+            type="button"
+          >
+            <MapIcon aria-hidden="true" size={18} strokeWidth={1.8} />
+            Map
+          </button>
         </header>
 
         {selectedDay === 13 ? (

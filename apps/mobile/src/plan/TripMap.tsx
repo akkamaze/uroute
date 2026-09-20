@@ -38,6 +38,8 @@ const BASEMAP_STYLE = {
 
 interface TripMapProps {
   bottomInset?: number;
+  id?: string;
+  inactive?: boolean;
   onSelect: (id: string) => void;
   places: PlaceCollection;
   selectedId: string | null;
@@ -145,6 +147,8 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
 
 export function TripMap({
   bottomInset = 0,
+  id,
+  inactive = false,
   onSelect,
   places,
   selectedId,
@@ -472,8 +476,8 @@ export function TripMap({
   }, [selectedId]);
 
   useEffect(() => {
-    mapRef.current?.resize();
-  }, [expanded]);
+    window.requestAnimationFrame(() => mapRef.current?.resize());
+  }, [expanded, inactive]);
 
   function retry(): void {
     setErrorMessage("");
@@ -505,7 +509,10 @@ export function TripMap({
 
   return (
     <div
+      aria-hidden={inactive}
       className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}
+      id={id}
+      inert={inactive}
       style={{ "--map-bottom-inset": `${bottomInset}px` } as React.CSSProperties}
     >
       <div className="trip-map__canvas" ref={containerRef} />
