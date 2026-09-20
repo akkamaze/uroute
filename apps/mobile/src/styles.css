@@ -650,6 +650,18 @@ a {
   position: relative;
 }
 
+.timeline__entry--drop-target::before {
+  position: absolute;
+  z-index: 2;
+  top: -2px;
+  right: 0.5rem;
+  left: 0.5rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-active);
+  content: "";
+}
+
 .timeline__stop {
   display: grid;
   width: 100%;
@@ -668,6 +680,13 @@ a {
 
 .timeline__stop--selected {
   background: #edf5ff;
+}
+
+.timeline__stop--dragging {
+  opacity: 0.58;
+  box-shadow: 0 8px 24px rgb(32 33 36 / 14%);
+  cursor: grabbing;
+  user-select: none;
 }
 
 .timeline__time {
