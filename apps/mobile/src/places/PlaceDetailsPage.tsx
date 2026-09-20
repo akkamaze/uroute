@@ -126,6 +126,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
       "placeSelectionEntry" in state.location.state &&
       state.location.state.placeSelectionEntry === true,
   });
+  const mapExpanded = search.map === "full";
+  const mapOpenedHereRef = useRef(false);
+  const mapWasExpandedRef = useRef(false);
   const initialPlace = getPlace(search.place);
   const initialId = initialPlace.id;
   const plan = useKyotoPlan();
@@ -210,6 +213,37 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
   }, [searchActive, submittedQuery]);
 
+  useEffect(() => {
+    if (mapExpanded) {
+      mapWasExpandedRef.current = true;
+    } else if (mapWasExpandedRef.current) {
+      mapWasExpandedRef.current = false;
+      mapOpenedHereRef.current = false;
+    }
+  }, [mapExpanded]);
+
+  function changeMapExpanded(next: boolean): void {
+    if (next) {
+      mapOpenedHereRef.current = true;
+      void navigate({
+        to: "/places",
+        search: { ...search, map: "full" },
+        state: (current) => current,
+        resetScroll: false,
+      });
+    } else if (mapOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/places",
+        search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
+        state: (current) => current,
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }
+
   function selectPlace(id: string): void {
     void navigate({
       replace: true,
@@ -219,6 +253,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         ...current,
         placeSelectionEntry:
           searchActive ||
+          mapExpanded ||
           ("placeSelectionEntry" in current && current.placeSelectionEntry === true),
       }),
       resetScroll: false,
@@ -452,13 +487,19 @@ export function PlaceDetailsPage(): React.JSX.Element {
     <main
       className="places-page"
       data-swipe-back-ignore={
-        addPanelOpen || searchActive || selectionHistoryBoundary ? "true" : undefined
+        addPanelOpen || searchActive || mapExpanded || selectionHistoryBoundary ? "true" : undefined
       }
       onKeyDown={(event) => {
-        if ((addPanelOpen || searchActive) && event.key === "Escape" && !event.defaultPrevented) {
+        if (
+          (addPanelOpen || searchActive || mapExpanded) &&
+          event.key === "Escape" &&
+          !event.defaultPrevented
+        ) {
           event.preventDefault();
           event.stopPropagation();
-          if (addPanelOpen) {
+          if (mapExpanded) {
+            changeMapExpanded(false);
+          } else if (addPanelOpen) {
             closeAddPanel();
           } else {
             cancelSearch();
@@ -473,16 +514,22 @@ export function PlaceDetailsPage(): React.JSX.Element {
       >
         <TripMap
           bottomInset={
-            visibleSheetSnap === "expanded" ? 0 : getSheetVisibleHeight(visibleSheetSnap)
+            mapExpanded || visibleSheetSnap === "expanded"
+              ? 0
+              : getSheetVisibleHeight(visibleSheetSnap)
           }
+          expanded={mapExpanded}
+          onExpandedChange={changeMapExpanded}
           onSelect={selectPlace}
           places={places}
           selectedId={selectedPlace.id}
-          showLocate={visibleSheetSnap !== "expanded"}
+          showLocate={mapExpanded || visibleSheetSnap !== "expanded"}
           variant="discovery"
         />
 
         <div
+          aria-hidden={mapExpanded || undefined}
+          inert={mapExpanded}
           aria-label="Place search"
           className="place-search"
           data-active={searchActive ? "true" : undefined}
@@ -540,6 +587,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
       </section>
 
       <section
+        aria-hidden={mapExpanded || undefined}
+        inert={mapExpanded}
         aria-label="Place details"
         className="place-sheet"
         data-dragging={dragOffset === 0 ? undefined : "true"}

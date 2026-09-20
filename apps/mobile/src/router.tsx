@@ -14,6 +14,7 @@ interface LoginSearch {
 }
 
 interface PlaceSearch {
+  map?: "full";
   search?: "open";
   q?: string;
   day?: KyotoDay;
@@ -118,16 +119,18 @@ const placesRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): PlaceSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(typeof search.place === "string" ? { place: search.place } : {}),
-    ...(search.add === "open"
-      ? { add: "open" }
-      : search.search === "open"
-        ? {
-            search: "open",
-            ...(typeof search.q === "string" && search.q.trim() !== ""
-              ? { q: search.q.trim().slice(0, 120) }
-              : {}),
-          }
-        : {}),
+    ...(search.map === "full"
+      ? { map: "full" }
+      : search.add === "open"
+        ? { add: "open" }
+        : search.search === "open"
+          ? {
+              search: "open",
+              ...(typeof search.q === "string" && search.q.trim() !== ""
+                ? { q: search.q.trim().slice(0, 120) }
+                : {}),
+            }
+          : {}),
   }),
   component: lazyRouteComponent(() => import("./places/PlaceDetailsPage"), "PlaceDetailsPage"),
 });
