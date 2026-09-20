@@ -49,7 +49,6 @@ a {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   width: 100%;
-  max-width: 414px;
   height: 100dvh;
   min-height: 100dvh;
   margin: 0 auto;
@@ -242,7 +241,7 @@ a {
   position: fixed;
   z-index: 20;
   inset: 0;
-  width: min(100%, 414px);
+  width: 100%;
   height: 100dvh;
   margin: 0 auto;
 }
@@ -353,4 +352,11 @@ a {
 
 .maplibregl-ctrl-attrib {
   font-size: 10px;
+}
+
+@media (min-width: 600px) {
+  .mobile-shell,
+  .trip-map--expanded {
+    max-width: 414px;
+  }
 }

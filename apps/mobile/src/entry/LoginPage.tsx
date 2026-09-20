@@ -94,15 +94,13 @@ export function LoginPage(): React.JSX.Element {
             <span>Continue with Google</span>
           </button>
 
-          <p className="login-footer__label">Mock sign-in</p>
-          <p className="login-footer__note">
-            This preview uses a sample profile. No Google account or password is needed.
+          <p className="login-footer__notice">
+            Google sign-in is not connected yet. Continue with a sample profile.
           </p>
         </footer>
       </div>
 
       <dialog
-        aria-describedby="profile-dialog-description"
         aria-labelledby="profile-dialog-title"
         className="profile-dialog"
         onClick={closeFromBackdrop}
@@ -110,10 +108,7 @@ export function LoginPage(): React.JSX.Element {
         ref={dialogRef}
       >
         <div className="profile-dialog__content">
-          <h2 id="profile-dialog-title">Choose a demo profile</h2>
-          <p id="profile-dialog-description">
-            No account is connected. Choose the sample profile to continue the preview.
-          </p>
+          <h2 id="profile-dialog-title">Choose a profile</h2>
 
           <button className="profile-choice" onClick={chooseMina} type="button">
             <span aria-hidden="true" className="profile-choice__avatar">
@@ -121,7 +116,7 @@ export function LoginPage(): React.JSX.Element {
             </span>
             <span>
               <strong>Mina</strong>
-              <small>Sample traveler</small>
+              <small>Continue as Mina</small>
             </span>
           </button>
 

@@ -40,8 +40,6 @@ export function WelcomePage(): React.JSX.Element {
           <div aria-label="uroute" className="welcome-wordmark" role="img">
             <span>u</span>route
           </div>
-
-          <span className="preview-badge">Preview</span>
         </header>
 
         <WelcomeIllustration />
@@ -63,8 +61,6 @@ export function WelcomePage(): React.JSX.Element {
             <ArrowRight aria-hidden="true" size={20} strokeWidth={1.8} />
           </Link>
         </section>
-
-        <footer className="welcome-footer">Interactive preview · sample trips</footer>
       </div>
     </main>
   );
