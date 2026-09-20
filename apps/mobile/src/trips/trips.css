@@ -442,3 +442,9 @@
     min-height: 58px;
   }
 }
+
+.trips-page__title,
+.trip-search,
+.trip-period {
+  flex: none;
+}

@@ -1,3 +1,4 @@
+import "../keyboard/keyboard-search.css";
 import { Link } from "@tanstack/react-router";
 import { Bookmark, ChevronRight, Search } from "lucide-react";
 import { useState } from "react";
@@ -58,7 +59,7 @@ export function SavedPage(): React.JSX.Element {
   }
 
   return (
-    <section className="saved-page">
+    <section className="saved-page keyboard-search-page">
       <header className="saved-page__header">
         <h1>Saved</h1>
         <p>Places you want to remember.</p>
@@ -69,6 +70,14 @@ export function SavedPage(): React.JSX.Element {
           <Search aria-hidden="true" size={20} strokeWidth={1.8} />
           <input
             aria-label="Search saved places"
+            data-keyboard-search
+            enterKeyHint="search"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                event.currentTarget.blur();
+              }
+            }}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search saved places"
             type="search"
@@ -77,29 +86,31 @@ export function SavedPage(): React.JSX.Element {
         </label>
       ) : null}
 
-      {savedPlaces.length === 0 ? (
-        <div className="saved-empty">
-          <span className="saved-empty__icon">
-            <Bookmark aria-hidden="true" size={28} strokeWidth={1.7} />
-          </span>
-          <h2>Save places for later</h2>
-          <p>Keep ideas here while you plan your trip.</p>
-          <Link search={{ place: "kiyomizu" }} to="/places">
-            Explore places
-          </Link>
-        </div>
-      ) : visiblePlaces.length === 0 ? (
-        <div className="saved-empty saved-empty--search">
-          <h2>No saved places found</h2>
-          <p>Try another name or area.</p>
-        </div>
-      ) : (
-        <div aria-live="polite" className="saved-list">
-          {visiblePlaces.map((place) => (
-            <SavedPlaceRow key={place.id} onRemove={removePlace} place={place} />
-          ))}
-        </div>
-      )}
+      <div className="saved-results">
+        {savedPlaces.length === 0 ? (
+          <div className="saved-empty">
+            <span className="saved-empty__icon">
+              <Bookmark aria-hidden="true" size={28} strokeWidth={1.7} />
+            </span>
+            <h2>Save places for later</h2>
+            <p>Keep ideas here while you plan your trip.</p>
+            <Link search={{ place: "kiyomizu" }} to="/places">
+              Explore places
+            </Link>
+          </div>
+        ) : visiblePlaces.length === 0 ? (
+          <div className="saved-empty saved-empty--search">
+            <h2>No saved places found</h2>
+            <p>Try another name or area.</p>
+          </div>
+        ) : (
+          <div aria-live="polite" className="saved-list">
+            {visiblePlaces.map((place) => (
+              <SavedPlaceRow key={place.id} onRemove={removePlace} place={place} />
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

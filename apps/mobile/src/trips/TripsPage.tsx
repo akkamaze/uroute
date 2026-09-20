@@ -1,3 +1,4 @@
+import "../keyboard/keyboard-search.css";
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import "../keyboard/keyboard-dialog.css";
@@ -261,7 +262,7 @@ export function TripsPage(): React.JSX.Element {
   }
 
   return (
-    <section className="trips-page">
+    <section className="trips-page keyboard-search-page">
       <div className="trips-page__title">
         <h1>Your trips</h1>
         <button
@@ -279,6 +280,14 @@ export function TripsPage(): React.JSX.Element {
         <Search aria-hidden="true" size={21} strokeWidth={1.8} />
         <input
           aria-label="Search your trips"
+          data-keyboard-search
+          enterKeyHint="search"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search your trips"
           type="search"
