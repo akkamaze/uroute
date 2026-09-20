@@ -460,11 +460,6 @@ a {
   margin: 0 auto;
 }
 
-.trip-map--expanded .trip-map__controls {
-  top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
-  right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
-}
-
 .trip-map__canvas {
   width: 100%;
   height: 100%;
@@ -473,14 +468,12 @@ a {
 .trip-map__controls {
   position: absolute;
   z-index: 2;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: grid;
-  grid-template-columns: repeat(2, 44px);
-  gap: 0.25rem;
+  inset: 0;
+  pointer-events: none;
 }
 
 .trip-map__controls button {
+  position: absolute;
   display: inline-flex;
   width: 44px;
   height: 44px;
@@ -493,6 +486,28 @@ a {
   background: rgb(255 255 255 / 94%);
   box-shadow: 0 1px 4px rgb(32 33 36 / 16%);
   cursor: pointer;
+  pointer-events: auto;
+}
+
+.trip-map__fullscreen {
+  top: var(--space-2);
+  right: var(--space-2);
+}
+
+.trip-map__locate {
+  right: var(--space-2);
+  bottom: calc(var(--space-2) + var(--map-bottom-inset, 0px));
+  transition: bottom 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.trip-map--expanded .trip-map__fullscreen {
+  top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+  right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
+}
+
+.trip-map--expanded .trip-map__locate {
+  right: calc(var(--space-2) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
 }
 
 .trip-map__status,

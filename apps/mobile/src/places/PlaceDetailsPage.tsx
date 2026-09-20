@@ -1,4 +1,4 @@
-import { useCanGoBack, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowLeft, Bookmark, Clock, CreditCard, MapPin, Search, Star, Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
@@ -55,14 +55,13 @@ function getNearestSnap(offset: number): SheetSnap {
 
 export function PlaceDetailsPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const router = useRouter();
-  const canGoBack = useCanGoBack();
   const search = useSearch({ from: "/places" });
   const initialPlace = getPlace(search.place);
   const initialId = initialPlace.id;
   const [selectedId, setSelectedId] = useState(initialId);
   const [draftQuery, setDraftQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const [searchActive, setSearchActive] = useState(false);
   const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState("");
   const [visitTime, setVisitTime] = useState(initialPlace.time);
@@ -71,6 +70,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
@@ -84,19 +84,17 @@ export function PlaceDetailsPage(): React.JSX.Element {
     setSelectedId(id);
     setDraftQuery("");
     setSubmittedQuery("");
+    setSearchActive(false);
     setVisitTime(nextPlace.time);
     setNotes("");
     void navigate({ replace: true, search: { place: id }, to: "/places" });
   }
 
-  function goBack(): void {
-    if (canGoBack) {
-      router.history.back();
-
-      return;
-    }
-
-    void navigate({ replace: true, to: "/plan" });
+  function cancelSearch(): void {
+    setDraftQuery("");
+    setSubmittedQuery("");
+    setSearchActive(false);
+    searchInputRef.current?.blur();
   }
 
   function toggleSaved(): void {
@@ -198,21 +196,25 @@ export function PlaceDetailsPage(): React.JSX.Element {
     <main className="places-page">
       <section className="places-page__map">
         <TripMap
+          bottomInset={sheetSnap === "expanded" ? 0 : SHEET_VISIBLE_HEIGHT[sheetSnap]}
           onSelect={selectPlace}
           places={places}
           selectedId={selectedPlace.id}
+          showLocate={sheetSnap !== "expanded"}
           variant="discovery"
         />
 
-        <div className="place-search">
-          <button
-            aria-label="Back to plan"
-            className="place-search__back"
-            onClick={goBack}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
-          </button>
+        <div className="place-search" data-active={searchActive ? "true" : undefined}>
+          {searchActive ? (
+            <button
+              aria-label="Cancel search"
+              className="place-search__back"
+              onClick={cancelSearch}
+              type="button"
+            >
+              <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+            </button>
+          ) : null}
 
           <form
             className="place-search__form"
@@ -224,11 +226,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
             <Search aria-hidden="true" size={20} strokeWidth={1.8} />
             <input
               aria-label="Search places"
+              enterKeyHint="search"
+              onFocus={() => setSearchActive(true)}
               onChange={(event) => setDraftQuery(event.target.value)}
               placeholder="Search places"
+              ref={searchInputRef}
+              type="search"
               value={draftQuery}
             />
-            <button type="submit">Search</button>
           </form>
         </div>
 

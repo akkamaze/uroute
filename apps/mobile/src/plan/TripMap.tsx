@@ -1,4 +1,4 @@
-import { LocateFixed, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
+import { LocateFixed, Maximize2, Minimize2 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
@@ -36,9 +36,11 @@ const BASEMAP_STYLE = {
 };
 
 interface TripMapProps {
+  bottomInset?: number;
   onSelect: (id: string) => void;
   places: PlaceCollection;
   selectedId: string | null;
+  showLocate?: boolean;
   variant?: "discovery" | "planner";
 }
 
@@ -141,9 +143,11 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
 }
 
 export function TripMap({
+  bottomInset = 0,
   onSelect,
   places,
   selectedId,
+  showLocate = true,
   variant = "planner",
 }: TripMapProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -476,10 +480,6 @@ export function TripMap({
     setRetryCount((current) => current + 1);
   }
 
-  function zoomBy(delta: number): void {
-    mapRef.current?.easeTo({ zoom: (mapRef.current?.getZoom() ?? 13.4) + delta });
-  }
-
   function recenter(): void {
     const map = mapRef.current;
 
@@ -489,21 +489,26 @@ export function TripMap({
   }
 
   return (
-    <div className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}>
+    <div
+      className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}
+      style={{ "--map-bottom-inset": `${bottomInset}px` } as React.CSSProperties}
+    >
       <div className="trip-map__canvas" ref={containerRef} />
 
       <div aria-label="Map controls" className="trip-map__controls" role="group">
-        <button aria-label="Zoom in" onClick={() => zoomBy(1)} type="button">
-          <Plus aria-hidden="true" size={20} strokeWidth={1.8} />
-        </button>
-        <button aria-label="Zoom out" onClick={() => zoomBy(-1)} type="button">
-          <Minus aria-hidden="true" size={20} strokeWidth={1.8} />
-        </button>
-        <button aria-label="Recenter on Kyoto" onClick={recenter} type="button">
-          <LocateFixed aria-hidden="true" size={20} strokeWidth={1.8} />
-        </button>
+        {showLocate ? (
+          <button
+            aria-label="Recenter on Kyoto"
+            className="trip-map__locate"
+            onClick={recenter}
+            type="button"
+          >
+            <LocateFixed aria-hidden="true" size={20} strokeWidth={1.8} />
+          </button>
+        ) : null}
         <button
           aria-label={expanded ? "Collapse map" : "Expand map"}
+          className="trip-map__fullscreen"
           onClick={() => setExpanded((current) => !current)}
           type="button"
         >
