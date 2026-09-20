@@ -16,7 +16,7 @@ interface PlaceSearch {
   place?: string;
 }
 
-interface JournalSearch {
+interface EditorSearch {
   editor?: "open";
 }
 
@@ -75,6 +75,8 @@ const bookingsRoute = createRoute({
 const expensesRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/expenses",
+  validateSearch: (search: Record<string, unknown>): EditorSearch =>
+    search.editor === "open" ? { editor: "open" } : {},
   component: lazyRouteComponent(() => import("./plan/ExpensesPage"), "ExpensesPage"),
 });
 
@@ -95,7 +97,7 @@ const savedRoute = createRoute({
 const journalRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/journal",
-  validateSearch: (search: Record<string, unknown>): JournalSearch =>
+  validateSearch: (search: Record<string, unknown>): EditorSearch =>
     search.editor === "open" ? { editor: "open" } : {},
   component: lazyRouteComponent(() => import("./journal/JournalPage"), "JournalPage"),
 });
