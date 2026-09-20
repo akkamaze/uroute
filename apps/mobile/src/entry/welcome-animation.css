@@ -1,0 +1,97 @@
+.welcome-illustration {
+  --welcome-route-delay: 250ms;
+  --welcome-route-duration: 2200ms;
+}
+
+.welcome-illustration__route {
+  stroke: var(--color-active);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: welcome-route-draw var(--welcome-route-duration) cubic-bezier(0.4, 0, 0.2, 1)
+    var(--welcome-route-delay) both;
+}
+
+.welcome-stop {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.welcome-stop--start {
+  animation: welcome-stop-fade 450ms ease both;
+}
+
+.welcome-stop--middle {
+  /* The middle stop is 59.87666% along this path. Inverting the route's
+     easing puts arrival at 39.28359% of its duration. Reveal immediately
+     at arrival; only the small scale-in continues. */
+  animation: welcome-stop-arrive 320ms ease-out forwards;
+  animation-delay: calc(var(--welcome-route-delay) + var(--welcome-route-duration) * 0.3928359);
+}
+
+.welcome-stop--end {
+  animation: welcome-stop-fade 450ms ease 2300ms both;
+}
+
+.welcome-arrival {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: welcome-arrival-pulse 800ms ease-out 2500ms both;
+}
+
+@keyframes welcome-route-draw {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes welcome-stop-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes welcome-stop-arrive {
+  from {
+    opacity: 1;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes welcome-arrival-pulse {
+  0% {
+    transform: scale(0.7);
+  }
+  55% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-illustration__route,
+  .welcome-stop,
+  .welcome-arrival {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .welcome-illustration__route {
+    stroke-dashoffset: 0;
+  }
+}

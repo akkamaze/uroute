@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 
 import "./entry.css";
+import "./welcome-animation.css";
 
 const ROUTE_PATH = "M54 66V146C54 184 80 210 114 210S174 184 174 146V124C174 87 202 66 238 66H304";
 
@@ -12,18 +13,18 @@ function WelcomeIllustration(): React.JSX.Element {
         <path className="welcome-illustration__base" d={ROUTE_PATH} />
         <path className="welcome-illustration__route" d={ROUTE_PATH} pathLength="100" />
 
-        <g>
+        <g className="welcome-stop welcome-stop--start">
           <circle cx="54" cy="66" fill="#ebf3ff" r="18" />
           <circle cx="54" cy="66" fill="#1677ff" r="7" />
         </g>
 
-        <g>
+        <g className="welcome-stop welcome-stop--middle">
           <circle cx="174" cy="146" fill="#ffffff" r="12" />
           <circle cx="174" cy="146" fill="#1677ff" r="6" />
         </g>
 
-        <g>
-          <circle cx="304" cy="66" fill="#ebf3ff" r="22" />
+        <g className="welcome-stop welcome-stop--end">
+          <circle className="welcome-arrival" cx="304" cy="66" fill="#ebf3ff" r="22" />
           <circle cx="304" cy="66" fill="#ffffff" r="10" stroke="#1677ff" strokeWidth="4" />
         </g>
       </svg>
