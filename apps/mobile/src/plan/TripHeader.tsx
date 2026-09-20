@@ -10,7 +10,7 @@ interface TripHeaderProps {
 const SECTIONS = [
   { id: "plan", label: "Plan", to: "/plan" },
   { id: "bookings", label: "Bookings", to: "/bookings" },
-  { id: "expenses", label: "Expenses", to: null },
+  { id: "expenses", label: "Expenses", to: "/expenses" },
 ] as const;
 
 export function TripHeader({ active }: TripHeaderProps): React.JSX.Element {
@@ -38,11 +38,7 @@ export function TripHeader({ active }: TripHeaderProps): React.JSX.Element {
               ? "trip-sections__link trip-sections__link--active"
               : "trip-sections__link";
 
-          return section.to === null ? (
-            <span aria-disabled="true" className={className} key={section.id}>
-              {section.label}
-            </span>
-          ) : (
+          return (
             <Link
               aria-current={active === section.id ? "page" : undefined}
               className={className}
