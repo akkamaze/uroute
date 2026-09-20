@@ -61,8 +61,12 @@ const indexRoute = createRoute({
 const tripsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/trips",
-  validateSearch: (search: Record<string, unknown>): { packing?: "open" } =>
-    search.packing === "open" ? { packing: "open" } : {},
+  validateSearch: (search: Record<string, unknown>): { packing?: "open"; newTrip?: "open" } =>
+    search.packing === "open"
+      ? { packing: "open" }
+      : search.newTrip === "open"
+        ? { newTrip: "open" }
+        : {},
   component: TripsPage,
 });
 

@@ -139,7 +139,10 @@ export function TripsPage(): React.JSX.Element {
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
   const [draftTrips, setDraftTrips] = useState<readonly TripSummary[]>([]);
-  const [newTripOpen, setNewTripOpen] = useState(false);
+  const newTripOpen = search.newTrip === "open";
+  const newTripButtonRef = useRef<HTMLButtonElement>(null);
+  const newTripOpenedHereRef = useRef(false);
+  const newTripWasOpenRef = useRef(false);
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("2027-01-10");
   const [endDate, setEndDate] = useState("2027-01-14");
@@ -162,10 +165,14 @@ export function TripsPage(): React.JSX.Element {
     }
 
     if (newTripOpen && !dialog.open) {
+      newTripWasOpenRef.current = true;
       dialog.showModal();
       destinationRef.current?.focus();
-    } else if (!newTripOpen && dialog.open) {
+    } else if (!newTripOpen && newTripWasOpenRef.current) {
       dialog.close();
+      newTripButtonRef.current?.focus();
+      newTripWasOpenRef.current = false;
+      newTripOpenedHereRef.current = false;
     }
   }, [newTripOpen]);
 
@@ -194,11 +201,19 @@ export function TripsPage(): React.JSX.Element {
     setPeriod(nextPeriod);
   }
 
-  function closeNewTrip(): void {
-    setNewTripOpen(false);
-    setFormMessage("");
+  function openNewTrip(): void {
+    newTripOpenedHereRef.current = true;
+    void navigate({ to: "/trips", search: { newTrip: "open" }, resetScroll: false });
   }
 
+  function closeNewTrip(): void {
+    setFormMessage("");
+    if (newTripOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({ to: "/trips", search: {}, replace: true, resetScroll: false });
+    }
+  }
   function createDraftTrip(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     const name = destination.trim();
@@ -241,7 +256,12 @@ export function TripsPage(): React.JSX.Element {
     <section className="trips-page">
       <div className="trips-page__title">
         <h1>Your trips</h1>
-        <button className="trips-page__new" onClick={() => setNewTripOpen(true)} type="button">
+        <button
+          className="trips-page__new"
+          onClick={openNewTrip}
+          ref={newTripButtonRef}
+          type="button"
+        >
           <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
           New
         </button>
