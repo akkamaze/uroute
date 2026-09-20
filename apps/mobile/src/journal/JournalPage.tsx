@@ -1,3 +1,4 @@
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, PenLine, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -8,6 +9,36 @@ interface JournalDraft {
   id: number;
   note: string;
   title: string;
+}
+
+const JOURNAL_DRAFTS_KEY = "uroute.mock.journal-drafts";
+
+function loadDrafts(): readonly JournalDraft[] {
+  try {
+    const stored = window.sessionStorage.getItem(JOURNAL_DRAFTS_KEY);
+
+    if (stored === null) {
+      return [];
+    }
+
+    const parsed: unknown = JSON.parse(stored);
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter(
+      (draft): draft is JournalDraft =>
+        typeof draft === "object" &&
+        draft !== null &&
+        typeof (draft as Partial<JournalDraft>).date === "string" &&
+        typeof (draft as Partial<JournalDraft>).id === "number" &&
+        typeof (draft as Partial<JournalDraft>).note === "string" &&
+        typeof (draft as Partial<JournalDraft>).title === "string",
+    );
+  } catch {
+    return [];
+  }
 }
 
 function formatDraftDate(value: string): string {
@@ -23,25 +54,56 @@ function formatDraftDate(value: string): string {
 }
 
 export function JournalPage(): React.JSX.Element {
-  const [drafts, setDrafts] = useState<readonly JournalDraft[]>([]);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/mobile-shell/journal" });
+  const editorOpen = search.editor === "open";
+  const [drafts, setDrafts] = useState<readonly JournalDraft[]>(loadDrafts);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("2026-11-13");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const openedHereRef = useRef(false);
+  const wasEditorOpenRef = useRef(false);
 
   useEffect(() => {
-    if (!editorOpen) {
+    try {
+      window.sessionStorage.setItem(JOURNAL_DRAFTS_KEY, JSON.stringify(drafts));
+    } catch {
+      // The mock remains usable when session storage is unavailable.
+    }
+  }, [drafts]);
+
+  useEffect(() => {
+    if (editorOpen) {
+      wasEditorOpenRef.current = true;
+      titleInputRef.current?.focus();
+
       return;
     }
 
-    titleInputRef.current?.focus();
+    if (wasEditorOpenRef.current) {
+      openerRef.current?.focus();
+      wasEditorOpenRef.current = false;
+      openedHereRef.current = false;
+    }
   }, [editorOpen]);
 
+  function openEditor(event: React.MouseEvent<HTMLButtonElement>): void {
+    openerRef.current = event.currentTarget;
+    openedHereRef.current = true;
+    void navigate({ search: { editor: "open" }, to: "/journal" });
+  }
+
   function closeEditor(): void {
-    setEditorOpen(false);
     setMessage("");
+
+    if (openedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({ replace: true, search: {}, to: "/journal" });
+    }
   }
 
   function saveDraft(event: React.FormEvent<HTMLFormElement>): void {
@@ -65,7 +127,7 @@ export function JournalPage(): React.JSX.Element {
     setTitle("");
     setNote("");
     setMessage("");
-    setEditorOpen(false);
+    closeEditor();
   }
 
   return (
@@ -77,7 +139,7 @@ export function JournalPage(): React.JSX.Element {
         </div>
 
         {drafts.length > 0 ? (
-          <button aria-label="Write a memory" onClick={() => setEditorOpen(true)} type="button">
+          <button aria-label="Write a memory" onClick={openEditor} type="button">
             <PenLine aria-hidden="true" size={20} strokeWidth={1.8} />
           </button>
         ) : null}
@@ -90,7 +152,7 @@ export function JournalPage(): React.JSX.Element {
           </span>
           <h2>Your stories start here</h2>
           <p>Write down a favorite place, meal or moment from your trip.</p>
-          <button onClick={() => setEditorOpen(true)} type="button">
+          <button onClick={openEditor} type="button">
             <PenLine aria-hidden="true" size={18} strokeWidth={1.8} />
             Write a memory
           </button>

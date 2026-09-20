@@ -16,6 +16,10 @@ interface PlaceSearch {
   place?: string;
 }
 
+interface JournalSearch {
+  editor?: "open";
+}
+
 const rootRoute = createRootRoute({ component: AppRoot });
 
 const loadingRoute = createRoute({
@@ -91,6 +95,8 @@ const savedRoute = createRoute({
 const journalRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/journal",
+  validateSearch: (search: Record<string, unknown>): JournalSearch =>
+    search.editor === "open" ? { editor: "open" } : {},
   component: lazyRouteComponent(() => import("./journal/JournalPage"), "JournalPage"),
 });
 
