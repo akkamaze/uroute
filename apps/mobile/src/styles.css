@@ -26,6 +26,11 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
 }
 
 html,
@@ -127,8 +132,7 @@ a {
 
 .mobile-shell__main {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+  overflow: hidden;
 }
 
 .bottom-navigation {
