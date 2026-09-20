@@ -35,7 +35,7 @@ export function AccountPage(): React.JSX.Element {
     }
   }
   function signOut(): void {
-    void navigate({ replace: true, to: "/login" });
+    void navigate({ replace: true, to: "/welcome" });
   }
 
   return (
@@ -92,7 +92,7 @@ export function AccountPage(): React.JSX.Element {
           </span>
           <span className="account-menu__copy">
             <strong>Sign out</strong>
-            <span>Return to sign in</span>
+            <span>Return to welcome</span>
           </span>
         </button>
       </nav>
