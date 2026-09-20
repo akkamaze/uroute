@@ -1,7 +1,17 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { ArrowLeft, Bookmark, Clock, CreditCard, MapPin, Search, Star, Upload } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Bookmark,
+  ChevronDown,
+  Clock,
+  CreditCard,
+  MapPin,
+  Search,
+  Star,
+} from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
@@ -46,11 +56,21 @@ const TRIP_DAYS = {
 
 type TripId = keyof typeof TRIP_DAYS;
 
-const SHEET_VISIBLE_HEIGHT: Record<SheetSnap, number> = {
-  collapsed: 132,
-  expanded: Number.POSITIVE_INFINITY,
-  middle: 380,
-};
+const SHEET_FLING_VELOCITY = 0.75;
+const SHEET_MIN_FLING_DISTANCE = 64;
+const SHEET_MIN_DRAG_INTENT = 18;
+
+function getSheetVisibleHeight(snap: SheetSnap): number {
+  if (snap === "expanded") {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (snap === "middle") {
+    return (window.innerHeight - 72) * 0.55;
+  }
+
+  return 132;
+}
 
 function getSheetOffset(snap: SheetSnap): number {
   if (snap === "expanded") {
@@ -59,7 +79,7 @@ function getSheetOffset(snap: SheetSnap): number {
 
   const sheetHeight = window.innerHeight - 72;
 
-  return Math.max(0, sheetHeight - SHEET_VISIBLE_HEIGHT[snap]);
+  return Math.max(0, sheetHeight - getSheetVisibleHeight(snap));
 }
 
 function getDragOffset(snap: SheetSnap, delta: number): number {
@@ -69,14 +89,34 @@ function getDragOffset(snap: SheetSnap, delta: number): number {
   return Math.min(maximumOffset - baseOffset, Math.max(-baseOffset, delta));
 }
 
-function getNearestSnap(offset: number): SheetSnap {
-  const snaps: readonly SheetSnap[] = ["expanded", "middle", "collapsed"];
+function resolveSheetSnap(current: SheetSnap, delta: number, duration: number): SheetSnap {
+  const sheetHeight = window.innerHeight - 72;
+  const releasedOffset = getSheetOffset(current) + getDragOffset(current, delta);
+  const releasedRatio = releasedOffset / sheetHeight;
+  const velocity = delta / Math.max(1, duration);
+  const flingDistance = Math.max(SHEET_MIN_FLING_DISTANCE, window.innerHeight * 0.08);
 
-  return snaps.reduce((nearest, candidate) =>
-    Math.abs(getSheetOffset(candidate) - offset) < Math.abs(getSheetOffset(nearest) - offset)
-      ? candidate
-      : nearest,
-  );
+  if (Math.abs(delta) >= flingDistance && Math.abs(velocity) >= SHEET_FLING_VELOCITY) {
+    return delta < 0 ? "expanded" : "collapsed";
+  }
+
+  if (current === "collapsed" && delta <= -SHEET_MIN_DRAG_INTENT && releasedRatio > 0.28) {
+    return "middle";
+  }
+
+  if (current === "expanded" && delta >= SHEET_MIN_DRAG_INTENT && releasedRatio < 0.7) {
+    return "middle";
+  }
+
+  if (releasedRatio <= 0.28) {
+    return "expanded";
+  }
+
+  if (releasedRatio >= 0.7) {
+    return "collapsed";
+  }
+
+  return "middle";
 }
 
 export function PlaceDetailsPage(): React.JSX.Element {
@@ -93,19 +133,27 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [visitTime, setVisitTime] = useState(initialPlace.time);
   const [notes, setNotes] = useState("");
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
   const [tripId, setTripId] = useState<TripId>("kyoto");
   const [tripDay, setTripDay] = useState("2026-11-13");
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
+  const dragMovedRef = useRef(false);
+  const previousSheetSnapRef = useRef<SheetSnap>("middle");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const addDialogRef = useRef<HTMLDialogElement>(null);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
   const results = FRIDAY_STOPS.filter((place) =>
     place.name.toLowerCase().includes(submittedQuery.trim().toLowerCase()),
   );
+
+  useEffect(() => {
+    allowAnyOrientation();
+
+    return preferPortraitOrientation;
+  }, []);
 
   function selectPlace(id: string): void {
     const nextPlace = getPlace(id);
@@ -127,7 +175,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function openAddDialog(): void {
-    addDialogRef.current?.showModal();
+    previousSheetSnapRef.current = sheetSnap;
+    setAddPanelOpen(true);
+    setSheetSnap("expanded");
+  }
+
+  function closeAddPanel(): void {
+    setAddPanelOpen(false);
+    setSheetSnap(previousSheetSnapRef.current);
   }
 
   function changeTrip(nextTripId: TripId): void {
@@ -140,7 +195,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     const day = trip.days.find((candidate) => candidate.id === tripDay) ?? trip.days[0];
 
     setNotice(`Added to ${trip.name} · ${day.label} for this session.`);
-    addDialogRef.current?.close();
+    closeAddPanel();
   }
 
   function toggleSaved(): void {
@@ -160,7 +215,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {
     const target = event.target as HTMLElement;
 
-    if (target.closest("button, a, input, textarea, summary") !== null) {
+    if (addPanelOpen || target.closest("button, a, input, select, textarea, summary") !== null) {
       return;
     }
 
@@ -171,14 +226,20 @@ export function PlaceDetailsPage(): React.JSX.Element {
     event.preventDefault();
     dragStartRef.current = event.clientY;
     dragStartTimeRef.current = performance.now();
+    dragMovedRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function startHandleDrag(event: React.PointerEvent<HTMLButtonElement>): void {
+    if (addPanelOpen) {
+      return;
+    }
+
     event.stopPropagation();
     event.preventDefault();
     dragStartRef.current = event.clientY;
     dragStartTimeRef.current = performance.now();
+    dragMovedRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -199,7 +260,17 @@ export function PlaceDetailsPage(): React.JSX.Element {
 
     const delta = event.clientY - dragStartRef.current;
 
+    if (Math.abs(delta) > 6) {
+      dragMovedRef.current = true;
+    }
+
     setDragOffset(getDragOffset(sheetSnap, delta));
+  }
+
+  function cancelSheetDrag(): void {
+    dragStartRef.current = null;
+    dragMovedRef.current = false;
+    setDragOffset(0);
   }
 
   function finishSheetDrag(event: React.PointerEvent<HTMLElement>): void {
@@ -208,23 +279,25 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
 
     const delta = event.clientY - dragStartRef.current;
-    const duration = Math.max(1, performance.now() - dragStartTimeRef.current);
-    const velocity = delta / duration;
-    const releasedOffset = getSheetOffset(sheetSnap) + getDragOffset(sheetSnap, delta);
+    const duration = performance.now() - dragStartTimeRef.current;
 
     dragStartRef.current = null;
     setDragOffset(0);
 
-    if (velocity < -0.5) {
-      setSheetSnap("expanded");
-    } else if (velocity > 0.5) {
-      setSheetSnap("collapsed");
-    } else {
-      setSheetSnap(getNearestSnap(releasedOffset));
-    }
+    setSheetSnap(resolveSheetSnap(sheetSnap, delta, duration));
   }
 
   function cycleSheet(): void {
+    if (addPanelOpen) {
+      return;
+    }
+
+    if (dragMovedRef.current) {
+      dragMovedRef.current = false;
+
+      return;
+    }
+
     setSheetSnap((current) => {
       if (current === "collapsed") {
         return "middle";
@@ -242,7 +315,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     <main className="places-page">
       <section className="places-page__map">
         <TripMap
-          bottomInset={sheetSnap === "expanded" ? 0 : SHEET_VISIBLE_HEIGHT[sheetSnap]}
+          bottomInset={sheetSnap === "expanded" ? 0 : getSheetVisibleHeight(sheetSnap)}
           onSelect={selectPlace}
           places={places}
           selectedId={selectedPlace.id}
@@ -303,8 +376,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
         aria-label="Place details"
         className="place-sheet"
         data-dragging={dragOffset === 0 ? undefined : "true"}
+        data-mode={addPanelOpen ? "add" : undefined}
         data-snap={sheetSnap}
-        onPointerCancel={finishSheetDrag}
+        onPointerCancel={cancelSheetDrag}
         onPointerDown={startSheetDrag}
         onPointerMove={moveSheet}
         onPointerUp={finishSheetDrag}
@@ -317,7 +391,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
             }
             className="place-sheet__handle-button"
             onClick={cycleSheet}
-            onPointerCancel={finishHandleDrag}
+            onPointerCancel={cancelSheetDrag}
             onPointerDown={startHandleDrag}
             onPointerMove={moveHandle}
             onPointerUp={finishHandleDrag}
@@ -357,124 +431,122 @@ export function PlaceDetailsPage(): React.JSX.Element {
         </div>
 
         <div className="place-sheet__content">
-          <div className="place-sheet__photos">
-            <img alt={selectedPlace.name} src={selectedPlace.image} />
-            <img alt={`${selectedPlace.name} surroundings`} src={selectedPlace.secondImage} />
-          </div>
-
-          <div className="place-sheet__actions">
-            <button className="place-sheet__primary" onClick={openAddDialog} type="button">
-              Add to trip
-            </button>
-            <button
-              className="place-sheet__secondary"
-              onClick={() => setNotice("Live directions are not connected yet.")}
-              type="button"
+          {addPanelOpen ? (
+            <form
+              className="add-place-panel"
+              onSubmit={(event) => {
+                event.preventDefault();
+                addToTrip();
+              }}
             >
-              Directions
-            </button>
-          </div>
+              <div className="add-place-panel__heading">
+                <button aria-label="Back to place details" onClick={closeAddPanel} type="button">
+                  <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.8} />
+                </button>
+                <div>
+                  <p>Add to trip</p>
+                  <h2>Choose a trip and day</h2>
+                </div>
+              </div>
 
-          <div className="place-sheet__row">
-            <MapPin aria-hidden="true" size={21} strokeWidth={1.8} />
-            <span>{selectedPlace.address}</span>
-          </div>
-          <div className="place-sheet__row">
-            <Clock aria-hidden="true" size={21} strokeWidth={1.8} />
-            <span>{selectedPlace.hours}</span>
-          </div>
-          <div className="place-sheet__row">
-            <CreditCard aria-hidden="true" size={21} strokeWidth={1.8} />
-            <span>Credit card · Cash</span>
-          </div>
-
-          <details className="place-sheet__edit">
-            <summary>Edit visit details</summary>
-            <div className="place-sheet__edit-fields">
               <label>
-                Visit time
-                <input
-                  onChange={(event) => setVisitTime(event.target.value)}
-                  type="time"
-                  value={visitTime}
-                />
+                Trip
+                <span className="add-place-panel__select">
+                  <select
+                    onChange={(event) => changeTrip(event.target.value as TripId)}
+                    value={tripId}
+                  >
+                    {Object.entries(TRIP_DAYS).map(([id, trip]) => (
+                      <option key={id} value={id}>
+                        {trip.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown aria-hidden="true" size={19} strokeWidth={1.8} />
+                </span>
               </label>
+
               <label>
-                Notes
-                <textarea
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Add a note for this visit"
-                  rows={2}
-                  value={notes}
-                />
+                Day
+                <span className="add-place-panel__select">
+                  <select onChange={(event) => setTripDay(event.target.value)} value={tripDay}>
+                    {TRIP_DAYS[tripId].days.map((day) => (
+                      <option key={day.id} value={day.id}>
+                        {day.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown aria-hidden="true" size={19} strokeWidth={1.8} />
+                </span>
               </label>
-            </div>
-          </details>
 
-          <details className="place-sheet__import">
-            <summary>
-              <Upload aria-hidden="true" size={19} strokeWidth={1.8} />
-              Import places
-            </summary>
-            <p>Import support is planned for KML, KMZ and Google Maps lists.</p>
-            <div aria-label="Planned import formats" className="place-sheet__formats">
-              <span>KML</span>
-              <span>KMZ</span>
-              <span>Maps list</span>
-            </div>
-          </details>
+              <button className="add-place-panel__confirm" type="submit">
+                Add to plan
+              </button>
+            </form>
+          ) : (
+            <>
+              <div className="place-sheet__photos">
+                <img alt={selectedPlace.name} src={selectedPlace.image} />
+                <img alt={`${selectedPlace.name} surroundings`} src={selectedPlace.secondImage} />
+              </div>
 
-          <p aria-live="polite" className="place-sheet__notice">
-            {notice}
-          </p>
+              <div className="place-sheet__actions">
+                <button className="place-sheet__primary" onClick={openAddDialog} type="button">
+                  Add to trip
+                </button>
+                <button
+                  className="place-sheet__secondary"
+                  onClick={() => setNotice("Live directions are not connected yet.")}
+                  type="button"
+                >
+                  Directions
+                </button>
+              </div>
+
+              <div className="place-sheet__row">
+                <MapPin aria-hidden="true" size={21} strokeWidth={1.8} />
+                <span>{selectedPlace.address}</span>
+              </div>
+              <div className="place-sheet__row">
+                <Clock aria-hidden="true" size={21} strokeWidth={1.8} />
+                <span>{selectedPlace.hours}</span>
+              </div>
+              <div className="place-sheet__row">
+                <CreditCard aria-hidden="true" size={21} strokeWidth={1.8} />
+                <span>Credit card · Cash</span>
+              </div>
+
+              <details className="place-sheet__edit">
+                <summary>Edit visit details</summary>
+                <div className="place-sheet__edit-fields">
+                  <label>
+                    Visit time
+                    <input
+                      onChange={(event) => setVisitTime(event.target.value)}
+                      type="time"
+                      value={visitTime}
+                    />
+                  </label>
+                  <label>
+                    Notes
+                    <textarea
+                      onChange={(event) => setNotes(event.target.value)}
+                      placeholder="Add a note for this visit"
+                      rows={2}
+                      value={notes}
+                    />
+                  </label>
+                </div>
+              </details>
+
+              <p aria-live="polite" className="place-sheet__notice">
+                {notice}
+              </p>
+            </>
+          )}
         </div>
       </section>
-
-      <dialog aria-labelledby="add-place-title" className="add-place-dialog" ref={addDialogRef}>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            addToTrip();
-          }}
-        >
-          <div aria-hidden="true" className="add-place-dialog__handle" />
-          <div className="add-place-dialog__heading">
-            <div>
-              <p>Add place</p>
-              <h2 id="add-place-title">Choose a trip and day</h2>
-            </div>
-            <button aria-label="Close" onClick={() => addDialogRef.current?.close()} type="button">
-              ×
-            </button>
-          </div>
-
-          <label>
-            Trip
-            <select onChange={(event) => changeTrip(event.target.value as TripId)} value={tripId}>
-              {Object.entries(TRIP_DAYS).map(([id, trip]) => (
-                <option key={id} value={id}>
-                  {trip.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Day
-            <select onChange={(event) => setTripDay(event.target.value)} value={tripDay}>
-              {TRIP_DAYS[tripId].days.map((day) => (
-                <option key={day.id} value={day.id}>
-                  {day.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button className="add-place-dialog__confirm" type="submit">
-            Add to plan
-          </button>
-        </form>
-      </dialog>
     </main>
   );
 }
