@@ -26,6 +26,7 @@ import {
 } from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 
+import { attachContentSheetDrag } from "./content-sheet-drag";
 import "./places.css";
 
 function getPlace(id: string | undefined): PlannedStop {
@@ -415,6 +416,22 @@ export function PlaceDetailsPage(): React.JSX.Element {
     toggleSavedPlace(selectedPlace.id);
   }
 
+  useEffect(() => {
+    const content = sheetContentRef.current;
+    if (sheetSnap !== "expanded" || addPanelOpen || mapExpanded || content === null) {
+      return;
+    }
+
+    return attachContentSheetDrag(content, {
+      onDrag: (delta) => setDragOffset(getDragOffset("expanded", delta)),
+      onRelease: (delta, duration) => {
+        setDragOffset(0);
+        setSheetSnap(resolveSheetSnap("expanded", delta, duration));
+      },
+      onCancel: () => setDragOffset(0),
+    });
+  }, [sheetSnap, addPanelOpen, mapExpanded]);
+
   function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {
     const target = event.target as HTMLElement;
 
@@ -769,8 +786,12 @@ export function PlaceDetailsPage(): React.JSX.Element {
               )}
 
               <div className="place-sheet__photos">
-                <img alt={selectedPlace.name} src={selectedPlace.image} />
-                <img alt={`${selectedPlace.name} surroundings`} src={selectedPlace.secondImage} />
+                <img alt={selectedPlace.name} draggable={false} src={selectedPlace.image} />
+                <img
+                  alt={`${selectedPlace.name} surroundings`}
+                  draggable={false}
+                  src={selectedPlace.secondImage}
+                />
               </div>
 
               <div className="place-sheet__actions">
