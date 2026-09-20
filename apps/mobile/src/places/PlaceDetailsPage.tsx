@@ -471,6 +471,11 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function cancelSheetDrag(): void {
+    // Automatic capture release after pointerup must not re-enable the drag's click.
+    if (dragStartRef.current === null) {
+      return;
+    }
+
     dragStartRef.current = null;
     dragMovedRef.current = false;
     setDragOffset(0);
