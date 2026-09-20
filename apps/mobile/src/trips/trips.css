@@ -156,6 +156,19 @@
   object-position: 50% 49%;
 }
 
+.featured-trip__summary {
+  display: block;
+  min-height: 44px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.featured-trip__summary:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .featured-trip__title {
   display: flex;
   align-items: center;
@@ -230,11 +243,6 @@
 
 .compact-trip p {
   margin-top: 0.1875rem;
-}
-
-.compact-trip > svg {
-  flex: none;
-  color: #778195;
 }
 
 .before-you-go > h2 {

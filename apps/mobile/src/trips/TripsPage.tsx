@@ -38,15 +38,19 @@ function FeaturedTrip({ trip }: TripCardProps): React.JSX.Element {
     <article className="featured-trip">
       <img alt={trip.imageAlt} className="featured-trip__image" src={trip.imageSrc} />
 
-      <div className="featured-trip__title">
-        <h2>{trip.name}</h2>
-        <ChevronRight aria-hidden="true" size={20} strokeWidth={1.8} />
-      </div>
-
-      <p>
-        {trip.dateLabel} · {trip.durationLabel}
-      </p>
-
+      <Link
+        aria-label={`Open ${trip.name} trip plan`}
+        className="featured-trip__summary"
+        to="/plan"
+      >
+        <div className="featured-trip__title">
+          <h2>{trip.name}</h2>
+          <ChevronRight aria-hidden="true" size={20} strokeWidth={1.8} />
+        </div>
+        <p>
+          {trip.dateLabel} · {trip.durationLabel}
+        </p>
+      </Link>
       <div className="featured-trip__members">
         <div>
           <img alt="Trip members" src="/images/members.png" />
@@ -70,8 +74,6 @@ function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
           {trip.dateLabel} · {trip.durationLabel}
         </p>
       </div>
-
-      <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
     </article>
   );
 }
