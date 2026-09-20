@@ -49,11 +49,24 @@ interface TripMapProps {
 
 type MapStatus = "loading" | "ready" | "error";
 
-function framePlaces(map: MapLibreMap, places: PlaceCollection, animated: boolean): void {
+function framePlaces(
+  map: MapLibreMap,
+  places: PlaceCollection,
+  animated: boolean,
+  bottomInset = 0,
+): void {
+  const cameraPadding = {
+    top: 36,
+    right: 36,
+    bottom: Math.max(64, bottomInset + 32),
+    left: 36,
+  };
+
   if (places.features.length === 0) {
     map.easeTo({
       center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
       duration: animated ? 350 : 0,
+      padding: cameraPadding,
       zoom: 13.4,
     });
 
@@ -86,7 +99,7 @@ function framePlaces(map: MapLibreMap, places: PlaceCollection, animated: boolea
     {
       duration: animated ? 350 : 0,
       maxZoom: 14,
-      padding: { top: 36, right: 100, bottom: 64, left: 36 },
+      padding: cameraPadding,
     },
   );
 }
@@ -156,6 +169,7 @@ export function TripMap({
   variant = "planner",
 }: TripMapProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
+  const bottomInsetRef = useRef(bottomInset);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(places);
   const selectRef = useRef(onSelect);
@@ -169,6 +183,7 @@ export function TripMap({
   placesRef.current = places;
   selectRef.current = onSelect;
   selectedIdRef.current = selectedId;
+  bottomInsetRef.current = bottomInset;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -372,7 +387,7 @@ export function TripMap({
           .then(() => {
             if (!disposed) {
               applySelection();
-              framePlaces(activeMap, placesRef.current, false);
+              framePlaces(activeMap, placesRef.current, false, bottomInsetRef.current);
               activeMap.triggerRepaint();
             }
           })
@@ -441,7 +456,7 @@ export function TripMap({
       .setData(places)
       .then(() => {
         if (mapRef.current === map) {
-          framePlaces(map, places, true);
+          framePlaces(map, places, true, bottomInsetRef.current);
           map.triggerRepaint();
         }
       })
@@ -452,6 +467,14 @@ export function TripMap({
         }
       });
   }, [places]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (map !== null) {
+      framePlaces(map, placesRef.current, true, bottomInset);
+    }
+  }, [bottomInset]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -489,7 +512,7 @@ export function TripMap({
     const map = mapRef.current;
 
     if (map !== null) {
-      framePlaces(map, placesRef.current, true);
+      framePlaces(map, placesRef.current, true, bottomInsetRef.current);
     }
   }
 
