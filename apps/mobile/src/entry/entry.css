@@ -1,12 +1,14 @@
 .entry-shell {
   display: grid;
   width: 100%;
-  min-height: 100dvh;
+  height: 100dvh;
+  min-height: 0;
   margin: 0 auto;
   padding: max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px))
     max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
   place-items: center;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   background: var(--color-surface);
 }
 
