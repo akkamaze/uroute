@@ -114,27 +114,6 @@
   line-height: 1.4;
 }
 
-.account-page__footer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 2rem 0 0.5rem;
-  text-align: center;
-}
-
-.account-page__footer .brand {
-  margin-bottom: 0.75rem;
-  transform: scale(0.82);
-}
-
-.account-page__footer p {
-  max-width: 280px;
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 0.75rem;
-  line-height: 1.45;
-}
-
 @media (max-height: 700px) {
   .account-profile {
     padding: 0.75rem 0 1rem;
@@ -148,9 +127,5 @@
   .account-menu > a,
   .account-menu > button {
     min-height: 62px;
-  }
-
-  .account-page__footer {
-    padding-top: 1.25rem;
   }
 }

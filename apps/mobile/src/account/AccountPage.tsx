@@ -2,7 +2,6 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { Bookmark, BriefcaseBusiness, ChevronRight, Download, LogOut } from "lucide-react";
 import { useState } from "react";
 
-import { Brand } from "../brand";
 import "./account.css";
 
 export function AccountPage(): React.JSX.Element {
@@ -79,11 +78,6 @@ export function AccountPage(): React.JSX.Element {
           {message}
         </p>
       ) : null}
-
-      <footer className="account-page__footer">
-        <Brand />
-        <p>Account sign-in and sync are not connected yet.</p>
-      </footer>
     </section>
   );
 }
