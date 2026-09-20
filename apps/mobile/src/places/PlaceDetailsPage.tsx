@@ -1,4 +1,4 @@
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
@@ -121,6 +121,11 @@ function resolveSheetSnap(current: SheetSnap, delta: number, duration: number): 
 export function PlaceDetailsPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/places" });
+  const selectionHistoryBoundary = useRouterState({
+    select: (state) =>
+      "placeSelectionEntry" in state.location.state &&
+      state.location.state.placeSelectionEntry === true,
+  });
   const initialPlace = getPlace(search.place);
   const initialId = initialPlace.id;
   const plan = useKyotoPlan();
@@ -128,10 +133,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
     search.day === undefined
       ? undefined
       : plan.days[search.day].find((visit) => visit.placeId === initialId);
-  const [selectedId, setSelectedId] = useState(initialId);
-  const [draftQuery, setDraftQuery] = useState("");
-  const [submittedQuery, setSubmittedQuery] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
+  const selectedId = initialId;
+  const [draftQuery, setDraftQuery] = useState(search.q ?? "");
+  const submittedQuery = search.q ?? "";
+  const searchActive = search.search === "open";
   const savedIds = useSavedPlaceIds();
   const [notice, setNotice] = useState("");
   const [addedDay, setAddedDay] = useState<KyotoDay | null>(null);
@@ -156,6 +161,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const addWasOpenRef = useRef(false);
   const previousContentScrollRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchBarRef = useRef<HTMLDivElement>(null);
+  const searchOpenedHereRef = useRef(false);
+  const searchWasOpenRef = useRef(false);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
@@ -178,25 +186,87 @@ export function PlaceDetailsPage(): React.JSX.Element {
     return preferPortraitOrientation;
   }, []);
 
-  function selectPlace(id: string): void {
-    setSelectedId(id);
-    setDraftQuery("");
-    setSubmittedQuery("");
-    setSearchActive(false);
-    setVisitTime("");
+  useLayoutEffect(() => {
+    setVisitTime(initialVisit?.time ?? "");
+    setNotes(initialVisit?.notes ?? "");
     setTimeEdited(false);
     setNotesEdited(false);
-    setNotes("");
     setNotice("");
     setAddedDay(null);
-    void navigate({ replace: true, search: { place: id }, to: "/places" });
+  }, [initialId, search.day, initialVisit?.time, initialVisit?.notes]);
+
+  useLayoutEffect(() => {
+    if (searchActive) {
+      searchWasOpenRef.current = true;
+      setDraftQuery(submittedQuery);
+      if (submittedQuery === "") {
+        searchInputRef.current?.focus({ preventScroll: true });
+      }
+    } else if (searchWasOpenRef.current) {
+      searchWasOpenRef.current = false;
+      searchOpenedHereRef.current = false;
+      setDraftQuery("");
+      searchBarRef.current?.focus({ preventScroll: true });
+    }
+  }, [searchActive, submittedQuery]);
+
+  function selectPlace(id: string): void {
+    void navigate({
+      replace: true,
+      search: { place: id, ...(search.day === undefined ? {} : { day: search.day }) },
+      to: "/places",
+      state: (current) => ({
+        ...current,
+        placeSelectionEntry:
+          searchActive ||
+          ("placeSelectionEntry" in current && current.placeSelectionEntry === true),
+      }),
+      resetScroll: false,
+    });
+  }
+
+  function openSearch(): void {
+    if (searchActive) {
+      return;
+    }
+    searchOpenedHereRef.current = true;
+    void navigate({
+      to: "/places",
+      state: (current) => current,
+      search: { ...search, place: selectedId, search: "open" },
+      resetScroll: false,
+    });
+  }
+
+  function submitSearch(): void {
+    const query = draftQuery.trim().slice(0, 120);
+    void navigate({
+      to: "/places",
+      state: (current) => current,
+      search: {
+        place: selectedId,
+        ...(search.day === undefined ? {} : { day: search.day }),
+        search: "open",
+        ...(query === "" ? {} : { q: query }),
+      },
+      replace: true,
+      resetScroll: false,
+    });
+    searchInputRef.current?.blur();
   }
 
   function cancelSearch(): void {
-    setDraftQuery("");
-    setSubmittedQuery("");
-    setSearchActive(false);
-    searchInputRef.current?.blur();
+    if (searchOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/places",
+        state: (current) => current,
+        search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
+        replace: true,
+        resetScroll: false,
+      });
+    }
   }
 
   useLayoutEffect(() => {
@@ -218,6 +288,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     addOpenedHereRef.current = true;
     void navigate({
       to: "/places",
+      state: (current) => current,
       search: { ...search, place: selectedId, add: "open" },
       resetScroll: false,
     });
@@ -229,6 +300,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     } else {
       void navigate({
         to: "/places",
+        state: (current) => current,
         search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
         replace: true,
         resetScroll: false,
@@ -379,12 +451,18 @@ export function PlaceDetailsPage(): React.JSX.Element {
   return (
     <main
       className="places-page"
-      data-swipe-back-ignore={addPanelOpen ? "true" : undefined}
+      data-swipe-back-ignore={
+        addPanelOpen || searchActive || selectionHistoryBoundary ? "true" : undefined
+      }
       onKeyDown={(event) => {
-        if (addPanelOpen && event.key === "Escape" && !event.defaultPrevented) {
+        if ((addPanelOpen || searchActive) && event.key === "Escape" && !event.defaultPrevented) {
           event.preventDefault();
           event.stopPropagation();
-          closeAddPanel();
+          if (addPanelOpen) {
+            closeAddPanel();
+          } else {
+            cancelSearch();
+          }
         }
       }}
     >
@@ -404,7 +482,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
           variant="discovery"
         />
 
-        <div className="place-search" data-active={searchActive ? "true" : undefined}>
+        <div
+          aria-label="Place search"
+          className="place-search"
+          data-active={searchActive ? "true" : undefined}
+          ref={searchBarRef}
+          role="search"
+          tabIndex={-1}
+        >
           {searchActive ? (
             <button
               aria-label="Cancel search"
@@ -420,15 +505,16 @@ export function PlaceDetailsPage(): React.JSX.Element {
             className="place-search__form"
             onSubmit={(event) => {
               event.preventDefault();
-              setSubmittedQuery(draftQuery);
+              submitSearch();
             }}
           >
             <Search aria-hidden="true" size={20} strokeWidth={1.8} />
             <input
               aria-label="Search places"
               enterKeyHint="search"
-              onFocus={() => setSearchActive(true)}
+              onFocus={openSearch}
               onChange={(event) => setDraftQuery(event.target.value)}
+              maxLength={120}
               placeholder="Search places"
               ref={searchInputRef}
               type="search"
