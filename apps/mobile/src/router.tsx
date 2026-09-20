@@ -5,15 +5,8 @@ import {
   lazyRouteComponent,
 } from "@tanstack/react-router";
 
-import {
-  AppRoot,
-  JournalPage,
-  MobileShell,
-  RootRedirect,
-  SavedPage,
-  TripsPage,
-  UserPage,
-} from "./routes";
+import { AppRoot, JournalPage, MobileShell, RootRedirect, SavedPage, UserPage } from "./routes";
+import { TripsPage } from "./trips/TripsPage";
 
 interface LoginSearch {
   profile?: "open";

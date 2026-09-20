@@ -72,24 +72,6 @@ export function RootRedirect(): React.JSX.Element {
   return <Navigate replace to="/loading" />;
 }
 
-export function TripsPage(): React.JSX.Element {
-  return (
-    <section className="preview-page">
-      <h1>Trips</h1>
-
-      <p>Preview state: Trips content will appear here.</p>
-
-      <Link className="preview-link" to="/plan">
-        Open plan
-      </Link>
-
-      <Link className="preview-link preview-link--secondary" to="/loading">
-        Preview loading
-      </Link>
-    </section>
-  );
-}
-
 export function SavedPage(): React.JSX.Element {
   return <PreviewPage description="Saved content will appear here." title="Saved" />;
 }
