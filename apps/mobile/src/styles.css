@@ -142,6 +142,12 @@ a {
   text-decoration: none;
 }
 
+.preview-link--secondary {
+  margin-left: var(--space-4);
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
 .plan-page {
   min-height: 100%;
   background: var(--color-surface);

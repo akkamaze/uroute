@@ -5,47 +5,67 @@ import {
   lazyRouteComponent,
 } from "@tanstack/react-router";
 
-import { JournalPage, MobileShell, RootRedirect, SavedPage, TripsPage, UserPage } from "./routes";
+import {
+  AppRoot,
+  JournalPage,
+  MobileShell,
+  RootRedirect,
+  SavedPage,
+  TripsPage,
+  UserPage,
+} from "./routes";
 
-const rootRoute = createRootRoute({ component: MobileShell });
+const rootRoute = createRootRoute({ component: AppRoot });
+
+const loadingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/loading",
+  component: lazyRouteComponent(() => import("./entry/LoadingPage"), "LoadingPage"),
+});
+
+const mobileShellRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "mobile-shell",
+  component: MobileShell,
+});
 
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/",
   component: RootRedirect,
 });
 
 const tripsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/trips",
   component: TripsPage,
 });
 
 const planRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/plan",
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
 const savedRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/saved",
   component: SavedPage,
 });
 
 const journalRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/journal",
   component: JournalPage,
 });
 
 const userRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => mobileShellRoute,
   path: "/user",
   component: UserPage,
 });
 
-const routeTree = rootRoute.addChildren([
+const mobileShellTree = mobileShellRoute.addChildren([
   indexRoute,
   tripsRoute,
   planRoute,
@@ -53,6 +73,8 @@ const routeTree = rootRoute.addChildren([
   journalRoute,
   userRoute,
 ]);
+
+const routeTree = rootRoute.addChildren([loadingRoute, mobileShellTree]);
 
 export const router = createRouter({ routeTree });
 

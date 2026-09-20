@@ -33,6 +33,10 @@ function PreviewPage({ description, title }: PreviewPageProps): React.JSX.Elemen
   );
 }
 
+export function AppRoot(): React.JSX.Element {
+  return <Outlet />;
+}
+
 export function MobileShell(): React.JSX.Element {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
@@ -77,6 +81,10 @@ export function TripsPage(): React.JSX.Element {
 
       <Link className="preview-link" to="/plan">
         Open plan
+      </Link>
+
+      <Link className="preview-link preview-link--secondary" to="/loading">
+        Preview loading
       </Link>
     </section>
   );
