@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Clock,
   CreditCard,
+  ExternalLink,
   MapPin,
   Search,
   Star,
@@ -158,6 +159,15 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
+  const destination = places.features.find((place) => place.properties.id === selectedPlace.id)
+    ?.geometry.coordinates;
+  const directionsQuery = new URLSearchParams({
+    api: "1",
+    destination:
+      destination === undefined
+        ? `${selectedPlace.name}, ${selectedPlace.address}, Kyoto, Japan`
+        : `${destination[1]},${destination[0]}`,
+  });
   const results = FRIDAY_STOPS.filter((place) =>
     place.name.toLowerCase().includes(submittedQuery.trim().toLowerCase()),
   );
@@ -601,16 +611,17 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 >
                   Add to trip
                 </button>
-                <button
+                <a
+                  aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
                   className="place-sheet__secondary"
-                  onClick={() => {
-                    setAddedDay(null);
-                    setNotice("Live directions are not connected yet.");
-                  }}
-                  type="button"
+                  href={`https://www.google.com/maps/dir/?${directionsQuery.toString()}`}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                  title="Open directions in Google Maps"
                 >
                   Directions
-                </button>
+                  <ExternalLink aria-hidden="true" size={16} strokeWidth={1.8} />
+                </a>
               </div>
 
               <div className="place-sheet__row">
