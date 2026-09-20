@@ -20,6 +20,32 @@ function getPlace(id: string | undefined): PlannedStop {
 
 type SheetSnap = "collapsed" | "expanded" | "middle";
 
+const TRIP_DAYS = {
+  kyoto: {
+    days: [
+      { id: "2026-11-12", label: "Thursday, 12 November" },
+      { id: "2026-11-13", label: "Friday, 13 November" },
+      { id: "2026-11-14", label: "Saturday, 14 November" },
+      { id: "2026-11-15", label: "Sunday, 15 November" },
+      { id: "2026-11-16", label: "Monday, 16 November" },
+    ],
+    label: "Kyoto · 12–16 Nov 2026",
+    name: "Kyoto",
+  },
+  danang: {
+    days: [
+      { id: "2026-12-04", label: "Friday, 4 December" },
+      { id: "2026-12-05", label: "Saturday, 5 December" },
+      { id: "2026-12-06", label: "Sunday, 6 December" },
+      { id: "2026-12-07", label: "Monday, 7 December" },
+    ],
+    label: "Da Nang · 4–7 Dec 2026",
+    name: "Da Nang",
+  },
+} as const;
+
+type TripId = keyof typeof TRIP_DAYS;
+
 const SHEET_VISIBLE_HEIGHT: Record<SheetSnap, number> = {
   collapsed: 132,
   expanded: Number.POSITIVE_INFINITY,
@@ -67,10 +93,13 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [visitTime, setVisitTime] = useState(initialPlace.time);
   const [notes, setNotes] = useState("");
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
+  const [tripId, setTripId] = useState<TripId>("kyoto");
+  const [tripDay, setTripDay] = useState("2026-11-13");
   const [dragOffset, setDragOffset] = useState(0);
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const addDialogRef = useRef<HTMLDialogElement>(null);
   const places = useMemo(createSamplePlaces, []);
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
@@ -95,6 +124,23 @@ export function PlaceDetailsPage(): React.JSX.Element {
     setSubmittedQuery("");
     setSearchActive(false);
     searchInputRef.current?.blur();
+  }
+
+  function openAddDialog(): void {
+    addDialogRef.current?.showModal();
+  }
+
+  function changeTrip(nextTripId: TripId): void {
+    setTripId(nextTripId);
+    setTripDay(TRIP_DAYS[nextTripId].days[0].id);
+  }
+
+  function addToTrip(): void {
+    const trip = TRIP_DAYS[tripId];
+    const day = trip.days.find((candidate) => candidate.id === tripDay) ?? trip.days[0];
+
+    setNotice(`Added to ${trip.name} · ${day.label} for this session.`);
+    addDialogRef.current?.close();
   }
 
   function toggleSaved(): void {
@@ -317,12 +363,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
           </div>
 
           <div className="place-sheet__actions">
-            <button
-              className="place-sheet__primary"
-              onClick={() => setNotice("Add-to-day is not connected yet.")}
-              type="button"
-            >
-              Add to Friday
+            <button className="place-sheet__primary" onClick={openAddDialog} type="button">
+              Add to trip
             </button>
             <button
               className="place-sheet__secondary"
@@ -387,6 +429,52 @@ export function PlaceDetailsPage(): React.JSX.Element {
           </p>
         </div>
       </section>
+
+      <dialog aria-labelledby="add-place-title" className="add-place-dialog" ref={addDialogRef}>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            addToTrip();
+          }}
+        >
+          <div aria-hidden="true" className="add-place-dialog__handle" />
+          <div className="add-place-dialog__heading">
+            <div>
+              <p>Add place</p>
+              <h2 id="add-place-title">Choose a trip and day</h2>
+            </div>
+            <button aria-label="Close" onClick={() => addDialogRef.current?.close()} type="button">
+              ×
+            </button>
+          </div>
+
+          <label>
+            Trip
+            <select onChange={(event) => changeTrip(event.target.value as TripId)} value={tripId}>
+              {Object.entries(TRIP_DAYS).map(([id, trip]) => (
+                <option key={id} value={id}>
+                  {trip.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Day
+            <select onChange={(event) => setTripDay(event.target.value)} value={tripDay}>
+              {TRIP_DAYS[tripId].days.map((day) => (
+                <option key={day.id} value={day.id}>
+                  {day.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button className="add-place-dialog__confirm" type="submit">
+            Add to plan
+          </button>
+        </form>
+      </dialog>
     </main>
   );
 }
