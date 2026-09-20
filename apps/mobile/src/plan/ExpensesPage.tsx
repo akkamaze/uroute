@@ -1,3 +1,6 @@
+import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
+import { advanceFormField } from "../keyboard/advance-form-field";
+import "../keyboard/keyboard-dialog.css";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Hotel, Plus, TrainFront, Utensils, Wallet, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -70,6 +73,9 @@ export function ExpensesPage(): React.JSX.Element {
   }
 
   function closeEditor(): void {
+    if (!beginDialogDismissal(dialogRef.current)) {
+      return;
+    }
     setError("");
     if (openedHereRef.current) {
       window.history.back();
@@ -153,8 +159,10 @@ export function ExpensesPage(): React.JSX.Element {
       <dialog
         aria-labelledby="expense-editor-title"
         className="expense-editor"
+        data-keyboard-dialog="center"
         onCancel={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           closeEditor();
         }}
         onClick={(event) => {
@@ -164,7 +172,12 @@ export function ExpensesPage(): React.JSX.Element {
         }}
         ref={dialogRef}
       >
-        <form noValidate onSubmit={saveExpense}>
+        <form
+          className="keyboard-dialog-form"
+          noValidate
+          onKeyDown={advanceFormField}
+          onSubmit={saveExpense}
+        >
           <header>
             <div>
               <h2 id="expense-editor-title">Add expense</h2>
@@ -179,66 +192,70 @@ export function ExpensesPage(): React.JSX.Element {
               <X aria-hidden="true" size={21} />
             </button>
           </header>
-          <label className="expense-editor__field">
-            What was it for?
-            <input
-              autoComplete="off"
-              maxLength={100}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Lunch at Nishiki Market"
-              ref={descriptionRef}
-              value={description}
-            />
-          </label>
-          <label className="expense-editor__field">
-            Amount
-            <span className="expense-editor__amount">
-              <span aria-hidden="true">¥</span>
+          <div className="keyboard-dialog-body" data-keyboard-scroll>
+            <label className="expense-editor__field">
+              What was it for?
               <input
-                aria-describedby={error.length > 0 ? "expense-editor-error" : undefined}
-                inputMode="numeric"
-                maxLength={7}
-                onChange={(event) => setAmount(event.target.value)}
-                placeholder="0"
-                value={amount}
+                autoComplete="off"
+                enterKeyHint="next"
+                maxLength={100}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Lunch at Nishiki Market"
+                ref={descriptionRef}
+                value={description}
               />
-              <span>JPY</span>
-            </span>
-          </label>
-          <fieldset className="expense-editor__categories">
-            <legend>Category</legend>
-            <div>
-              {CATEGORIES.map((item) => {
-                const Icon = item.icon;
+            </label>
+            <label className="expense-editor__field">
+              Amount
+              <span className="expense-editor__amount">
+                <span aria-hidden="true">¥</span>
+                <input
+                  aria-describedby={error.length > 0 ? "expense-editor-error" : undefined}
+                  enterKeyHint="done"
+                  inputMode="numeric"
+                  maxLength={7}
+                  onChange={(event) => setAmount(event.target.value)}
+                  placeholder="0"
+                  value={amount}
+                />
+                <span>JPY</span>
+              </span>
+            </label>
+            <fieldset className="expense-editor__categories">
+              <legend>Category</legend>
+              <div>
+                {CATEGORIES.map((item) => {
+                  const Icon = item.icon;
 
-                return (
-                  <label
-                    className={
-                      category === item.id
-                        ? "expense-category expense-category--selected"
-                        : "expense-category"
-                    }
-                    key={item.id}
-                  >
-                    <input
-                      checked={category === item.id}
-                      name="expense-category"
-                      onChange={() => setCategory(item.id)}
-                      type="radio"
-                      value={item.id}
-                    />
-                    <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
-                    <span>{item.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-          {error.length > 0 ? (
-            <p className="expense-editor__error" id="expense-editor-error" role="alert">
-              {error}
-            </p>
-          ) : null}
+                  return (
+                    <label
+                      className={
+                        category === item.id
+                          ? "expense-category expense-category--selected"
+                          : "expense-category"
+                      }
+                      key={item.id}
+                    >
+                      <input
+                        checked={category === item.id}
+                        name="expense-category"
+                        onChange={() => setCategory(item.id)}
+                        type="radio"
+                        value={item.id}
+                      />
+                      <Icon aria-hidden="true" size={18} strokeWidth={1.8} />
+                      <span>{item.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+            {error.length > 0 ? (
+              <p className="expense-editor__error" id="expense-editor-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </div>
           <button className="expense-add" type="submit">
             Add to estimate
           </button>

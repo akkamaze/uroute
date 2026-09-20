@@ -1,0 +1,63 @@
+dialog[data-keyboard-dialog] {
+  position: fixed;
+  top: calc(var(--keyboard-viewport-top, 0px) + 16px + env(safe-area-inset-top, 0px));
+  bottom: calc(var(--keyboard-viewport-bottom, 0px) + 16px + env(safe-area-inset-bottom, 0px));
+  height: fit-content;
+  max-height: max(
+    0px,
+    calc(
+      var(--keyboard-viewport-height, 100dvh) - 32px - env(safe-area-inset-top, 0px) -
+        env(safe-area-inset-bottom, 0px)
+    )
+  );
+  overflow: hidden;
+}
+
+dialog[data-keyboard-dialog="sheet"] {
+  top: auto;
+  bottom: var(--keyboard-viewport-bottom, 0px);
+  max-height: max(
+    0px,
+    calc(var(--keyboard-viewport-height, 100dvh) - 24px - env(safe-area-inset-top, 0px))
+  );
+}
+
+dialog[data-keyboard-dialog] .keyboard-dialog-form,
+dialog[data-keyboard-dialog] .journal-editor__surface {
+  display: flex;
+  min-height: 0;
+  max-height: inherit;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+dialog[data-keyboard-dialog] .journal-editor__surface > form {
+  flex: 1;
+}
+
+dialog[data-keyboard-dialog] .keyboard-dialog-form > header,
+dialog[data-keyboard-dialog] .keyboard-dialog-form > button,
+dialog[data-keyboard-dialog] .journal-editor__surface > header {
+  flex: none;
+}
+
+dialog[data-keyboard-dialog] .keyboard-dialog-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--keyboard-form-gap, 0.875rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  margin: -2px;
+}
+
+.expense-editor[data-keyboard-dialog] {
+  --keyboard-form-gap: 20px;
+}
+
+dialog[data-keyboard-dialog] input,
+dialog[data-keyboard-dialog] textarea {
+  font-size: 1rem;
+}

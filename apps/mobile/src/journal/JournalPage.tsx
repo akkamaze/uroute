@@ -1,3 +1,6 @@
+import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
+import { advanceFormField } from "../keyboard/advance-form-field";
+import "../keyboard/keyboard-dialog.css";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, PenLine, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -84,6 +87,12 @@ function JournalEditor({
     }
   }, [open]);
 
+  function closeEditorSurface(): void {
+    if (beginDialogDismissal(dialogRef.current)) {
+      onClose();
+    }
+  }
+
   function saveDraft(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (title.trim().length === 0 || note.trim().length === 0) {
@@ -107,21 +116,23 @@ function JournalEditor({
       setNote("");
     }
     setMessage("");
-    onClose();
+    closeEditorSurface();
   }
 
   return (
     <dialog
       aria-labelledby="journal-editor-title"
       className="journal-editor"
+      data-keyboard-dialog="sheet"
       ref={dialogRef}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        event.stopPropagation();
+        closeEditorSurface();
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          closeEditorSurface();
         }
       }}
     >
@@ -134,42 +145,52 @@ function JournalEditor({
                 ? "Write a memory"
                 : "Edit memory"}
           </h2>
-          <button aria-label="Close editor" onClick={onClose} type="button">
+          <button aria-label="Close editor" onClick={closeEditorSurface} type="button">
             <X aria-hidden="true" size={22} strokeWidth={1.8} />
           </button>
         </header>
         {missing ? (
           <p className="journal-editor__missing">This memory is no longer saved on this device.</p>
         ) : (
-          <form onSubmit={saveDraft}>
-            <label>
-              Title
-              <input
-                maxLength={160}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="A morning in Kyoto"
-                ref={titleInputRef}
-                value={title}
-              />
-            </label>
-            <label>
-              Date
-              <input onChange={(event) => setDate(event.target.value)} type="date" value={date} />
-            </label>
-            <label>
-              Memory
-              <textarea
-                onChange={(event) => setNote(event.target.value)}
-                placeholder="What made this moment special?"
-                rows={5}
-                value={note}
-              />
-            </label>
-            {message.length > 0 ? (
-              <p role="alert" className="journal-editor__message">
-                {message}
-              </p>
-            ) : null}
+          <form className="keyboard-dialog-form" onKeyDown={advanceFormField} onSubmit={saveDraft}>
+            <div className="keyboard-dialog-body" data-keyboard-scroll>
+              <label>
+                Title
+                <input
+                  enterKeyHint="next"
+                  maxLength={160}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="A morning in Kyoto"
+                  ref={titleInputRef}
+                  value={title}
+                />
+              </label>
+              <label>
+                Date
+                <input
+                  enterKeyHint="next"
+                  onChange={(event) => setDate(event.target.value)}
+                  type="date"
+                  value={date}
+                />
+              </label>
+              <label>
+                Memory
+                <textarea
+                  enterKeyHint="enter"
+                  inputMode="text"
+                  onChange={(event) => setNote(event.target.value)}
+                  placeholder="What made this moment special?"
+                  rows={5}
+                  value={note}
+                />
+              </label>
+              {message.length > 0 ? (
+                <p role="alert" className="journal-editor__message">
+                  {message}
+                </p>
+              ) : null}
+            </div>
             <button className="journal-editor__save" type="submit">
               {draft === undefined ? "Save draft" : "Save changes"}
             </button>

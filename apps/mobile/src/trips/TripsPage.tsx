@@ -1,3 +1,6 @@
+import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
+import { advanceFormField } from "../keyboard/advance-form-field";
+import "../keyboard/keyboard-dialog.css";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { ChevronRight, ClipboardCheck, Plus, Search, Tickets, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -209,6 +212,9 @@ export function TripsPage(): React.JSX.Element {
   }
 
   function closeNewTrip(): void {
+    if (!beginDialogDismissal(newTripDialogRef.current)) {
+      return;
+    }
     setFormMessage("");
     if (newTripOpenedHereRef.current) {
       window.history.back();
@@ -345,8 +351,10 @@ export function TripsPage(): React.JSX.Element {
       <dialog
         aria-labelledby="new-trip-title"
         className="new-trip-dialog"
+        data-keyboard-dialog="center"
         onCancel={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           closeNewTrip();
         }}
         onClick={(event) => {
@@ -356,7 +364,11 @@ export function TripsPage(): React.JSX.Element {
         }}
         ref={newTripDialogRef}
       >
-        <form className="new-trip-form" onSubmit={createDraftTrip}>
+        <form
+          className="new-trip-form keyboard-dialog-form"
+          onKeyDown={advanceFormField}
+          onSubmit={createDraftTrip}
+        >
           <header>
             <div>
               <h2 id="new-trip-title">New trip</h2>
@@ -367,41 +379,45 @@ export function TripsPage(): React.JSX.Element {
             </button>
           </header>
 
-          <label>
-            Destination
-            <input
-              onChange={(event) => setDestination(event.target.value)}
-              placeholder="Where are you going?"
-              ref={destinationRef}
-              value={destination}
-            />
-          </label>
+          <div className="keyboard-dialog-body" data-keyboard-scroll>
+            <label>
+              Destination
+              <input
+                enterKeyHint="next"
+                onChange={(event) => setDestination(event.target.value)}
+                placeholder="Where are you going?"
+                ref={destinationRef}
+                value={destination}
+              />
+            </label>
 
-          <div className="new-trip-form__dates">
-            <label>
-              Start date
-              <input
-                onChange={(event) => setStartDate(event.target.value)}
-                type="date"
-                value={startDate}
-              />
-            </label>
-            <label>
-              End date
-              <input
-                onChange={(event) => setEndDate(event.target.value)}
-                type="date"
-                value={endDate}
-              />
-            </label>
+            <div className="new-trip-form__dates">
+              <label>
+                Start date
+                <input
+                  enterKeyHint="next"
+                  onChange={(event) => setStartDate(event.target.value)}
+                  type="date"
+                  value={startDate}
+                />
+              </label>
+              <label>
+                End date
+                <input
+                  enterKeyHint="done"
+                  onChange={(event) => setEndDate(event.target.value)}
+                  type="date"
+                  value={endDate}
+                />
+              </label>
+            </div>
+
+            {formMessage.length > 0 ? (
+              <p aria-live="polite" className="new-trip-form__message">
+                {formMessage}
+              </p>
+            ) : null}
           </div>
-
-          {formMessage.length > 0 ? (
-            <p aria-live="polite" className="new-trip-form__message">
-              {formMessage}
-            </p>
-          ) : null}
-
           <button className="new-trip-form__save" type="submit">
             Create draft trip
           </button>
