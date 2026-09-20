@@ -1,3 +1,5 @@
+import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
+import "../keyboard/keyboard-dialog.css";
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -67,10 +69,19 @@ export function PackingListDialog({ open, onClose }: PackingListDialogProps): Re
   }, [open]);
   useEffect(() => {
     if (scrollNewItemRef.current) {
-      listRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
+      const list = listRef.current;
+      if (list !== null) {
+        list.scrollTop = list.scrollHeight;
+      }
       scrollNewItemRef.current = false;
     }
   }, [items.length]);
+  function closeSurface(): void {
+    if (beginDialogDismissal(dialogRef.current)) {
+      onClose();
+    }
+  }
+
   function updateItems(next: readonly PackingItem[]): void {
     setItems(next);
     try {
@@ -84,34 +95,36 @@ export function PackingListDialog({ open, onClose }: PackingListDialogProps): Re
     event.preventDefault();
     const name = label.trim();
     if (name.length === 0) {
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
 
       return;
     }
     if (items.some((item) => item.label.toLocaleLowerCase() === name.toLocaleLowerCase())) {
       setMessage("This item is already on your list.");
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
 
       return;
     }
     scrollNewItemRef.current = true;
     updateItems([...items, { id: crypto.randomUUID(), label: name, packed: false }]);
     setLabel("");
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }
 
   return (
     <dialog
       aria-labelledby="packing-title"
       className="packing-dialog"
+      data-keyboard-dialog="sheet"
       ref={dialogRef}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        event.stopPropagation();
+        closeSurface();
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          closeSurface();
         }
       }}
     >
@@ -126,7 +139,7 @@ export function PackingListDialog({ open, onClose }: PackingListDialogProps): Re
           <button
             aria-label="Close packing list"
             className="packing-dialog__close"
-            onClick={onClose}
+            onClick={closeSurface}
             type="button"
           >
             <X aria-hidden="true" size={21} />

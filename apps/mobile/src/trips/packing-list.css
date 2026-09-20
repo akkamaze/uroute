@@ -17,7 +17,11 @@
 }
 .packing-dialog__surface {
   display: flex;
-  max-height: min(640px, calc(100dvh - 24px - env(safe-area-inset-top, 0px)));
+  min-height: 0;
+  max-height: min(
+    640px,
+    calc(var(--keyboard-viewport-height, 100dvh) - 24px - env(safe-area-inset-top, 0px))
+  );
   flex-direction: column;
 }
 .packing-dialog header {
