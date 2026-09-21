@@ -28,3 +28,6 @@ bun run format
 bun run format:check
 bun run test:api
 ```
+
+See [`docs/authentication.md`](docs/authentication.md) for Google OAuth,
+PostgreSQL environment isolation, migrations, and local API configuration.

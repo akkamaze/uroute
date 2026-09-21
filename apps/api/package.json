@@ -8,12 +8,17 @@
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build src/index.ts --target bun --outdir dist"
+    "build": "bun build src/index.ts --target bun --outdir dist",
+    "db:plan": "bun src/auth/migrate.ts",
+    "db:migrate": "bun src/auth/migrate.ts --apply"
   },
   "dependencies": {
-    "elysia": "1.4.30"
+    "better-auth": "1.7.4",
+    "elysia": "1.4.30",
+    "pg": "8.23.0"
   },
   "devDependencies": {
-    "@types/bun": "1.3.14"
+    "@types/bun": "1.3.14",
+    "@types/pg": "8.23.1"
   }
 }
