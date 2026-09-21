@@ -110,6 +110,19 @@ test("browser back and forward safely restore place search query UI", async ({ p
   await expect(page).toHaveURL(/\/places\?place=nishiki&day=13$/);
 });
 
+test("visible place back returns to the originating plan", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.locator('[data-stop-id="nishiki"]').click();
+  await expect(page).toHaveURL(/\/places\?.*place=nishiki.*day=13/);
+
+  const backButton = page.getByRole("button", { name: "Back", exact: true });
+  await expect(backButton).toBeVisible();
+  await backButton.click();
+
+  await expect(page).toHaveURL(/\/plan\?.*day=13/);
+  await expect(page.locator('[data-stop-id="nishiki"]')).toBeVisible();
+});
+
 test("only the itinerary scrolls while plan chrome stays fixed", async ({ page }) => {
   await page.goto("/plan?day=13");
 

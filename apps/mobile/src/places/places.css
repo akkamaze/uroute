@@ -31,12 +31,8 @@
   right: 0.75rem;
   left: 0.75rem;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-}
-
-.place-search[data-active="true"] {
   grid-template-columns: 44px minmax(0, 1fr);
+  gap: 0.5rem;
 }
 
 .place-search__back,

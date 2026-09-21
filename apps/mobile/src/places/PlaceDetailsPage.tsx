@@ -1,4 +1,11 @@
-import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
+import {
+  Link,
+  useCanGoBack,
+  useNavigate,
+  useRouter,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
@@ -74,7 +81,9 @@ function getWindowHeight(): number {
 
 export function PlaceDetailsPage(): React.JSX.Element {
   const layoutHeight = useSyncExternalStore(subscribeWindowResize, getWindowHeight);
+  const canGoBack = useCanGoBack();
   const navigate = useNavigate();
+  const router = useRouter();
   const search = useSearch({ from: "/places" });
   const selectionHistoryBoundary = useRouterState({
     select: (state) =>
@@ -269,6 +278,21 @@ export function PlaceDetailsPage(): React.JSX.Element {
         resetScroll: false,
       });
     }
+  }
+
+  function goBack(): void {
+    if (canGoBack) {
+      router.history.back();
+
+      return;
+    }
+
+    void navigate({
+      replace: true,
+      resetScroll: false,
+      search: search.day === undefined ? {} : { day: search.day },
+      to: search.day === undefined ? "/saved" : "/plan",
+    });
   }
 
   useLayoutEffect(() => {
@@ -552,16 +576,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
           role="search"
           tabIndex={-1}
         >
-          {searchActive ? (
-            <button
-              aria-label="Cancel search"
-              className="place-search__back"
-              onClick={cancelSearch}
-              type="button"
-            >
-              <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
-            </button>
-          ) : null}
+          <button
+            aria-label={searchActive ? "Cancel search" : "Back"}
+            className="place-search__back"
+            onClick={searchActive ? cancelSearch : goBack}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+          </button>
 
           <form
             className="place-search__form"
