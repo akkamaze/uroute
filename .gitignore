@@ -3,6 +3,8 @@ dist/
 build/
 builds/
 coverage/
+playwright-report/
+test-results/
 tools/
 agents/
 outputs/
