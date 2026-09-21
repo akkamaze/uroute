@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef } from "react";
 import {
   captureNavigationSnapshot,
   getNavigationSnapshot,
+  isSwipeBackEdgeStart,
   restoreSnapshotScroll,
   shouldCaptureForwardNavigation,
   subscribeNavigationSnapshots,
@@ -11,8 +12,6 @@ import {
 } from "./swipe-back";
 
 const INTENT_THRESHOLD_PX = 5;
-// The operating system owns gestures that start at the outer screen edge.
-const NATIVE_EDGE_PX = 24;
 const COMPLETE_DISTANCE_RATIO = 0.24;
 const COMPLETE_VELOCITY_PX_PER_MS = 0.35;
 const SETTLE_DURATION_MS = 190;
@@ -170,8 +169,7 @@ export function useSwipeBack(): {
         snapshot === undefined ||
         event.button !== 0 ||
         !(target instanceof Element) ||
-        event.clientX - bounds.left < NATIVE_EDGE_PX ||
-        bounds.right - event.clientX < NATIVE_EDGE_PX ||
+        !isSwipeBackEdgeStart(event.clientX, bounds.left) ||
         target.closest(
           "input, textarea, select, [contenteditable='true'], .trip-map, .bottom-navigation, .place-sheet__handle-button, [data-swipe-back-ignore]",
         ) !== null ||
