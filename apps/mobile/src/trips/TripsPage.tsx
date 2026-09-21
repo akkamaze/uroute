@@ -158,7 +158,7 @@ export function TripsPage(): React.JSX.Element {
   const destinationRef = useRef<HTMLInputElement>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const allTrips: readonly TripSummary[] = [...draftTrips, ...trips];
+  const allTrips: readonly TripSummary[] = [...trips, ...draftTrips];
   const visibleTrips = allTrips.filter(
     (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
   );
@@ -244,6 +244,7 @@ export function TripsPage(): React.JSX.Element {
     }
 
     setDraftTrips((current) => [
+      ...current,
       {
         dateLabel: formatDateRange(start, end),
         durationLabel: `${duration} ${duration === 1 ? "day" : "days"}`,
@@ -253,7 +254,6 @@ export function TripsPage(): React.JSX.Element {
         name,
         period: "upcoming",
       },
-      ...current,
     ]);
     setDestination("");
     setPeriod("upcoming");
