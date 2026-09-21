@@ -11,11 +11,10 @@ import {
   Plus,
   Utensils,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { createSamplePlaces, createStressPlaces, createOrderedPlaces } from "./map-data";
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
-import { TripMap } from "./TripMap";
 import { TripHeader } from "./TripHeader";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
@@ -38,6 +37,11 @@ const TRIP_DAYS = [
 
 const TOUCH_REORDER_DELAY_MS = 260;
 const TOUCH_SCROLL_THRESHOLD_PX = 8;
+const DeferredTripMap = lazy(async () => {
+  const module = await import("./TripMap");
+
+  return { default: module.TripMap };
+});
 
 const TRAVEL_BY_PAIR = new Map(
   FRIDAY_STOPS.flatMap((stop, index) => {
@@ -473,16 +477,30 @@ export function PlanPage(): React.JSX.Element {
 
       {mapExpanded ? <div aria-hidden="true" className="plan-map-placeholder" /> : null}
 
-      <TripMap
-        id="plan-map"
-        expanded={mapExpanded}
-        inactive={!mapVisible}
-        onExpandedChange={changeMapExpanded}
-        onSelect={selectFromMap}
-        places={places}
-        orderPlaces={orderPlaces}
-        selectedId={selectedId}
-      />
+      {mapVisible ? (
+        <Suspense
+          fallback={
+            <div
+              aria-label="Map"
+              className={`trip-map trip-map--planner${mapExpanded ? " trip-map--expanded" : ""}`}
+              id="plan-map"
+              role="region"
+            >
+              <p className="trip-map__status">Loading map…</p>
+            </div>
+          }
+        >
+          <DeferredTripMap
+            id="plan-map"
+            expanded={mapExpanded}
+            onExpandedChange={changeMapExpanded}
+            onSelect={selectFromMap}
+            places={places}
+            orderPlaces={orderPlaces}
+            selectedId={selectedId}
+          />
+        </Suspense>
+      ) : null}
 
       <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
         <header className="day-plan__header">

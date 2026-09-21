@@ -126,7 +126,8 @@ test("visible place back returns to the originating plan", async ({ page }) => {
 test("only the itinerary scrolls while plan chrome stays fixed", async ({ page }) => {
   await page.goto("/plan?day=13");
 
-  const selectors = [".plan-header", ".day-strip", ".trip-map", ".bottom-navigation"];
+  await expect(page.locator(".trip-map")).toHaveCount(0);
+  const selectors = [".plan-header", ".day-strip", ".bottom-navigation"];
   const planChrome = page.locator(selectors.join(", "));
   await expect(planChrome).toHaveCount(selectors.length);
   const before = await planChrome.evaluateAll((elements) =>

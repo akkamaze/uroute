@@ -39,6 +39,9 @@ async function readMapSnapshot(page: Page): Promise<MapSnapshot | null> {
 test("loads, clusters, and interacts with 1,200 map points", async ({ page }) => {
   await page.goto("/plan?day=13&stress=1200");
   await expect(page.getByText("Synthetic stress fixture · 1,200 points")).toBeVisible();
+  expect(await readMapSnapshot(page)).toBeNull();
+
+  await page.getByRole("button", { name: "Map view" }).click();
   await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
 
   let snapshot = await readMapSnapshot(page);
@@ -54,7 +57,6 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
   expect(snapshot?.renderedClusterLabels.length).toBe(snapshot?.renderedClusterCount);
   expect(snapshot?.renderedClusterLabels.every((label) => /[0-9]/.test(label))).toBe(true);
 
-  await page.getByRole("button", { name: "Map view" }).click();
   await expect(page.getByRole("button", { name: "Map view" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -245,8 +247,9 @@ test("renders right-side two-line place names in both marker modes", async ({ pa
 
 test("shows a name for every visible place after clusters dissolve", async ({ page }) => {
   await page.goto("/plan?day=13&stress=1200");
-  await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
+  expect(await readMapSnapshot(page)).toBeNull();
   await page.getByRole("button", { name: "Map view" }).click();
+  await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
   await page.getByRole("button", { name: "Expand map" }).click();
   const canvas = page.locator(".trip-map__canvas");
   const mapBox = await canvas.boundingBox();
@@ -266,9 +269,9 @@ test("shows a name for every visible place after clusters dissolve", async ({ pa
         .filter(
           (place) =>
             place.x >= 0 &&
-            place.x <= mapBox.width - 220 &&
-            place.y >= 40 &&
-            place.y <= mapBox.height - 40,
+            place.x <= mapBox.width - 140 &&
+            place.y >= 20 &&
+            place.y <= mapBox.height - 20,
         )
         .map((place) => place.id),
     ),
