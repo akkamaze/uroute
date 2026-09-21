@@ -21,6 +21,7 @@ const SELECTED_SOURCE_ID = "selected-place";
 const SELECTED_LAYER_ID = "selected-place-symbol";
 const LABEL_LAYER_ID = "place-names";
 const SELECTED_LABEL_LAYER_ID = "selected-place-name";
+const PLACE_LABEL_OFFSET: [number, number] = [18, 0];
 const TILE_TIMEOUT_MS = 12_000;
 
 setWorkerUrl(mapLibreWorkerUrl);
@@ -498,7 +499,7 @@ export function TripMap({
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
-            "icon-offset": [24, 0],
+            "icon-offset": PLACE_LABEL_OFFSET,
             "icon-padding": 0,
           },
         });
@@ -509,7 +510,7 @@ export function TripMap({
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
-            "icon-offset": [24, 0],
+            "icon-offset": PLACE_LABEL_OFFSET,
             "icon-allow-overlap": true,
           },
         });
