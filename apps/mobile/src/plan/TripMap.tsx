@@ -51,6 +51,35 @@ interface TripMapProps {
 
 type MapStatus = "loading" | "ready" | "error";
 
+interface MapDiagnosticsSnapshot {
+  center: { latitude: number; longitude: number };
+  clusterLayerReady: boolean;
+  clusteringEnabled: boolean;
+  featureCount: number | null;
+  firstClusterPoint: { x: number; y: number } | null;
+  moving: boolean;
+  renderedClusterCount: number;
+  sourceId: typeof POINT_SOURCE_ID;
+  sourceLoaded: boolean;
+  status: MapStatus;
+  zoom: number;
+}
+
+type DiagnosticsWindow = Window & {
+  __urouteMapDiagnostics?: () => MapDiagnosticsSnapshot;
+};
+
+function getSourceFeatureCount(source: GeoJSONSource): number | null {
+  const data: unknown = source.serialize().data;
+
+  if (typeof data !== "object" || data === null || !("features" in data)) {
+    return null;
+  }
+  const features = data.features;
+
+  return Array.isArray(features) ? features.length : null;
+}
+
 function framePlaces(
   map: MapLibreMap,
   places: PlaceCollection,
@@ -186,11 +215,13 @@ export function TripMap({
   const [retryCount, setRetryCount] = useState(0);
   const [status, setStatus] = useState<MapStatus>("loading");
   const [errorMessage, setErrorMessage] = useState("");
+  const statusRef = useRef<MapStatus>(status);
 
   placesRef.current = places;
   selectRef.current = onSelect;
   selectedIdRef.current = selectedId;
   bottomInsetRef.current = bottomInset;
+  statusRef.current = status;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -243,6 +274,51 @@ export function TripMap({
     }
 
     const activeMap = map;
+    const diagnosticsWindow = window as DiagnosticsWindow;
+    const readDiagnostics = (): MapDiagnosticsSnapshot => {
+      const source = getSource(activeMap);
+      const sourceOptions = source?.serialize();
+      const clusters =
+        activeMap.getLayer(CLUSTER_LAYER_ID) === undefined
+          ? []
+          : activeMap.queryRenderedFeatures({ layers: [CLUSTER_LAYER_ID] });
+      const canvas = activeMap.getCanvas();
+      const firstCluster = clusters
+        .flatMap((cluster) =>
+          cluster.geometry.type === "Point"
+            ? [activeMap.project(cluster.geometry.coordinates as [number, number])]
+            : [],
+        )
+        .sort((first, second) => {
+          const centerX = canvas.clientWidth / 2;
+          const centerY = canvas.clientHeight / 2;
+
+          return (
+            Math.hypot(first.x - centerX, first.y - centerY) -
+            Math.hypot(second.x - centerX, second.y - centerY)
+          );
+        })[0];
+      const center = activeMap.getCenter();
+
+      return {
+        center: { latitude: center.lat, longitude: center.lng },
+        clusterLayerReady: activeMap.getLayer(CLUSTER_LAYER_ID) !== undefined,
+        clusteringEnabled: sourceOptions?.cluster === true,
+        featureCount: source === null ? null : getSourceFeatureCount(source),
+        firstClusterPoint:
+          firstCluster === undefined ? null : { x: firstCluster.x, y: firstCluster.y },
+        moving: activeMap.isMoving(),
+        renderedClusterCount: clusters.length,
+        sourceId: POINT_SOURCE_ID,
+        sourceLoaded: source !== null && activeMap.isSourceLoaded(POINT_SOURCE_ID),
+        status: statusRef.current,
+        zoom: activeMap.getZoom(),
+      };
+    };
+
+    if (import.meta.env.DEV || import.meta.env.MODE === "test") {
+      diagnosticsWindow.__urouteMapDiagnostics = readDiagnostics;
+    }
 
     function handleMapError(): void {
       showError("Map tiles could not be loaded. Check the connection and try again.");
@@ -442,6 +518,9 @@ export function TripMap({
       }
 
       mapRef.current = null;
+      if (diagnosticsWindow.__urouteMapDiagnostics === readDiagnostics) {
+        delete diagnosticsWindow.__urouteMapDiagnostics;
+      }
       activeMap.remove();
     };
   }, [retryCount]);
