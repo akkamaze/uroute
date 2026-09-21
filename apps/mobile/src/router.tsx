@@ -20,6 +20,7 @@ interface PlaceSearch {
   q?: string;
   day?: KyotoDay;
   add?: "open";
+  note?: "open";
   place?: string;
 }
 
@@ -126,14 +127,16 @@ const placesRoute = createRoute({
       ? { map: "full" }
       : search.add === "open"
         ? { add: "open" }
-        : search.search === "open"
-          ? {
-              search: "open",
-              ...(typeof search.q === "string" && search.q.trim() !== ""
-                ? { q: search.q.trim().slice(0, 120) }
-                : {}),
-            }
-          : {}),
+        : search.note === "open"
+          ? { note: "open" }
+          : search.search === "open"
+            ? {
+                search: "open",
+                ...(typeof search.q === "string" && search.q.trim() !== ""
+                  ? { q: search.q.trim().slice(0, 120) }
+                  : {}),
+              }
+            : {}),
   }),
   component: lazyRouteComponent(() => import("./places/PlaceDetailsPage"), "PlaceDetailsPage"),
 });

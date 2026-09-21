@@ -33,8 +33,6 @@ test("expanded place content owns scrolling and a handle drag settles the sheet"
   expect(expandedBox?.y).toBeCloseTo(72, 0);
 
   const content = sheet.locator(".place-sheet__content");
-  await sheet.getByRole("button", { name: "Add note", exact: true }).click();
-  await expect(sheet.getByRole("textbox", { name: "Notes", exact: true })).toBeVisible();
   await content.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
   await expect.poll(() => content.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   expect(await sheet.evaluate((element) => element.getBoundingClientRect().top)).toBeCloseTo(72, 0);

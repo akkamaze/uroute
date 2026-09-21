@@ -168,7 +168,7 @@
   background: #d4d9df;
 }
 
-.place-sheet[data-mode="add"] .place-sheet__handle-button {
+.place-sheet:is([data-mode="add"], [data-mode="note"]) .place-sheet__handle-button {
   visibility: hidden;
 }
 
@@ -463,41 +463,17 @@
   line-height: 1.5;
 }
 
-/* Only the editor surface contracts; the map and document keep their viewport. */
-.place-sheet:has(.visit-notes__editor :focus),
-.place-sheet[data-mode="add"] {
+.place-sheet:is([data-mode="add"], [data-mode="note"]) {
   top: calc(var(--keyboard-viewport-top, 0px) + 72px + env(safe-area-inset-top, 0px));
   bottom: var(--keyboard-viewport-bottom, 0px);
 }
 
-.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title {
-  min-height: 44px;
-}
-
-.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title h1 {
-  font-size: 1.25rem;
-}
-
-.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title p,
-.place-sheet:has(.visit-notes__editor :focus) .place-sheet__rating {
+.place-sheet__overview[hidden] {
   display: none;
 }
 
 .visit-notes {
-  padding: 16px 0 24px;
-  border-top: 1px solid var(--color-border);
-}
-.visit-notes__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 36px;
-}
-.visit-notes__header h2 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 16px;
-  font-weight: 650;
+  padding: 12px 0 16px;
 }
 .visit-notes button {
   min-height: 40px;
@@ -514,54 +490,81 @@
   outline: 2px solid var(--color-active);
   outline-offset: 2px;
 }
-.visit-notes__days {
-  display: flex;
-  gap: 6px;
-  margin: 4px -2px 10px;
-  padding: 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
+.visit-notes .visit-notes__card {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  gap: 12px;
+  align-items: start;
+  margin: 0;
+  padding: 14px;
+  color: #343b45;
+  border: 0;
+  border-radius: 12px;
+  background: #f7f9fb;
+  font-size: 14px;
+  line-height: 1.6;
+  text-align: left;
 }
-.visit-notes__days button {
-  flex: 0 0 auto;
+.visit-notes__card svg {
+  margin-top: 3px;
+  color: #7b8795;
+}
+.visit-notes__card--empty span {
   color: var(--color-muted);
-  white-space: nowrap;
-}
-.visit-notes__days button[aria-pressed="true"] {
-  background: #edf4ff;
-  color: #1256b8;
-}
-.visit-notes__days button:disabled {
-  opacity: 0.65;
-  cursor: default;
-}
-.visit-notes__day,
-.visit-notes__status,
-.visit-notes__empty p {
-  margin: 4px 0 8px;
-  color: var(--color-muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 .visit-notes__content {
-  margin: 6px 0 0;
-  color: var(--color-text);
+  color: #343b45;
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.visit-notes .visit-notes__add {
-  padding-left: 0;
-  color: var(--color-muted);
-  text-align: left;
+.visit-note-panel {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+  padding: 4px 0 16px;
 }
-.visit-notes__editor textarea {
+.visit-note-panel__heading {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+.visit-note-panel__heading p,
+.visit-note-panel__heading h2 {
+  margin: 0;
+}
+.visit-note-panel__heading p {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.visit-note-panel__heading h2 {
+  margin-top: 2px;
+  font-size: 20px;
+}
+.visit-notes .visit-note-panel__heading button {
+  display: inline-flex;
+  width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+.visit-note-panel textarea {
+  box-sizing: border-box;
   display: block;
   width: 100%;
-  min-height: 100px;
-  padding: 12px;
+  max-width: 100%;
+  min-height: 152px;
+  max-height: min(280px, 42dvh);
+  padding: 14px;
   border: 1px solid #dce4ed;
   border-radius: 12px;
   background: #f8fafc;
@@ -569,23 +572,55 @@
   font: inherit;
   font-size: 16px;
   line-height: 1.5;
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
 }
-.visit-notes__editor textarea:focus {
+.visit-note-panel textarea:focus {
   outline: 2px solid var(--color-active);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
-.visit-notes__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
-}
-.visit-notes__actions button:last-child {
+.visit-notes .visit-note-panel__save {
+  width: 100%;
+  min-height: 52px;
+  border-radius: 12px;
   background: var(--color-active);
   color: #fff;
+  font-size: 16px;
+  font-weight: 700;
 }
-.visit-notes__actions button:disabled {
+.visit-notes .visit-note-panel__save:disabled {
   background: #edf0f3;
   color: var(--color-muted);
+}
+.visit-note-panel__error {
+  margin: -6px 0 0;
+  color: #a33228;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.visit-note-toast {
+  position: fixed;
+  z-index: 80;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  color: #ffffff;
+  border-radius: 999px;
+  background: rgb(31 42 55 / 94%);
+  box-shadow: 0 8px 24px rgb(15 42 77 / 20%);
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: visit-note-toast-in 160ms ease-out;
+}
+@keyframes visit-note-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
 }

@@ -106,7 +106,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [addError, setAddError] = useState("");
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
   const addPanelOpen = search.add === "open";
-  const visibleSheetSnap = addPanelOpen ? "expanded" : sheetSnap;
+  const noteEditorOpen = search.note === "open";
+  const visibleSheetSnap = addPanelOpen || noteEditorOpen ? "expanded" : sheetSnap;
   const [tripId, setTripId] = useState<TripId>("kyoto");
   const [tripDay, setTripDay] = useState(`2026-11-${search.day ?? 13}`);
   const [dragOffset, setDragOffset] = useState(0);
@@ -118,6 +119,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const sheetContentRef = useRef<HTMLDivElement>(null);
   const addOpenedHereRef = useRef(false);
   const addWasOpenRef = useRef(false);
+  const noteOpenedHereRef = useRef(false);
+  const noteWasOpenRef = useRef(false);
   const previousContentScrollRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchBarRef = useRef<HTMLDivElement>(null);
@@ -318,6 +321,47 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
   }
 
+  useLayoutEffect(() => {
+    if (noteEditorOpen) {
+      noteWasOpenRef.current = true;
+      sheetContentRef.current?.scrollTo({ top: 0 });
+    } else if (noteWasOpenRef.current) {
+      noteWasOpenRef.current = false;
+      noteOpenedHereRef.current = false;
+      sheetContentRef.current?.scrollTo({ top: previousContentScrollRef.current });
+      window.requestAnimationFrame(() => {
+        sheetContentRef.current
+          ?.querySelector<HTMLButtonElement>(".visit-notes__card")
+          ?.focus({ preventScroll: true });
+      });
+    }
+  }, [noteEditorOpen]);
+
+  function openNoteEditor(): void {
+    previousContentScrollRef.current = sheetContentRef.current?.scrollTop ?? 0;
+    noteOpenedHereRef.current = true;
+    void navigate({
+      to: "/places",
+      state: (current) => current,
+      search: { ...search, place: selectedId, note: "open" },
+      resetScroll: false,
+    });
+  }
+
+  function closeNoteEditor(): void {
+    if (noteOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/places",
+        state: (current) => current,
+        search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }
+
   function changeTrip(nextTripId: TripId): void {
     setAddError("");
     setTripId(nextTripId);
@@ -371,7 +415,13 @@ export function PlaceDetailsPage(): React.JSX.Element {
 
   useEffect(() => {
     const content = sheetContentRef.current;
-    if (sheetSnap !== "expanded" || addPanelOpen || mapExpanded || content === null) {
+    if (
+      sheetSnap !== "expanded" ||
+      addPanelOpen ||
+      noteEditorOpen ||
+      mapExpanded ||
+      content === null
+    ) {
       return;
     }
 
@@ -383,7 +433,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
       },
       onCancel: () => setDragOffset(0),
     });
-  }, [sheetSnap, addPanelOpen, mapExpanded, layoutHeight]);
+  }, [sheetSnap, addPanelOpen, noteEditorOpen, mapExpanded, layoutHeight]);
 
   function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {
     const target = event.target as HTMLElement;
@@ -589,7 +639,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         aria-label="Place details"
         className="place-sheet"
         data-dragging={dragOffset === 0 ? undefined : "true"}
-        data-mode={addPanelOpen ? "add" : undefined}
+        data-mode={addPanelOpen ? "add" : noteEditorOpen ? "note" : undefined}
         data-snap={visibleSheetSnap}
         onLostPointerCapture={cancelSheetDrag}
         onPointerCancel={cancelSheetDrag}
@@ -606,7 +656,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
               sheetSnap === "expanded" ? "Collapse place details" : "Expand place details"
             }
             className="place-sheet__handle-button"
-            disabled={addPanelOpen}
+            disabled={addPanelOpen || noteEditorOpen}
             onClick={cycleSheet}
             onPointerCancel={cancelSheetDrag}
             onPointerDown={startHandleDrag}
@@ -722,66 +772,75 @@ export function PlaceDetailsPage(): React.JSX.Element {
             </form>
           ) : (
             <>
-              {notice === "" ? null : (
-                <p aria-live="polite" className="place-sheet__notice">
-                  {notice}
-                  {addedDay === null ? null : (
-                    <Link to="/plan" search={{ day: addedDay }}>
-                      View day
-                    </Link>
-                  )}
-                </p>
-              )}
+              <div
+                aria-hidden={noteEditorOpen || undefined}
+                className="place-sheet__overview"
+                hidden={noteEditorOpen}
+                inert={noteEditorOpen}
+              >
+                {notice === "" ? null : (
+                  <p aria-live="polite" className="place-sheet__notice">
+                    {notice}
+                    {addedDay === null ? null : (
+                      <Link to="/plan" search={{ day: addedDay }}>
+                        View day
+                      </Link>
+                    )}
+                  </p>
+                )}
 
-              <div className="place-sheet__photos">
-                <img alt={selectedPlace.name} draggable={false} src={selectedPlace.image} />
-                <img
-                  alt={`${selectedPlace.name} surroundings`}
-                  draggable={false}
-                  src={selectedPlace.secondImage}
-                />
-              </div>
+                <div className="place-sheet__photos">
+                  <img alt={selectedPlace.name} draggable={false} src={selectedPlace.image} />
+                  <img
+                    alt={`${selectedPlace.name} surroundings`}
+                    draggable={false}
+                    src={selectedPlace.secondImage}
+                  />
+                </div>
 
-              <div className="place-sheet__actions">
-                <button
-                  className="place-sheet__primary"
-                  onClick={openAddDialog}
-                  ref={addButtonRef}
-                  type="button"
-                >
-                  Add to trip
-                </button>
-                <a
-                  aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
-                  className="place-sheet__secondary"
-                  href={`https://www.google.com/maps/dir/?${directionsQuery.toString()}`}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                  title="Open directions in Google Maps"
-                >
-                  Directions
-                  <ExternalLink aria-hidden="true" size={16} strokeWidth={1.8} />
-                </a>
-              </div>
+                <div className="place-sheet__actions">
+                  <button
+                    className="place-sheet__primary"
+                    onClick={openAddDialog}
+                    ref={addButtonRef}
+                    type="button"
+                  >
+                    Add to trip
+                  </button>
+                  <a
+                    aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
+                    className="place-sheet__secondary"
+                    href={`https://www.google.com/maps/dir/?${directionsQuery.toString()}`}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                    title="Open directions in Google Maps"
+                  >
+                    Directions
+                    <ExternalLink aria-hidden="true" size={16} strokeWidth={1.8} />
+                  </a>
+                </div>
 
-              <div className="place-sheet__row">
-                <MapPin aria-hidden="true" size={21} strokeWidth={1.8} />
-                <span>{selectedPlace.address}</span>
-              </div>
-              <div className="place-sheet__row">
-                <Clock aria-hidden="true" size={21} strokeWidth={1.8} />
-                <span>{selectedPlace.hours}</span>
-              </div>
-              <div className="place-sheet__row">
-                <CreditCard aria-hidden="true" size={21} strokeWidth={1.8} />
-                <span>Credit card · Cash</span>
+                <div className="place-sheet__row">
+                  <MapPin aria-hidden="true" size={21} strokeWidth={1.8} />
+                  <span>{selectedPlace.address}</span>
+                </div>
+                <div className="place-sheet__row">
+                  <Clock aria-hidden="true" size={21} strokeWidth={1.8} />
+                  <span>{selectedPlace.hours}</span>
+                </div>
+                <div className="place-sheet__row">
+                  <CreditCard aria-hidden="true" size={21} strokeWidth={1.8} />
+                  <span>Credit card · Cash</span>
+                </div>
               </div>
 
               <VisitNotes
+                editorOpen={noteEditorOpen}
                 key={`${selectedId}:${search.day ?? ""}`}
                 placeId={selectedId}
                 preferredDay={search.day}
-                onEdit={() => setSheetSnap("expanded")}
+                onEdit={openNoteEditor}
+                onEditorClose={closeNoteEditor}
                 onPlanVisit={openAddDialog}
               />
             </>
