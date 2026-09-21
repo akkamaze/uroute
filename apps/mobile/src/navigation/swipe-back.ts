@@ -8,12 +8,15 @@ interface NavigationSnapshot {
 const snapshots: NavigationSnapshot[] = [];
 const listeners = new Set<() => void>();
 
-export const SWIPE_BACK_EDGE_PX = 24;
+export const SYSTEM_BACK_EDGE_PX = 24;
+export const SWIPE_BACK_EDGE_END_PX = 88;
 
 export function isSwipeBackEdgeStart(clientX: number, surfaceLeft: number): boolean {
   const distanceFromLeftEdge = clientX - surfaceLeft;
 
-  return distanceFromLeftEdge >= 0 && distanceFromLeftEdge <= SWIPE_BACK_EDGE_PX;
+  return (
+    distanceFromLeftEdge > SYSTEM_BACK_EDGE_PX && distanceFromLeftEdge <= SWIPE_BACK_EDGE_END_PX
+  );
 }
 
 function notify(): void {
