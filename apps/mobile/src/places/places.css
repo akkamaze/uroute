@@ -298,52 +298,6 @@
   color: var(--color-active);
 }
 
-.place-sheet__edit {
-  border-top: 1px solid var(--color-border);
-}
-
-.place-sheet__edit summary {
-  min-height: 52px;
-  color: var(--color-active);
-  font-size: 0.875rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.place-sheet__edit summary {
-  display: flex;
-  align-items: center;
-}
-
-.place-sheet__edit-fields {
-  display: grid;
-  gap: 0.75rem;
-  padding: 0 0 1rem;
-}
-
-.place-sheet__edit-fields label {
-  display: grid;
-  gap: 0.375rem;
-  color: var(--color-muted);
-  font-size: 0.8125rem;
-}
-
-.place-sheet__edit-fields input,
-.place-sheet__edit-fields textarea {
-  width: 100%;
-  padding: 0.75rem;
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: 11px;
-  background: #ffffff;
-  font: inherit;
-  font-size: 1rem;
-}
-
-.place-sheet__edit-fields textarea {
-  resize: vertical;
-}
-
 .place-sheet__notice {
   min-height: 1.25rem;
   margin: 0.75rem 0 0;
@@ -509,52 +463,129 @@
   line-height: 1.5;
 }
 
-.place-sheet__visit-context,
-.place-sheet__visit-status {
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-.place-sheet__visit-status:empty {
-  display: none;
-}
-.place-sheet__save-visit {
-  min-height: 46px;
-  padding: 0.625rem 1rem;
-  color: #ffffff;
-  border: 0;
-  border-radius: 11px;
-  background: var(--color-active);
-  font: inherit;
-  font-size: 0.875rem;
-  font-weight: 700;
-}
-.place-sheet__save-visit:disabled {
-  color: var(--color-muted);
-  background: #edf0f3;
-}
-.place-sheet__save-visit:focus-visible {
-  outline: 2px solid var(--color-active);
-  outline-offset: 2px;
-}
-
 /* Only the editor surface contracts; the map and document keep their viewport. */
-.place-sheet:has(.place-sheet__edit-fields :focus),
+.place-sheet:has(.visit-notes__editor :focus),
 .place-sheet[data-mode="add"] {
   top: calc(var(--keyboard-viewport-top, 0px) + 72px + env(safe-area-inset-top, 0px));
   bottom: var(--keyboard-viewport-bottom, 0px);
 }
 
-.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title {
+.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title {
   min-height: 44px;
 }
 
-.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title h1 {
+.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title h1 {
   font-size: 1.25rem;
 }
 
-.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__title p,
-.place-sheet:has(.place-sheet__edit-fields :focus) .place-sheet__rating {
+.place-sheet:has(.visit-notes__editor :focus) .place-sheet__title p,
+.place-sheet:has(.visit-notes__editor :focus) .place-sheet__rating {
   display: none;
+}
+
+.visit-notes {
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--color-border);
+}
+.visit-notes__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+}
+.visit-notes__header h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 16px;
+  font-weight: 650;
+}
+.visit-notes button {
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-active);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.visit-notes button:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 2px;
+}
+.visit-notes__days {
+  display: flex;
+  gap: 6px;
+  margin: 4px -2px 10px;
+  padding: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+.visit-notes__days button {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.visit-notes__days button[aria-pressed="true"] {
+  background: #edf4ff;
+  color: #1256b8;
+}
+.visit-notes__days button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.visit-notes__day,
+.visit-notes__status,
+.visit-notes__empty p {
+  margin: 4px 0 8px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.visit-notes__content {
+  margin: 6px 0 0;
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.visit-notes .visit-notes__add {
+  padding-left: 0;
+  color: var(--color-muted);
+  text-align: left;
+}
+.visit-notes__editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.visit-notes__editor textarea:focus {
+  outline: 2px solid var(--color-active);
+  outline-offset: 1px;
+}
+.visit-notes__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.visit-notes__actions button:last-child {
+  background: var(--color-active);
+  color: #fff;
+}
+.visit-notes__actions button:disabled {
+  background: #edf0f3;
+  color: var(--color-muted);
 }

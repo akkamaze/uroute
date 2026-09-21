@@ -28,7 +28,6 @@ import {
   getKyotoPlan,
   isKyotoDay,
   useKyotoPlan,
-  updateKyotoVisit,
   type KyotoDay,
 } from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
@@ -41,6 +40,7 @@ import {
   type SheetSnap,
 } from "./place-sheet-geometry";
 import { attachContentSheetDrag } from "./content-sheet-drag";
+import { VisitNotes } from "./VisitNotes";
 import "./places.css";
 
 function getPlace(id: string | undefined): PlannedStop {
@@ -96,10 +96,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const initialPlace = getPlace(search.place);
   const initialId = initialPlace.id;
   const plan = useKyotoPlan();
-  const initialVisit =
-    search.day === undefined
-      ? undefined
-      : plan.days[search.day].find((visit) => visit.placeId === initialId);
   const selectedId = initialId;
   const [draftQuery, setDraftQuery] = useState(search.q ?? "");
   const submittedQuery = search.q ?? "";
@@ -108,12 +104,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [notice, setNotice] = useState("");
   const [addedDay, setAddedDay] = useState<KyotoDay | null>(null);
   const [addError, setAddError] = useState("");
-  const [visitTime, setVisitTime] = useState(initialVisit?.time ?? "");
-  const [notes, setNotes] = useState(initialVisit?.notes ?? "");
-  const [timeEdited, setTimeEdited] = useState(false);
-  const [notesEdited, setNotesEdited] = useState(false);
-  const [visitSaveNotice, setVisitSaveNotice] = useState("");
-  const [visitSaveError, setVisitSaveError] = useState("");
   const [sheetSnap, setSheetSnap] = useState<SheetSnap>("middle");
   const addPanelOpen = search.add === "open";
   const visibleSheetSnap = addPanelOpen ? "expanded" : sheetSnap;
@@ -126,7 +116,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const addBackButtonRef = useRef<HTMLButtonElement>(null);
   const sheetContentRef = useRef<HTMLDivElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
   const addOpenedHereRef = useRef(false);
   const addWasOpenRef = useRef(false);
   const previousContentScrollRef = useRef(0);
@@ -150,11 +139,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
         ? `${selectedPlace.name}, ${selectedPlace.address}, Kyoto, Japan`
         : `${destination[1]},${destination[0]}`,
   });
-  const visitChanged =
-    initialVisit !== undefined && (visitTime !== initialVisit.time || notes !== initialVisit.notes);
-  const visitDayLabel = TRIP_DAYS.kyoto.days.find(
-    (day) => day.id === `2026-11-${search.day}`,
-  )?.label;
   const results = FRIDAY_STOPS.filter((place) =>
     place.name.toLowerCase().includes(submittedQuery.trim().toLowerCase()),
   );
@@ -170,13 +154,9 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }, [mapExpanded]);
 
   useLayoutEffect(() => {
-    setVisitTime(initialVisit?.time ?? "");
-    setNotes(initialVisit?.notes ?? "");
-    setTimeEdited(false);
-    setNotesEdited(false);
     setNotice("");
     setAddedDay(null);
-  }, [initialId, search.day, initialVisit?.time, initialVisit?.notes]);
+  }, [initialId, search.day]);
 
   useLayoutEffect(() => {
     if (searchActive) {
@@ -338,29 +318,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
   }
 
-  useEffect(() => {
-    setVisitSaveNotice("");
-    setVisitSaveError("");
-  }, [initialId, search.day]);
-
-  function saveVisit(): void {
-    if (search.day === undefined || initialVisit === undefined || !visitChanged) {
-      return;
-    }
-    const saved = updateKyotoVisit(search.day, { placeId: selectedId, time: visitTime, notes });
-    if (!saved) {
-      setVisitSaveError("This visit could not be saved. Check the time and notes, then try again.");
-
-      return;
-    }
-    setVisitSaveError("");
-    setVisitSaveNotice(
-      getKyotoPlan().persistenceFailed
-        ? "Changes are kept for this session. Device storage is unavailable."
-        : "Changes saved on this device.",
-    );
-  }
-
   function changeTrip(nextTripId: TripId): void {
     setAddError("");
     setTripId(nextTripId);
@@ -376,11 +333,11 @@ export function PlaceDetailsPage(): React.JSX.Element {
     }
     const result = addPlaceToKyotoDay(date, {
       placeId: selectedPlace.id,
-      time: timeEdited ? visitTime : "",
-      notes: notesEdited ? notes : "",
+      time: "",
+      notes: "",
     });
     if (result === "invalid") {
-      setAddError("Check the visit time and keep notes under 5,000 characters.");
+      setAddError("This visit could not be added. Try again.");
 
       return;
     }
@@ -390,8 +347,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
       return;
     }
     setAddedDay(date);
-    setTimeEdited(false);
-    setNotesEdited(false);
     setNotice(
       `Added to ${trip.name} · ${day.label}.${getKyotoPlan().persistenceFailed ? " Kept for this session; device storage is unavailable." : ""}`,
     );
@@ -822,81 +777,13 @@ export function PlaceDetailsPage(): React.JSX.Element {
                 <span>Credit card · Cash</span>
               </div>
 
-              <details
-                className="place-sheet__edit"
-                onToggle={(event) => {
-                  if (event.currentTarget.open) {
-                    setSheetSnap("expanded");
-                  }
-                }}
-              >
-                <summary>
-                  {initialVisit === undefined ? "Visit details" : "Edit visit details"}
-                </summary>
-                <div className="place-sheet__edit-fields" onFocus={() => setSheetSnap("expanded")}>
-                  {initialVisit === undefined ? null : (
-                    <p className="place-sheet__visit-context">{visitDayLabel}</p>
-                  )}
-                  <label>
-                    Visit time
-                    <input
-                      enterKeyHint="next"
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && !event.nativeEvent.isComposing) {
-                          event.preventDefault();
-                          notesRef.current?.focus({ preventScroll: true });
-                        }
-                      }}
-                      onChange={(event) => {
-                        setVisitTime(event.target.value);
-                        setTimeEdited(true);
-                        setVisitSaveNotice("");
-                        setVisitSaveError("");
-                      }}
-                      type="time"
-                      value={visitTime}
-                    />
-                  </label>
-                  <label>
-                    Notes
-                    <textarea
-                      enterKeyHint="enter"
-                      inputMode="text"
-                      ref={notesRef}
-                      onChange={(event) => {
-                        setNotes(event.target.value);
-                        setNotesEdited(true);
-                        setVisitSaveNotice("");
-                        setVisitSaveError("");
-                      }}
-                      maxLength={5000}
-                      placeholder="Add a note for this visit"
-                      rows={2}
-                      value={notes}
-                    />
-                  </label>
-                  {initialVisit === undefined ? null : (
-                    <>
-                      <button
-                        className="place-sheet__save-visit"
-                        disabled={!visitChanged}
-                        onClick={saveVisit}
-                        type="button"
-                      >
-                        Save changes
-                      </button>
-                      <p className="place-sheet__visit-status" role="status">
-                        {visitSaveNotice}
-                      </p>
-                      {visitSaveError === "" ? null : (
-                        <p className="add-place-panel__error" role="alert">
-                          {visitSaveError}
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              </details>
+              <VisitNotes
+                key={`${selectedId}:${search.day ?? ""}`}
+                placeId={selectedId}
+                preferredDay={search.day}
+                onEdit={() => setSheetSnap("expanded")}
+                onPlanVisit={openAddDialog}
+              />
             </>
           )}
         </div>
