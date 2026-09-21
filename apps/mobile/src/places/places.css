@@ -441,7 +441,12 @@
   font-weight: 700;
 }
 
-.add-place-panel select:focus-visible,
+.add-place-panel select:focus-visible {
+  border-color: var(--color-active);
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--color-active);
+}
+
 .add-place-panel button:focus-visible {
   outline: 2px solid var(--color-active);
   outline-offset: 2px;
