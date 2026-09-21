@@ -1,5 +1,35 @@
 import { expect, test } from "./fixtures";
 
+test("touch swipe reveals the compact remove action without exposing it at rest", async ({
+  page,
+}) => {
+  await page.goto("/plan?day=13");
+  const row = page.locator('[data-drop-stop-id="arabica"]');
+  const surface = row.locator(".timeline__surface");
+  const remove = row.locator(".timeline__remove");
+  const box = await surface.boundingBox();
+  if (box === null) {
+    throw new Error("Arabica plan row is not visible");
+  }
+
+  await expect(remove).toHaveCSS("opacity", "0");
+  const client = await page.context().newCDPSession(page);
+  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ ...start, id: 1 }],
+  });
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: start.x - 64, y: start.y, id: 1 }],
+  });
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+
+  await expect(remove).toHaveCSS("opacity", "1");
+  await expect(remove).toHaveCSS("width", "64px");
+  await expect(remove.locator("svg")).toHaveAttribute("width", "18");
+});
+
 test("expanded place content owns scrolling and a handle drag settles the sheet", async ({
   page,
 }) => {
@@ -81,4 +111,35 @@ test("swipe back reserves the system edge and accepts the adjacent app zone", as
 
   await expect(page).toHaveURL(/\/trips(?:\?|$)/);
   await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
+});
+
+test("holding a row selects it while the grip owns keyboard reordering", async ({ page }) => {
+  await page.goto("/plan?day=13");
+
+  const firstStop = page.locator('[data-stop-id="kiyomizu"]');
+  const box = await firstStop.boundingBox();
+  if (box === null) {
+    throw new Error("Kiyomizu plan row is not visible");
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(500);
+  await page.mouse.up();
+
+  await expect(page).toHaveURL(/\/plan\?day=13$/);
+  await expect(page.getByText("1 selected")).toBeVisible();
+  await expect(firstStop).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
+  await grip.focus();
+  await grip.press("Alt+ArrowDown");
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
 });

@@ -36,6 +36,20 @@ function visitsFor(plan: StoredPlan, day: string): StoredVisit[] {
   return visits;
 }
 
+async function swipeStopLeft(page: Page, stopId: string): Promise<void> {
+  const surface = page.locator(`[data-drop-stop-id="${stopId}"] .timeline__surface`);
+  await surface.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  const box = await surface.boundingBox();
+  if (box === null) {
+    throw new Error(`${stopId} plan row is not visible`);
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 - 64, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+}
+
 test("adds one place to the chosen day and keeps it after refresh", async ({ page }) => {
   await page.goto("/trips");
   await page.getByRole("link", { name: "Open Kyoto trip plan" }).click();
@@ -158,4 +172,161 @@ test("only the itinerary scrolls while plan chrome stays fixed", async ({ page }
   expect(overflow.body).toBeLessThanOrEqual(0);
   expect(overflow.document).toBeLessThanOrEqual(0);
   expect(overflow.windowY).toBe(0);
+});
+
+test("swipe left reveals remove and undo restores the stop", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await swipeStopLeft(page, "arabica");
+
+  const remove = page.getByRole("button", {
+    name: "Remove % Arabica Higashiyama from Friday, 13 November",
+  });
+  await expect(remove).toBeVisible();
+  await remove.click();
+  await expect(page.locator('[data-stop-id="arabica"]')).toHaveCount(0);
+  await expect(page.getByText("1 place removed", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator('[data-stop-id="arabica"]')).toHaveCount(1);
+  await expect(page.locator("[data-stop-id]")).toHaveCount(3);
+});
+
+test("revealed remove action hides add on a compact viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 664 });
+  await page.goto("/plan?day=13");
+
+  await swipeStopLeft(page, "arabica");
+
+  await expect(
+    page.getByRole("button", {
+      name: "Remove % Arabica Higashiyama from Friday, 13 November",
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".day-plan__add")).toHaveCount(0);
+});
+
+test("plan map pins follow removal and undo without retaining a removed selection", async ({
+  page,
+}) => {
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Map view" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              featureCount: number | null;
+              renderedSelectedIds: string[];
+              status: string;
+            };
+          }
+        ).__urouteMapDiagnostics?.(),
+      ),
+    )
+    .toMatchObject({
+      featureCount: 2,
+      renderedSelectedIds: ["kiyomizu"],
+      status: "ready",
+    });
+
+  await swipeStopLeft(page, "kiyomizu");
+  await page.getByRole("button", { name: "Remove Kiyomizu-dera from Friday, 13 November" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              featureCount: number | null;
+              renderedSelectedIds: string[];
+            };
+          }
+        ).__urouteMapDiagnostics?.(),
+      ),
+    )
+    .toMatchObject({ featureCount: 2, renderedSelectedIds: [] });
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              featureCount: number | null;
+              renderedSelectedIds: string[];
+            };
+          }
+        ).__urouteMapDiagnostics?.(),
+      ),
+    )
+    .toMatchObject({ featureCount: 2, renderedSelectedIds: ["kiyomizu"] });
+});
+
+test("one undo restores sequential removals in their original order", async ({ page }) => {
+  await page.goto("/plan?day=13");
+
+  await swipeStopLeft(page, "kiyomizu");
+  await page.getByRole("button", { name: "Remove Kiyomizu-dera from Friday, 13 November" }).click();
+  await swipeStopLeft(page, "nishiki");
+  await page
+    .getByRole("button", { name: "Remove Nishiki Market from Friday, 13 November" })
+    .click();
+  await expect(page.getByText("2 places removed", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["kiyomizu", "arabica", "nishiki"]);
+});
+
+test("multi-select confirms once and undo restores order and visit data", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.evaluate((storageKey) => {
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        days: {
+          12: [],
+          13: [
+            { placeId: "kiyomizu", time: "08:30", notes: "first" },
+            { placeId: "arabica", time: "10:15", notes: "coffee" },
+            { placeId: "nishiki", time: "12:30", notes: "lunch" },
+          ],
+          14: [],
+          15: [],
+          16: [],
+        },
+      }),
+    );
+  }, PLAN_STORAGE_KEY);
+  await page.reload();
+
+  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(3);
+  await expect(page.getByRole("checkbox", { name: "Select Kiyomizu-dera" })).toHaveCount(1);
+  await page.locator('[data-stop-id="kiyomizu"]').click();
+  await page.locator('[data-stop-id="nishiki"]').click();
+  await expect(page.getByText("2 selected")).toBeVisible();
+  await page.getByRole("button", { name: "Remove 2 places", exact: true }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Remove 2 places?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Remove 2 places", exact: true }).click();
+  await expect(page.locator("[data-stop-id]")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator("[data-stop-id]")).toHaveCount(3);
+  const stored = await readStoredPlan(page);
+  expect(visitsFor(stored, "13")).toEqual([
+    { placeId: "kiyomizu", time: "08:30", notes: "first" },
+    { placeId: "arabica", time: "10:15", notes: "coffee" },
+    { placeId: "nishiki", time: "12:30", notes: "lunch" },
+  ]);
 });

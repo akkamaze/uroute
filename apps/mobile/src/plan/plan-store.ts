@@ -162,29 +162,57 @@ export interface RemovedVisit {
   visit: PlannedVisit;
 }
 
-export function removeKyotoVisit(day: KyotoDay, placeId: string): RemovedVisit | undefined {
+export function removeKyotoVisits(
+  day: KyotoDay,
+  placeIdsToRemove: readonly string[],
+): RemovedVisit[] {
   const visits = snapshot.days[day];
-  const index = visits.findIndex((visit) => visit.placeId === placeId);
-  const visit = visits[index];
-  if (visit === undefined) {
-    return undefined;
+  const requested = new Set(placeIdsToRemove);
+  const removed = visits.flatMap((visit, index) =>
+    requested.has(visit.placeId) ? [{ day, index, visit: { ...visit } }] : [],
+  );
+  if (removed.length === 0) {
+    return [];
   }
-  publish({ ...snapshot.days, [day]: visits.filter((entry) => entry.placeId !== placeId) });
+  const removedIds = new Set(removed.map(({ visit }) => visit.placeId));
+  publish({ ...snapshot.days, [day]: visits.filter((visit) => !removedIds.has(visit.placeId)) });
 
-  return { day, index, visit: { ...visit } };
+  return removed;
+}
+
+export function removeKyotoVisit(day: KyotoDay, placeId: string): RemovedVisit | undefined {
+  return removeKyotoVisits(day, [placeId])[0];
+}
+
+export function restoreKyotoVisits(removedVisits: readonly RemovedVisit[]): number {
+  const nextDays = { ...snapshot.days };
+  let restoredCount = 0;
+
+  for (const day of KYOTO_DAYS) {
+    const candidates = removedVisits
+      .filter((removed) => removed.day === day && isVisit(removed.visit))
+      .sort((left, right) => left.index - right.index);
+    if (candidates.length === 0) {
+      continue;
+    }
+    const next = [...nextDays[day]];
+    for (const removed of candidates) {
+      if (next.some((visit) => visit.placeId === removed.visit.placeId)) {
+        continue;
+      }
+      next.splice(Math.max(0, Math.min(removed.index, next.length)), 0, { ...removed.visit });
+      restoredCount += 1;
+    }
+    nextDays[day] = next;
+  }
+
+  if (restoredCount > 0) {
+    publish(nextDays);
+  }
+
+  return restoredCount;
 }
 
 export function restoreKyotoVisit(removed: RemovedVisit): boolean {
-  if (!isKyotoDay(removed.day) || !isVisit(removed.visit)) {
-    return false;
-  }
-  const visits = snapshot.days[removed.day];
-  if (visits.some((visit) => visit.placeId === removed.visit.placeId)) {
-    return false;
-  }
-  const next = [...visits];
-  next.splice(Math.max(0, Math.min(removed.index, next.length)), 0, { ...removed.visit });
-  publish({ ...snapshot.days, [removed.day]: next });
-
-  return true;
+  return restoreKyotoVisits([removed]) === 1;
 }

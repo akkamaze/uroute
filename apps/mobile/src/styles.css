@@ -800,8 +800,8 @@ a {
   display: grid;
   width: 100%;
   min-height: 76px;
-  grid-template-columns: 52px 40px minmax(0, 1fr) 60px;
-  gap: 0.75rem;
+  grid-template-columns: 44px 32px minmax(0, 1fr) 48px;
+  gap: 0.5rem;
   align-items: center;
   padding: 0.625rem 0.5rem;
   color: var(--color-text);
@@ -812,17 +812,6 @@ a {
   cursor: pointer;
 }
 
-.timeline__stop--selected {
-  background: #edf5ff;
-}
-
-.timeline__stop--dragging {
-  opacity: 0.58;
-  box-shadow: 0 8px 24px rgb(32 33 36 / 14%);
-  cursor: grabbing;
-  user-select: none;
-}
-
 .timeline__time {
   font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
@@ -830,8 +819,8 @@ a {
 
 .timeline__icon {
   display: inline-flex;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   align-items: center;
   justify-content: center;
   color: var(--color-active);
@@ -866,8 +855,8 @@ a {
 }
 
 .timeline__photo {
-  width: 60px;
-  height: 60px;
+  width: 48px;
+  height: 48px;
   object-fit: cover;
   border-radius: 11px;
 }
@@ -875,8 +864,8 @@ a {
 .timeline__travel {
   display: grid;
   min-height: 42px;
-  grid-template-columns: 52px 40px minmax(0, 1fr);
-  gap: 0.75rem;
+  grid-template-columns: 44px 32px minmax(0, 1fr);
+  gap: 0.5rem;
   align-items: center;
   padding: 0 0.5rem;
   color: var(--color-muted);
@@ -903,7 +892,7 @@ a {
   position: absolute;
   top: 80px;
   bottom: -4px;
-  left: 90px;
+  left: 76px;
   width: 1px;
   background: var(--color-border);
 }
@@ -945,6 +934,10 @@ a {
   background: var(--color-active);
   box-shadow: 0 6px 16px rgb(22 119 255 / 28%);
   cursor: pointer;
+}
+
+.plan-page:has(.plan-bulk-remove) .day-plan {
+  padding-bottom: 10rem;
 }
 
 .maplibregl-ctrl-attrib {
