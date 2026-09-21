@@ -1,13 +1,33 @@
 import { expect, test } from "./fixtures";
 
-test("expanded place content owns scrolling and a handle drag settles the sheet", async ({ page }) => {
+test("expanded place content owns scrolling and a handle drag settles the sheet", async ({
+  page,
+}) => {
   await page.goto("/places?place=nishiki&day=13");
 
+  await page.waitForFunction(() => {
+    const snapshot = (
+      window as Window & { __urouteMapDiagnostics?: () => { status: string; moving: boolean } }
+    ).__urouteMapDiagnostics?.();
+
+    return snapshot?.status === "ready" && !snapshot.moving;
+  });
+  const readCamera = async (): Promise<unknown> =>
+    page.evaluate(() => {
+      const snapshot = (
+        window as Window & { __urouteMapDiagnostics?: () => { center: unknown; zoom: number } }
+      ).__urouteMapDiagnostics?.();
+
+      return { center: snapshot?.center, zoom: snapshot?.zoom };
+    });
+  const originalCamera = await readCamera();
   const sheet = page.getByRole("region", { name: "Place details" });
   await expect(sheet).toHaveAttribute("data-snap", "middle");
   await page.getByRole("button", { name: "Expand place details" }).click();
   await expect(sheet).toHaveAttribute("data-snap", "expanded");
 
+  await expect.poll(async () => (await sheet.boundingBox())?.y).toBeCloseTo(72, 0);
+  expect(await readCamera()).toEqual(originalCamera);
   const expandedBox = await sheet.boundingBox();
   expect(expandedBox).not.toBeNull();
   expect(expandedBox?.y).toBeCloseTo(72, 0);
@@ -38,6 +58,7 @@ test("expanded place content owns scrolling and a handle drag settles the sheet"
   const middleBox = await sheet.boundingBox();
   expect(middleBox).not.toBeNull();
   expect(middleBox?.y).toBeGreaterThan(expandedBox?.y ?? 72);
+  expect(await readCamera()).toEqual(originalCamera);
 });
 
 test("swipe back reserves the system edge and accepts the adjacent app zone", async ({ page }) => {

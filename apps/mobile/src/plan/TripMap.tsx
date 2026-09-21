@@ -643,14 +643,6 @@ export function TripMap({
   useEffect(() => {
     const map = mapRef.current;
 
-    if (map !== null) {
-      framePlaces(map, placesRef.current, true, bottomInset);
-    }
-  }, [bottomInset]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-
     if (map === null || getSource(map) === null) {
       return;
     }
