@@ -19,4 +19,5 @@ AGENTS.md
 *.local
 .DS_Store
 Thumbs.db
+debug.log
 *.tsbuildinfo
