@@ -3,6 +3,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
   setWorkerUrl,
+  type FilterSpecification,
   type GeoJSONSource,
   type MapLayerMouseEvent,
   type Source,
@@ -20,8 +21,10 @@ const SYMBOL_LAYER_ID = "place-symbols";
 const SELECTED_SOURCE_ID = "selected-place";
 const SELECTED_LAYER_ID = "selected-place-symbol";
 const LABEL_LAYER_ID = "place-names";
+const CLOSE_LABEL_LAYER_ID = "place-names-close";
 const SELECTED_LABEL_LAYER_ID = "selected-place-name";
 const PLACE_LABEL_OFFSET: [number, number] = [18, 0];
+const FULL_LABEL_ZOOM = 15;
 const TILE_TIMEOUT_MS = 12_000;
 
 setWorkerUrl(mapLibreWorkerUrl);
@@ -67,7 +70,8 @@ interface MapDiagnosticsSnapshot {
   renderedClusterCount: number;
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
-  placeLabels: { name: string; label: string }[];
+  placeLabels: { id: string; name: string; label: string }[];
+  renderedPlaces: { id: string; x: number; y: number }[];
   renderedPhotoIds: string[];
   markerMode: "places" | "order";
   numberedPlaces: { id: string; marker: string }[];
@@ -79,6 +83,7 @@ interface MapDiagnosticsSnapshot {
 
 type DiagnosticsWindow = Window & {
   __urouteMapDiagnostics?: () => MapDiagnosticsSnapshot;
+  __urouteMapFocusFirstPlace?: () => void;
 };
 
 function getSourceFeatureCount(source: GeoJSONSource): number | null {
@@ -172,6 +177,25 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
   const source = map.getSource(POINT_SOURCE_ID);
 
   return source !== undefined && isGeoJsonSource(source) ? source : null;
+}
+
+function getSourcePlaces(
+  places: PlaceCollection,
+  selectedId: string | null,
+  markerMode: "places" | "order",
+): PlaceCollection {
+  if (markerMode === "order" || selectedId === null) {
+    return places;
+  }
+
+  return {
+    ...places,
+    features: places.features.filter((place) => place.properties.id !== selectedId),
+  };
+}
+
+function getLabelFilter(selectedId: string | null): FilterSpecification {
+  return ["all", ["!", ["has", "point_count"]], ["!=", ["get", "id"], selectedId ?? ""]];
 }
 
 function syncSelectedPlace(
@@ -276,6 +300,14 @@ export function TripMap({
 
     const activeMap = map;
     const diagnosticsWindow = window as DiagnosticsWindow;
+    const focusFirstPlace = (): void => {
+      const coordinates = placesRef.current.features[0]?.geometry.coordinates;
+      const longitude = coordinates?.[0];
+      const latitude = coordinates?.[1];
+      if (longitude !== undefined && latitude !== undefined) {
+        activeMap.jumpTo({ center: [longitude, latitude], zoom: FULL_LABEL_ZOOM + 0.1 });
+      }
+    };
     const readDiagnostics = (): MapDiagnosticsSnapshot => {
       const source = getSource(activeMap);
       const sourceOptions = source?.serialize();
@@ -317,11 +349,27 @@ export function TripMap({
           activeMap.getLayer(LABEL_LAYER_ID) === undefined
             ? []
             : activeMap
-                .queryRenderedFeatures({ layers: [LABEL_LAYER_ID, SELECTED_LABEL_LAYER_ID] })
+                .queryRenderedFeatures({
+                  layers: [LABEL_LAYER_ID, CLOSE_LABEL_LAYER_ID, SELECTED_LABEL_LAYER_ID],
+                })
                 .map((feature) => ({
+                  id: String(feature.properties.id),
                   name: String(feature.properties.name),
                   label: getMapLabel(String(feature.properties.name)),
                 })),
+        renderedPlaces:
+          activeMap.getLayer(SYMBOL_LAYER_ID) === undefined
+            ? []
+            : activeMap.queryRenderedFeatures({ layers: [SYMBOL_LAYER_ID] }).flatMap((feature) =>
+                feature.geometry.type === "Point"
+                  ? [
+                      {
+                        id: String(feature.properties.id),
+                        ...activeMap.project(feature.geometry.coordinates as [number, number]),
+                      },
+                    ]
+                  : [],
+              ),
         numberedPlaces:
           markerMode === "order"
             ? placesRef.current.features.map((feature) => ({
@@ -352,6 +400,7 @@ export function TripMap({
 
     if (import.meta.env.DEV || import.meta.env.MODE === "test") {
       diagnosticsWindow.__urouteMapDiagnostics = readDiagnostics;
+      diagnosticsWindow.__urouteMapFocusFirstPlace = focusFirstPlace;
     }
 
     function handleMapError(): void {
@@ -394,7 +443,15 @@ export function TripMap({
           [event.point.x - 16, event.point.y - 16],
           [event.point.x + 16, event.point.y + 16],
         ],
-        { layers: [SELECTED_LAYER_ID, SYMBOL_LAYER_ID, SELECTED_LABEL_LAYER_ID, LABEL_LAYER_ID] },
+        {
+          layers: [
+            SELECTED_LAYER_ID,
+            SYMBOL_LAYER_ID,
+            SELECTED_LABEL_LAYER_ID,
+            LABEL_LAYER_ID,
+            CLOSE_LABEL_LAYER_ID,
+          ],
+        },
       );
       const id: unknown = hits[0]?.properties.id;
       if (typeof id === "string") {
@@ -491,16 +548,28 @@ export function TripMap({
           id: LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: [
-            "all",
-            ["!", ["has", "point_count"]],
-            ["!=", ["get", "id"], selectedIdRef.current ?? ""],
-          ],
+          maxzoom: FULL_LABEL_ZOOM,
+          filter: getLabelFilter(selectedIdRef.current),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
             "icon-offset": PLACE_LABEL_OFFSET,
             "icon-padding": 0,
+          },
+        });
+        activeMap.addLayer({
+          id: CLOSE_LABEL_LAYER_ID,
+          type: "symbol",
+          source: POINT_SOURCE_ID,
+          minzoom: FULL_LABEL_ZOOM,
+          filter: getLabelFilter(selectedIdRef.current),
+          layout: {
+            "icon-image": ["concat", "name-", ["get", "name"]],
+            "icon-anchor": "left",
+            "icon-offset": PLACE_LABEL_OFFSET,
+            "icon-padding": 0,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
           },
         });
         activeMap.addLayer({
@@ -515,6 +584,7 @@ export function TripMap({
           },
         });
         activeMap.moveLayer(LABEL_LAYER_ID, SYMBOL_LAYER_ID);
+        activeMap.moveLayer(CLOSE_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
         activeMap.moveLayer(SELECTED_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
         activeMap.on("click", handlePointClick);
         activeMap.on("mouseenter", SYMBOL_LAYER_ID, handleMouseEnter);
@@ -529,7 +599,7 @@ export function TripMap({
         }
 
         void source
-          .setData(placesRef.current)
+          .setData(getSourcePlaces(placesRef.current, selectedIdRef.current, markerMode))
           .then(() => {
             if (!disposed) {
               applySelection();
@@ -611,6 +681,9 @@ export function TripMap({
       if (diagnosticsWindow.__urouteMapDiagnostics === readDiagnostics) {
         delete diagnosticsWindow.__urouteMapDiagnostics;
       }
+      if (diagnosticsWindow.__urouteMapFocusFirstPlace === focusFirstPlace) {
+        delete diagnosticsWindow.__urouteMapFocusFirstPlace;
+      }
       activeMap.remove();
     };
   }, [retryCount, markerMode]);
@@ -629,7 +702,7 @@ export function TripMap({
     }
 
     void source
-      .setData(places)
+      .setData(getSourcePlaces(places, selectedIdRef.current, markerMode))
       .then(() => {
         if (mapRef.current === map) {
           syncSelectedPlace(map, places, selectedIdRef.current);
@@ -643,7 +716,7 @@ export function TripMap({
           setStatus("error");
         }
       });
-  }, [places]);
+  }, [markerMode, places]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -652,15 +725,27 @@ export function TripMap({
       return;
     }
 
+    const source = getSource(map);
+    if (source !== null) {
+      void source
+        .setData(getSourcePlaces(placesRef.current, selectedId, markerMode))
+        .then(() => map.triggerRepaint())
+        .catch(() => {
+          if (mapRef.current === map) {
+            setErrorMessage("The map places could not be updated. Try loading the map again.");
+            setStatus("error");
+          }
+        });
+    }
     syncSelectedPlace(map, placesRef.current, selectedId);
     if (map.getLayer(LABEL_LAYER_ID) !== undefined) {
-      map.setFilter(LABEL_LAYER_ID, [
-        "all",
-        ["!", ["has", "point_count"]],
-        ["!=", ["get", "id"], selectedId ?? ""],
-      ]);
+      const labelFilter = getLabelFilter(selectedId);
+      map.setFilter(LABEL_LAYER_ID, labelFilter);
+      if (map.getLayer(CLOSE_LABEL_LAYER_ID) !== undefined) {
+        map.setFilter(CLOSE_LABEL_LAYER_ID, labelFilter);
+      }
     }
-  }, [selectedId]);
+  }, [markerMode, selectedId]);
 
   useEffect(() => {
     window.requestAnimationFrame(() => mapRef.current?.resize());

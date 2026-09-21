@@ -14,7 +14,8 @@ interface MapSnapshot {
   renderedSelectedIds: string[];
   markerMode: "places" | "order";
   renderedPhotoIds: string[];
-  placeLabels: { name: string; label: string }[];
+  placeLabels: { id: string; name: string; label: string }[];
+  renderedPlaces: { id: string; x: number; y: number }[];
   numberedPlaces: { id: string; marker: string }[];
   sourceId: string;
   sourceLoaded: boolean;
@@ -24,6 +25,7 @@ interface MapSnapshot {
 
 type DiagnosticsWindow = Window & {
   __urouteMapDiagnostics?: () => MapSnapshot;
+  __urouteMapFocusFirstPlace?: () => void;
 };
 
 async function readMapSnapshot(page: Page): Promise<MapSnapshot | null> {
@@ -143,13 +145,11 @@ test("keeps the selected place and its photo visible after zooming out into clus
   page,
 }) => {
   await page.goto("/places?place=nishiki&day=13");
-  await expect
-    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
-    .toContain("nishiki");
   await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
   await page.getByRole("button", { name: "Expand map" }).click();
   await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
   const canvas = page.locator(".trip-map__canvas");
@@ -195,7 +195,7 @@ test("switches between photo exploration and only the current day's ordered stop
     "aria-pressed",
     "true",
   );
-  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(3);
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
   await page.getByRole("button", { name: "Day order", exact: true }).click();
   await expect
     .poll(async () => (await readMapSnapshot(page))?.numberedPlaces)
@@ -207,7 +207,7 @@ test("switches between photo exploration and only the current day's ordered stop
   await expect.poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds).toEqual([]);
   await page.goto("/places?place=nishiki&day=14");
   await expect
-    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
+    .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
   await page.getByRole("button", { name: "Day order", exact: true }).click();
   await expect
@@ -219,9 +219,9 @@ test("switches between photo exploration and only the current day's ordered stop
   await expect.poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds).toEqual([]);
   await page.getByRole("button", { name: "Places", exact: true }).click();
   await expect
-    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
+    .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
-  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(3);
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
   await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(true);
   await page.goto("/places?place=nishiki&day=15");
   await page.getByRole("button", { name: "Day order", exact: true }).click();
@@ -243,11 +243,50 @@ test("renders right-side two-line place names in both marker modes", async ({ pa
   await expect.poll(async () => (await readMapSnapshot(page))?.markerMode).toBe("order");
 });
 
-test("shows photos for all available places before any selection", async ({ page }) => {
+test("shows a name for every visible place after clusters dissolve", async ({ page }) => {
+  await page.goto("/plan?day=13&stress=1200");
+  await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
+  await page.getByRole("button", { name: "Map view" }).click();
+  await page.getByRole("button", { name: "Expand map" }).click();
+  const canvas = page.locator(".trip-map__canvas");
+  const mapBox = await canvas.boundingBox();
+  if (mapBox === null) {
+    throw new Error("Map geometry is required for the close-label test");
+  }
+  await page.evaluate(() => (window as DiagnosticsWindow).__urouteMapFocusFirstPlace?.());
+  await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
+  await expect.poll(async () => (await readMapSnapshot(page))?.renderedClusterCount).toBe(0);
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedPlaces.length ?? 0)
+    .toBeGreaterThan(0);
+  const snapshot = await readMapSnapshot(page);
+  const labelSafePlaceIds = [
+    ...new Set(
+      (snapshot?.renderedPlaces ?? [])
+        .filter(
+          (place) =>
+            place.x >= 0 &&
+            place.x <= mapBox.width - 220 &&
+            place.y >= 40 &&
+            place.y <= mapBox.height - 40,
+        )
+        .map((place) => place.id),
+    ),
+  ];
+  const visibleLabelIds = new Set(snapshot?.placeLabels.map((place) => place.id) ?? []);
+  expect(snapshot?.renderedClusterCount).toBe(0);
+  expect(labelSafePlaceIds.length).toBeGreaterThan(0);
+  expect(labelSafePlaceIds.every((id) => visibleLabelIds.has(id))).toBe(true);
+});
+
+test("shows every available place photo across normal and selected layers", async ({ page }) => {
   await page.goto("/places?place=nishiki&day=13");
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds.sort())
-    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+    .toEqual(["arabica", "kiyomizu"]);
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
+    .toContain("nishiki");
   const lines = await page.evaluate(async () => {
     const moduleUrl = "/src/plan/map-markers.ts";
     const markerModule = (await import(/* @vite-ignore */ moduleUrl)) as {
