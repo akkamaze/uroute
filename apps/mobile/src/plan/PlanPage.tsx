@@ -404,6 +404,15 @@ export function PlanPage(): React.JSX.Element {
     });
   }
 
+  function addPlace(): void {
+    captureNavigationSnapshot("/places");
+    void navigate({
+      to: "/places",
+      search: { day: selectedDay, search: "open" },
+      state: (current) => ({ ...current, placeSelectionEntry: true }),
+    });
+  }
+
   useEffect(() => {
     if (mapExpanded) {
       wasMapExpandedRef.current = true;
@@ -646,7 +655,12 @@ export function PlanPage(): React.JSX.Element {
         )}
 
         {removedVisit === null ? (
-          <button aria-label="Add a place" className="day-plan__add" type="button">
+          <button
+            aria-label={`Add a place to ${selectedDayLabel}, ${selectedDay} November`}
+            className="day-plan__add"
+            onClick={addPlace}
+            type="button"
+          >
             <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
           </button>
         ) : null}

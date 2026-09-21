@@ -258,7 +258,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function cancelSearch(): void {
-    if (searchOpenedHereRef.current) {
+    if (searchOpenedHereRef.current || selectionHistoryBoundary) {
       window.history.back();
     } else {
       void navigate({
