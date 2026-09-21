@@ -9,6 +9,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@uroute/auth": "workspace:*",
     "@tanstack/react-router": "^1.170.38",
     "lucide-react": "^1.47.0",
     "maplibre-gl": "^6.10.0",

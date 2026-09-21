@@ -11,7 +11,7 @@ import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 import { FRIDAY_STOPS } from "./plan/plan-data";
 
 interface LoginSearch {
-  profile?: "open";
+  authError?: "1";
 }
 
 interface PlaceSearch {
@@ -50,7 +50,7 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
   validateSearch: (search: Record<string, unknown>): LoginSearch =>
-    search.profile === "open" ? { profile: "open" } : {},
+    search.authError === "1" || search.authError === 1 ? { authError: "1" } : {},
   component: lazyRouteComponent(() => import("./entry/LoginPage"), "LoginPage"),
 });
 

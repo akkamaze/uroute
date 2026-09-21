@@ -3,6 +3,16 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  server: {
+    proxy: {
+      "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
+    },
+  },
+  preview: {
+    proxy: {
+      "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
+    },
+  },
   build: {
     chunkSizeWarningLimit: 1_100,
     rollupOptions: {

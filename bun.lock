@@ -42,6 +42,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@tanstack/react-router": "^1.170.38",
+        "@uroute/auth": "workspace:*",
         "lucide-react": "^1.47.0",
         "maplibre-gl": "^6.10.0",
         "react": "^19.1.1",
@@ -58,6 +59,16 @@
       "dependencies": {
         "react": "^19.1.1",
         "react-dom": "^19.1.1",
+      },
+    },
+    "packages/auth": {
+      "name": "@uroute/auth",
+      "version": "0.0.0",
+      "dependencies": {
+        "better-auth": "1.7.4",
+      },
+      "peerDependencies": {
+        "react": "^19.1.1",
       },
     },
   },
@@ -585,6 +596,8 @@
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.70.0", "", { "dependencies": { "@typescript-eslint/types": "8.70.0", "eslint-visitor-keys": "^5.0.0" } }, "sha512-BoC8PiO4Hkdo0TVJh9Ntxr5MxPDI7/oFsrygN5ADelFSeXG/qgNuucIGA+L5Z6JpPTE/uRfcTWtscjbUaufepQ=="],
 
     "@uroute/api": ["@uroute/api@workspace:apps/api"],
+
+    "@uroute/auth": ["@uroute/auth@workspace:packages/auth"],
 
     "@uroute/mobile": ["@uroute/mobile@workspace:apps/mobile"],
 

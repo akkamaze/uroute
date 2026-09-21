@@ -1,4 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
 import { useEffect } from "react";
 
 import "./entry.css";
@@ -30,19 +31,24 @@ function LoadingBrand(): React.JSX.Element {
 
 export function LoadingPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const { loading, user } = useAccount();
 
   useEffect(() => {
+    if (loading) {
+      return;
+    }
+
     const transitionTimer = window.setTimeout(() => {
-      void navigate({ to: "/welcome", replace: true });
+      void navigate({ to: user ? "/trips" : "/welcome", replace: true });
     }, TRANSITION_DELAY_MS);
 
     return () => {
       window.clearTimeout(transitionTimer);
     };
-  }, [navigate]);
+  }, [loading, navigate, user]);
 
   function continueToWelcome(): void {
-    void navigate({ to: "/welcome", replace: true });
+    void navigate({ to: user ? "/trips" : "/welcome", replace: true });
   }
 
   return (
@@ -54,7 +60,12 @@ export function LoadingPage(): React.JSX.Element {
           Opening uroute…
         </p>
 
-        <button className="loading-preview__continue" onClick={continueToWelcome} type="button">
+        <button
+          className="loading-preview__continue"
+          disabled={loading}
+          onClick={continueToWelcome}
+          type="button"
+        >
           Continue
         </button>
       </div>

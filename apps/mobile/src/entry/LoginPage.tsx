@@ -1,23 +1,10 @@
-import {
-  useCanGoBack,
-  useNavigate,
-  useRouter,
-  useRouterState,
-  useSearch,
-} from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
+import { useCanGoBack, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 import { BrandMark } from "../brand";
 import "./entry.css";
-
-interface ProfileDialogHistoryState {
-  profileDialogEntry?: true;
-}
-
-function isProfileDialogHistoryEntry(state: object): state is object & ProfileDialogHistoryState {
-  return "profileDialogEntry" in state && state.profileDialogEntry === true;
-}
 
 function GoogleMark(): React.JSX.Element {
   return (
@@ -43,80 +30,17 @@ function GoogleMark(): React.JSX.Element {
 }
 
 export function LoginPage(): React.JSX.Element {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const signInButtonRef = useRef<HTMLButtonElement>(null);
   const canGoBack = useCanGoBack();
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/login" });
-  const isProfileDialogEntry = useRouterState({
-    select: (state) => isProfileDialogHistoryEntry(state.location.state),
-  });
-  const profileDialogOpen = search.profile === "open";
+  const account = useAccount(search.authError === "1");
 
   useEffect(() => {
-    const dialog = dialogRef.current;
-
-    if (dialog === null) {
-      return;
+    if (account.user) {
+      void navigate({ replace: true, to: "/trips" });
     }
-
-    if (profileDialogOpen && !dialog.open) {
-      dialog.showModal();
-    } else if (!profileDialogOpen && dialog.open) {
-      dialog.close();
-    }
-  }, [profileDialogOpen]);
-
-  function openProfileDialog(): void {
-    void navigate({
-      resetScroll: false,
-      search: { profile: "open" },
-      state: (current) => {
-        const next = { ...current, profileDialogEntry: true as const };
-
-        return next;
-      },
-      to: "/login",
-    });
-  }
-
-  function closeProfileDialog(): void {
-    if (isProfileDialogEntry && canGoBack) {
-      router.history.back();
-
-      return;
-    }
-
-    void navigate({
-      replace: true,
-      resetScroll: false,
-      search: {},
-      state: (current) => {
-        const next: Record<string, unknown> = { ...current };
-
-        delete next.profileDialogEntry;
-
-        return next;
-      },
-      to: "/login",
-    });
-  }
-
-  function restoreSignInFocus(): void {
-    signInButtonRef.current?.focus();
-  }
-
-  function closeFromBackdrop(event: React.MouseEvent<HTMLDialogElement>): void {
-    if (event.target === event.currentTarget) {
-      closeProfileDialog();
-    }
-  }
-
-  function closeFromEscape(event: React.SyntheticEvent<HTMLDialogElement>): void {
-    event.preventDefault();
-    closeProfileDialog();
-  }
+  }, [account.user, navigate]);
 
   function goBack(): void {
     if (canGoBack) {
@@ -128,15 +52,17 @@ export function LoginPage(): React.JSX.Element {
     void navigate({ replace: true, to: "/welcome" });
   }
 
-  function chooseMina(): void {
-    void navigate({ replace: true, to: "/trips" });
-  }
-
   return (
     <main className="entry-shell entry-shell--login" data-scroll-restoration-id="entry-main">
       <div className="login-page">
         <header className="login-header">
-          <button aria-label="Go back" className="login-back" onClick={goBack} type="button">
+          <button
+            aria-label="Go back"
+            className="login-back"
+            disabled={account.working}
+            onClick={goBack}
+            type="button"
+          >
             <ChevronLeft aria-hidden="true" size={24} strokeWidth={1.8} />
           </button>
         </header>
@@ -162,46 +88,33 @@ export function LoginPage(): React.JSX.Element {
         <footer className="login-footer">
           <button
             className="google-action"
-            onClick={openProfileDialog}
-            ref={signInButtonRef}
+            disabled={account.loading || account.working}
+            onClick={account.unavailable ? account.retry : account.signIn}
             type="button"
           >
-            <GoogleMark />
-            <span>Continue with Google</span>
+            {!account.unavailable && <GoogleMark />}
+            <span>
+              {account.loading || account.working
+                ? "Connecting…"
+                : account.unavailable
+                  ? "Try again"
+                  : "Continue with Google"}
+            </span>
           </button>
 
+          {(account.unavailable || account.actionError) && (
+            <p className="login-footer__error" role="alert">
+              {account.unavailable
+                ? "We could not check your account. Check your connection and try again."
+                : account.actionError}
+            </p>
+          )}
+
           <p className="login-footer__notice">
-            Google sign-in is not connected yet. Choose a local profile to continue.
+            Google sign-in uses a secure browser session. Your password is never shared with uroute.
           </p>
         </footer>
       </div>
-
-      <dialog
-        aria-labelledby="profile-dialog-title"
-        className="profile-dialog"
-        onCancel={closeFromEscape}
-        onClick={closeFromBackdrop}
-        onClose={restoreSignInFocus}
-        ref={dialogRef}
-      >
-        <div className="profile-dialog__content">
-          <h2 id="profile-dialog-title">Choose a profile</h2>
-
-          <button className="profile-choice" onClick={chooseMina} type="button">
-            <span aria-hidden="true" className="profile-choice__avatar">
-              M
-            </span>
-            <span>
-              <strong>Mina</strong>
-              <small>Continue as Mina</small>
-            </span>
-          </button>
-
-          <button className="profile-dialog__cancel" onClick={closeProfileDialog} type="button">
-            Cancel
-          </button>
-        </div>
-      </dialog>
     </main>
   );
 }
