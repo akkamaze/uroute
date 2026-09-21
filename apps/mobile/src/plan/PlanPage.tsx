@@ -68,11 +68,11 @@ interface PointerReorderState {
   targetId: string;
 }
 
-function isStressFixtureEnabled(): boolean {
+function isStressFixtureEnabled(stress: "1200" | undefined): boolean {
   const fixtureAvailable =
     import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_FIXTURE === "true";
 
-  return fixtureAvailable && new URLSearchParams(window.location.search).get("stress") === "1200";
+  return fixtureAvailable && stress === "1200";
 }
 
 export function PlanPage(): React.JSX.Element {
@@ -110,7 +110,7 @@ export function PlanPage(): React.JSX.Element {
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [reorderNotice, setReorderNotice] = useState("");
   const [reorderHintVisible, setReorderHintVisible] = useState(true);
-  const stressFixtureEnabled = isStressFixtureEnabled();
+  const stressFixtureEnabled = isStressFixtureEnabled(search.stress);
   const places = useMemo<PlaceCollection>(() => {
     if (stressFixtureEnabled && selectedDay === 13) {
       return createStressPlaces();
