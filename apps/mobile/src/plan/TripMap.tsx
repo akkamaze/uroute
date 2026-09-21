@@ -13,7 +13,19 @@ import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
-import { createMapMarker, createPlaceHead, createNameLabel, getMapLabel } from "./map-markers";
+import {
+  MAP_LABEL_GAP,
+  placeMapLabels,
+  type MapLabelPoint,
+  type MapLabelSide,
+} from "./map-label-placement";
+import {
+  createMapMarker,
+  createPlaceHead,
+  createNameLabel,
+  getMapLabel,
+  getMapLabelWidth,
+} from "./map-markers";
 
 const POINT_SOURCE_ID = "trip-places";
 const CLUSTER_LAYER_ID = "place-clusters";
@@ -21,10 +33,10 @@ const SYMBOL_LAYER_ID = "place-symbols";
 const SELECTED_SOURCE_ID = "selected-place";
 const SELECTED_LAYER_ID = "selected-place-symbol";
 const LABEL_LAYER_ID = "place-names";
-const CLOSE_LABEL_LAYER_ID = "place-names-close";
+const LEFT_LABEL_LAYER_ID = "place-names-left";
 const SELECTED_LABEL_LAYER_ID = "selected-place-name";
-const PLACE_LABEL_OFFSET: [number, number] = [18, 0];
-const FULL_LABEL_ZOOM = 15;
+const RIGHT_LABEL_OFFSET: [number, number] = [MAP_LABEL_GAP, 0];
+const LEFT_LABEL_OFFSET: [number, number] = [-MAP_LABEL_GAP, 0];
 const TILE_TIMEOUT_MS = 12_000;
 
 setWorkerUrl(mapLibreWorkerUrl);
@@ -71,6 +83,7 @@ interface MapDiagnosticsSnapshot {
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
   placeLabels: { id: string; name: string; label: string }[];
+  labelPlacements: { leftIds: string[]; rightIds: string[]; selectedSide: MapLabelSide | null };
   renderedPlaces: { id: string; x: number; y: number }[];
   renderedPhotoIds: string[];
   markerMode: "places" | "order";
@@ -198,6 +211,18 @@ function getLabelFilter(selectedId: string | null): FilterSpecification {
   return ["all", ["!", ["has", "point_count"]], ["!=", ["get", "id"], selectedId ?? ""]];
 }
 
+function getPlacedLabelFilter(
+  selectedId: string | null,
+  ids: readonly string[],
+): FilterSpecification {
+  return [
+    "all",
+    ["!", ["has", "point_count"]],
+    ["!=", ["get", "id"], selectedId ?? ""],
+    ["in", ["get", "id"], ["literal", [...ids]]],
+  ];
+}
+
 function syncSelectedPlace(
   map: MapLibreMap,
   places: PlaceCollection,
@@ -233,6 +258,7 @@ export function TripMap({
   const placesRef = useRef(places);
   const selectRef = useRef(onSelect);
   const selectedIdRef = useRef(selectedId);
+  const syncLabelPlacementRef = useRef<() => void>(() => undefined);
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
   const expandButtonRef = useRef<HTMLButtonElement>(null);
@@ -264,6 +290,12 @@ export function TripMap({
 
     let map: MapLibreMap | null = null;
     let layersReady = false;
+    let labelPlacementFrame: number | undefined;
+    let labelPlacements: MapDiagnosticsSnapshot["labelPlacements"] = {
+      leftIds: [],
+      rightIds: [],
+      selectedSide: null,
+    };
     let disposed = false;
     let failed = false;
     const tileTimer: { id: number | undefined } = { id: undefined };
@@ -305,7 +337,7 @@ export function TripMap({
       const longitude = coordinates?.[0];
       const latitude = coordinates?.[1];
       if (longitude !== undefined && latitude !== undefined) {
-        activeMap.jumpTo({ center: [longitude, latitude], zoom: FULL_LABEL_ZOOM + 0.1 });
+        activeMap.jumpTo({ center: [longitude, latitude], zoom: 15.1 });
       }
     };
     const readDiagnostics = (): MapDiagnosticsSnapshot => {
@@ -338,6 +370,7 @@ export function TripMap({
         clusterLayerReady: activeMap.getLayer(CLUSTER_LAYER_ID) !== undefined,
         clusteringEnabled: sourceOptions?.cluster === true,
         markerMode,
+        labelPlacements,
         renderedPhotoIds:
           markerMode === "order" || activeMap.getLayer(SYMBOL_LAYER_ID) === undefined
             ? []
@@ -350,7 +383,7 @@ export function TripMap({
             ? []
             : activeMap
                 .queryRenderedFeatures({
-                  layers: [LABEL_LAYER_ID, CLOSE_LABEL_LAYER_ID, SELECTED_LABEL_LAYER_ID],
+                  layers: [LABEL_LAYER_ID, LEFT_LABEL_LAYER_ID, SELECTED_LABEL_LAYER_ID],
                 })
                 .map((feature) => ({
                   id: String(feature.properties.id),
@@ -449,7 +482,7 @@ export function TripMap({
             SYMBOL_LAYER_ID,
             SELECTED_LABEL_LAYER_ID,
             LABEL_LAYER_ID,
-            CLOSE_LABEL_LAYER_ID,
+            LEFT_LABEL_LAYER_ID,
           ],
         },
       );
@@ -496,6 +529,116 @@ export function TripMap({
       syncSelectedPlace(activeMap, placesRef.current, selectedIdRef.current);
     }
 
+    let placementKey = "";
+    function syncLabelPlacement(): void {
+      if (
+        activeMap.isMoving() ||
+        !layersReady ||
+        activeMap.getLayer(LABEL_LAYER_ID) === undefined ||
+        activeMap.getLayer(LEFT_LABEL_LAYER_ID) === undefined
+      ) {
+        return;
+      }
+
+      const canvas = activeMap.getCanvas();
+      const centerX = canvas.clientWidth / 2;
+      const centerY = canvas.clientHeight / 2;
+      const seenIds = new Set<string>();
+      const points = activeMap
+        .queryRenderedFeatures({ layers: [SELECTED_LAYER_ID, SYMBOL_LAYER_ID] })
+        .flatMap((feature): MapLabelPoint[] => {
+          const featureId: unknown = feature.properties.id;
+          if (
+            typeof featureId !== "string" ||
+            seenIds.has(featureId) ||
+            feature.geometry.type !== "Point"
+          ) {
+            return [];
+          }
+          seenIds.add(featureId);
+          const point = activeMap.project(feature.geometry.coordinates as [number, number]);
+
+          return [
+            {
+              id: featureId,
+              width: getMapLabelWidth(String(feature.properties.name)),
+              x: point.x,
+              y: point.y,
+            },
+          ];
+        });
+      points.sort((first, second) => {
+        const firstSelected = first.id === selectedIdRef.current;
+        const secondSelected = second.id === selectedIdRef.current;
+        if (firstSelected !== secondSelected) {
+          return firstSelected ? -1 : 1;
+        }
+
+        return (
+          Math.hypot(first.x - centerX, first.y - centerY) -
+            Math.hypot(second.x - centerX, second.y - centerY) || first.id.localeCompare(second.id)
+        );
+      });
+
+      const placements = placeMapLabels(points, {
+        height: canvas.clientHeight,
+        width: canvas.clientWidth,
+      });
+      const rightIds: string[] = [];
+      const leftIds: string[] = [];
+      let selectedSide: MapLabelSide | undefined;
+      placements.forEach((side, placeId) => {
+        if (placeId === selectedIdRef.current) {
+          selectedSide = side;
+        } else if (side === "right") {
+          rightIds.push(placeId);
+        } else {
+          leftIds.push(placeId);
+        }
+      });
+      rightIds.sort();
+      leftIds.sort();
+      labelPlacements = { leftIds, rightIds, selectedSide: selectedSide ?? null };
+      const nextPlacementKey = `${selectedSide ?? "hidden"}|${rightIds.join(",")}|${leftIds.join(",")}`;
+      if (nextPlacementKey === placementKey) {
+        return;
+      }
+      placementKey = nextPlacementKey;
+      activeMap.setFilter(LABEL_LAYER_ID, getPlacedLabelFilter(selectedIdRef.current, rightIds));
+      activeMap.setFilter(
+        LEFT_LABEL_LAYER_ID,
+        getPlacedLabelFilter(selectedIdRef.current, leftIds),
+      );
+      activeMap.setLayoutProperty(
+        SELECTED_LABEL_LAYER_ID,
+        "visibility",
+        selectedSide === undefined ? "none" : "visible",
+      );
+      if (selectedSide !== undefined) {
+        activeMap.setLayoutProperty(
+          SELECTED_LABEL_LAYER_ID,
+          "icon-anchor",
+          selectedSide === "right" ? "left" : "right",
+        );
+        activeMap.setLayoutProperty(
+          SELECTED_LABEL_LAYER_ID,
+          "icon-offset",
+          selectedSide === "right" ? RIGHT_LABEL_OFFSET : LEFT_LABEL_OFFSET,
+        );
+      }
+    }
+    syncLabelPlacementRef.current = syncLabelPlacement;
+
+    function scheduleLabelPlacement(): void {
+      if (labelPlacementFrame !== undefined) {
+        window.cancelAnimationFrame(labelPlacementFrame);
+      }
+      labelPlacementFrame = window.requestAnimationFrame(() => {
+        labelPlacementFrame = undefined;
+        syncLabelPlacement();
+      });
+    }
+
     function handleStyleLoad(): void {
       if (layersReady) {
         return;
@@ -527,6 +670,7 @@ export function TripMap({
           filter: ["!", ["has", "point_count"]],
           layout: {
             "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
             "icon-image": ["concat", "head-", ["get", "id"]],
           },
         });
@@ -548,25 +692,25 @@ export function TripMap({
           id: LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          maxzoom: FULL_LABEL_ZOOM,
           filter: getLabelFilter(selectedIdRef.current),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
-            "icon-offset": PLACE_LABEL_OFFSET,
+            "icon-offset": RIGHT_LABEL_OFFSET,
             "icon-padding": 0,
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
           },
         });
         activeMap.addLayer({
-          id: CLOSE_LABEL_LAYER_ID,
+          id: LEFT_LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          minzoom: FULL_LABEL_ZOOM,
-          filter: getLabelFilter(selectedIdRef.current),
+          filter: getPlacedLabelFilter(selectedIdRef.current, []),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
-            "icon-anchor": "left",
-            "icon-offset": PLACE_LABEL_OFFSET,
+            "icon-anchor": "right",
+            "icon-offset": LEFT_LABEL_OFFSET,
             "icon-padding": 0,
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
@@ -579,12 +723,13 @@ export function TripMap({
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
-            "icon-offset": PLACE_LABEL_OFFSET,
+            "icon-offset": RIGHT_LABEL_OFFSET,
             "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
           },
         });
         activeMap.moveLayer(LABEL_LAYER_ID, SYMBOL_LAYER_ID);
-        activeMap.moveLayer(CLOSE_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
+        activeMap.moveLayer(LEFT_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
         activeMap.moveLayer(SELECTED_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
         activeMap.on("click", handlePointClick);
         activeMap.on("mouseenter", SYMBOL_LAYER_ID, handleMouseEnter);
@@ -649,6 +794,9 @@ export function TripMap({
     activeMap.on("error", handleMapError);
     activeMap.on("style.load", handleStyleLoad);
     activeMap.on("render", finishReady);
+    activeMap.on("render", scheduleLabelPlacement);
+    activeMap.on("moveend", scheduleLabelPlacement);
+    activeMap.on("idle", scheduleLabelPlacement);
     activeMap.once("idle", finishReady);
     tileTimer.id = window.setTimeout(() => {
       showError("Map tiles took too long to load. Try again when the connection is stable.");
@@ -669,7 +817,13 @@ export function TripMap({
       activeMap.off("error", handleMapError);
       activeMap.off("style.load", handleStyleLoad);
       activeMap.off("render", finishReady);
+      activeMap.off("render", scheduleLabelPlacement);
+      activeMap.off("moveend", scheduleLabelPlacement);
+      activeMap.off("idle", scheduleLabelPlacement);
       activeMap.off("idle", finishReady);
+      if (labelPlacementFrame !== undefined) {
+        window.cancelAnimationFrame(labelPlacementFrame);
+      }
 
       if (layersReady) {
         activeMap.off("click", handlePointClick);
@@ -678,6 +832,9 @@ export function TripMap({
       }
 
       mapRef.current = null;
+      if (syncLabelPlacementRef.current === syncLabelPlacement) {
+        syncLabelPlacementRef.current = () => undefined;
+      }
       if (diagnosticsWindow.__urouteMapDiagnostics === readDiagnostics) {
         delete diagnosticsWindow.__urouteMapDiagnostics;
       }
@@ -738,17 +895,14 @@ export function TripMap({
         });
     }
     syncSelectedPlace(map, placesRef.current, selectedId);
-    if (map.getLayer(LABEL_LAYER_ID) !== undefined) {
-      const labelFilter = getLabelFilter(selectedId);
-      map.setFilter(LABEL_LAYER_ID, labelFilter);
-      if (map.getLayer(CLOSE_LABEL_LAYER_ID) !== undefined) {
-        map.setFilter(CLOSE_LABEL_LAYER_ID, labelFilter);
-      }
-    }
+    map.triggerRepaint();
   }, [markerMode, selectedId]);
 
   useEffect(() => {
-    window.requestAnimationFrame(() => mapRef.current?.resize());
+    window.requestAnimationFrame(() => {
+      mapRef.current?.resize();
+      syncLabelPlacementRef.current();
+    });
   }, [expanded, inactive]);
 
   function retry(): void {

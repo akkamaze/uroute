@@ -15,6 +15,7 @@ interface MapSnapshot {
   markerMode: "places" | "order";
   renderedPhotoIds: string[];
   placeLabels: { id: string; name: string; label: string }[];
+  labelPlacements: { leftIds: string[]; rightIds: string[]; selectedSide: "left" | "right" | null };
   renderedPlaces: { id: string; x: number; y: number }[];
   numberedPlaces: { id: string; marker: string }[];
   sourceId: string;
@@ -238,48 +239,47 @@ test("renders right-side two-line place names in both marker modes", async ({ pa
       (place) => place.name === "% Arabica Higashiyama",
     )?.label;
   await expect.poll(readLabel).toBe("% Arabica\nHigashiyama");
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.labelPlacements.selectedSide)
+    .toBe("right");
   const label = await readLabel();
   expect(label?.split("\n")).toHaveLength(2);
   await page.getByRole("button", { name: "Day order", exact: true }).click();
   await expect.poll(readLabel).toBe("% Arabica\nHigashiyama");
   await expect.poll(async () => (await readMapSnapshot(page))?.markerMode).toBe("order");
+  await page.goto("/places?place=kiyomizu&day=13");
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.labelPlacements.selectedSide)
+    .toBe("right");
 });
 
-test("shows a name for every visible place after clusters dissolve", async ({ page }) => {
+test("shows non-overlapping names as soon as clusters dissolve", async ({ page }) => {
   await page.goto("/plan?day=13&stress=1200");
   expect(await readMapSnapshot(page)).toBeNull();
   await page.getByRole("button", { name: "Map view" }).click();
   await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
   await page.getByRole("button", { name: "Expand map" }).click();
-  const canvas = page.locator(".trip-map__canvas");
-  const mapBox = await canvas.boundingBox();
-  if (mapBox === null) {
-    throw new Error("Map geometry is required for the close-label test");
-  }
   await page.evaluate(() => (window as DiagnosticsWindow).__urouteMapFocusFirstPlace?.());
   await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
   await expect.poll(async () => (await readMapSnapshot(page))?.renderedClusterCount).toBe(0);
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedPlaces.length ?? 0)
     .toBeGreaterThan(0);
+  await expect
+    .poll(async () => {
+      const placements = (await readMapSnapshot(page))?.labelPlacements;
+
+      return (placements?.leftIds.length ?? 0) + (placements?.rightIds.length ?? 0);
+    })
+    .toBeGreaterThan(0);
   const snapshot = await readMapSnapshot(page);
-  const labelSafePlaceIds = [
-    ...new Set(
-      (snapshot?.renderedPlaces ?? [])
-        .filter(
-          (place) =>
-            place.x >= 0 &&
-            place.x <= mapBox.width - 140 &&
-            place.y >= 20 &&
-            place.y <= mapBox.height - 20,
-        )
-        .map((place) => place.id),
-    ),
-  ];
   const visibleLabelIds = new Set(snapshot?.placeLabels.map((place) => place.id) ?? []);
+  const renderedPlaceIds = new Set(snapshot?.renderedPlaces.map((place) => place.id) ?? []);
   expect(snapshot?.renderedClusterCount).toBe(0);
-  expect(labelSafePlaceIds.length).toBeGreaterThan(0);
-  expect(labelSafePlaceIds.every((id) => visibleLabelIds.has(id))).toBe(true);
+  expect(snapshot?.labelPlacements.leftIds.length).toBeGreaterThan(0);
+  expect(snapshot?.labelPlacements.rightIds.length).toBeGreaterThan(0);
+  expect(visibleLabelIds.size).toBeGreaterThan(0);
+  expect(visibleLabelIds.size).toBeLessThan(renderedPlaceIds.size);
 });
 
 test("shows every available place photo across normal and selected layers", async ({ page }) => {

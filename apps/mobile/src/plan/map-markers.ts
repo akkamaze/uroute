@@ -126,11 +126,19 @@ export function createCategoryMarker(category: string): ImageData {
 
 const LABEL_FONT = "600 11px Arial";
 const LABEL_TEXT_WIDTH = 108;
+const LABEL_LAYOUT_CACHE_LIMIT = 2_048;
 
-export function getMapLabel(name: string): string {
+interface MapLabelLayout {
+  label: string;
+  width: number;
+}
+
+const labelLayoutCache = new Map<string, MapLabelLayout>();
+
+function createMapLabelLayout(name: string): MapLabelLayout {
   const context = document.createElement("canvas").getContext("2d");
   if (context === null) {
-    return name;
+    return { label: name, width: LABEL_TEXT_WIDTH + 8 };
   }
   context.font = LABEL_FONT;
   const remaining = Array.from(name.trim());
@@ -160,13 +168,42 @@ export function getMapLabel(name: string): string {
     }
   }
 
-  return lines.join("\n");
+  const label = lines.join("\n");
+  const textWidth = Math.max(0, ...lines.map((line) => context.measureText(line).width));
+
+  return { label, width: Math.ceil(Math.min(LABEL_TEXT_WIDTH, textWidth)) + 8 };
+}
+
+function getMapLabelLayout(name: string): MapLabelLayout {
+  const cachedLayout = labelLayoutCache.get(name);
+  if (cachedLayout !== undefined) {
+    return cachedLayout;
+  }
+  const layout = createMapLabelLayout(name);
+  if (labelLayoutCache.size >= LABEL_LAYOUT_CACHE_LIMIT) {
+    const oldestName = labelLayoutCache.keys().next().value;
+    if (oldestName !== undefined) {
+      labelLayoutCache.delete(oldestName);
+    }
+  }
+  labelLayoutCache.set(name, layout);
+
+  return layout;
+}
+
+export function getMapLabel(name: string): string {
+  return getMapLabelLayout(name).label;
+}
+
+export function getMapLabelWidth(name: string): number {
+  return getMapLabelLayout(name).width;
 }
 
 export function createNameLabel(name: string): ImageData {
-  const lines = getMapLabel(name).split("\n");
+  const layout = getMapLabelLayout(name);
+  const lines = layout.label.split("\n");
   const canvas = document.createElement("canvas");
-  canvas.width = 232;
+  canvas.width = layout.width * 2;
   canvas.height = 72;
   const context = canvas.getContext("2d");
   if (context === null) {
