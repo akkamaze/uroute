@@ -33,6 +33,10 @@ export function AppRoot(): React.JSX.Element {
         <Outlet />
       </div>
       <div className="app-navigation__backdrop" ref={backdropRef} />
+      <div className="orientation-guard" role="status">
+        <strong>Rotate your phone</strong>
+        <span>This screen is designed for portrait view.</span>
+      </div>
     </div>
   );
 }

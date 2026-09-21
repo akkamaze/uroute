@@ -1,7 +1,14 @@
 type OrientationMode = "any" | "portrait-primary";
 
-interface LockableScreenOrientation extends ScreenOrientation {
+interface LockableScreenOrientation {
   lock?: (orientation: OrientationMode) => Promise<void>;
+  unlock?: () => void;
+}
+
+function setOrientationPolicy(policy: "any" | "portrait"): void {
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.orientationPolicy = policy;
+  }
 }
 
 function getOrientation(): LockableScreenOrientation | null {
@@ -15,25 +22,35 @@ function getOrientation(): LockableScreenOrientation | null {
 }
 
 export function allowAnyOrientation(): void {
+  setOrientationPolicy("any");
   const orientation = getOrientation();
 
   if (orientation === null) {
     return;
   }
 
-  if (orientation.lock !== undefined) {
-    void orientation.lock("any").catch(() => undefined);
-  } else {
-    orientation.unlock();
+  try {
+    if (typeof orientation.lock === "function") {
+      void orientation.lock.call(orientation, "any").catch(() => undefined);
+    } else if (typeof orientation.unlock === "function") {
+      orientation.unlock.call(orientation);
+    }
+  } catch {
+    // Safari can expose a partial Screen Orientation API that throws when called.
   }
 }
 
 export function preferPortraitOrientation(): void {
+  setOrientationPolicy("portrait");
   const orientation = getOrientation();
 
-  if (orientation?.lock === undefined) {
+  if (typeof orientation?.lock !== "function") {
     return;
   }
 
-  void orientation.lock("portrait-primary").catch(() => undefined);
+  try {
+    void orientation.lock.call(orientation, "portrait-primary").catch(() => undefined);
+  } catch {
+    // The CSS orientation guard remains active when native locking is unavailable.
+  }
 }

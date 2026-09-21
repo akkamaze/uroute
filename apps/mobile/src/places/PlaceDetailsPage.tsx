@@ -147,10 +147,14 @@ export function PlaceDetailsPage(): React.JSX.Element {
   );
 
   useEffect(() => {
-    allowAnyOrientation();
+    if (mapExpanded) {
+      allowAnyOrientation();
+    } else {
+      preferPortraitOrientation();
+    }
 
     return preferPortraitOrientation;
-  }, []);
+  }, [mapExpanded]);
 
   useLayoutEffect(() => {
     setVisitTime(initialVisit?.time ?? "");
