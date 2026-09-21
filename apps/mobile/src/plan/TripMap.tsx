@@ -2,7 +2,6 @@ import { LocateFixed, Maximize2, Minimize2 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
-  Marker,
   setWorkerUrl,
   type GeoJSONSource,
   type MapLayerMouseEvent,
@@ -13,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
-import { createMapMarker, createCategoryMarker, createNameLabel, getMapLabel } from "./map-markers";
+import { createMapMarker, createPlaceHead, createNameLabel, getMapLabel } from "./map-markers";
 
 const POINT_SOURCE_ID = "trip-places";
 const CLUSTER_LAYER_ID = "place-clusters";
@@ -68,6 +67,7 @@ interface MapDiagnosticsSnapshot {
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
   placeLabels: { name: string; label: string }[];
+  renderedPhotoIds: string[];
   markerMode: "places" | "order";
   numberedPlaces: { id: string; marker: string }[];
   sourceId: typeof POINT_SOURCE_ID;
@@ -98,10 +98,10 @@ function framePlaces(
   bottomInset = 0,
 ): void {
   const cameraPadding = {
-    top: 140,
-    right: 104,
+    top: 104,
+    right: 156,
     bottom: Math.max(84, bottomInset + 64),
-    left: 64,
+    left: 32,
   };
 
   if (places.features.length === 0) {
@@ -305,6 +305,13 @@ export function TripMap({
         clusterLayerReady: activeMap.getLayer(CLUSTER_LAYER_ID) !== undefined,
         clusteringEnabled: sourceOptions?.cluster === true,
         markerMode,
+        renderedPhotoIds:
+          markerMode === "order" || activeMap.getLayer(SYMBOL_LAYER_ID) === undefined
+            ? []
+            : activeMap
+                .queryRenderedFeatures({ layers: [SYMBOL_LAYER_ID] })
+                .filter((feature) => typeof feature.properties.image === "string")
+                .map((feature) => String(feature.properties.id)),
         placeLabels:
           activeMap.getLayer(LABEL_LAYER_ID) === undefined
             ? []
@@ -462,12 +469,7 @@ export function TripMap({
           filter: ["!", ["has", "point_count"]],
           layout: {
             "icon-allow-overlap": true,
-            "icon-image":
-              markerMode === "order"
-                ? ["get", "marker"]
-                : ["concat", "category-", ["get", "category"]],
-            "icon-anchor": markerMode === "order" ? "bottom" : "center",
-            "icon-offset": markerMode === "order" ? [0, 5] : [0, 0],
+            "icon-image": ["concat", "head-", ["get", "id"]],
           },
         });
         activeMap.addSource(SELECTED_SOURCE_ID, {
@@ -481,12 +483,7 @@ export function TripMap({
           layout: {
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
-            "icon-image":
-              markerMode === "order"
-                ? ["concat", "selected-", ["coalesce", ["get", "marker"], "place-"]]
-                : ["concat", "category-", ["get", "category"]],
-            "icon-anchor": markerMode === "order" ? "bottom" : "center",
-            "icon-offset": markerMode === "order" ? [0, 5] : [0, 0],
+            "icon-image": ["concat", "selected-head-", ["get", "id"]],
           },
         });
         activeMap.addLayer({
@@ -500,8 +497,9 @@ export function TripMap({
           ],
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
-            "icon-offset": [0, markerMode === "places" ? 31 : 16],
-            "icon-padding": 3,
+            "icon-anchor": "left",
+            "icon-offset": [24, 0],
+            "icon-padding": 0,
           },
         });
         activeMap.addLayer({
@@ -510,12 +508,13 @@ export function TripMap({
           source: SELECTED_SOURCE_ID,
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
-            "icon-offset": [0, markerMode === "places" ? 31 : 16],
+            "icon-anchor": "left",
+            "icon-offset": [24, 0],
             "icon-allow-overlap": true,
           },
         });
         activeMap.moveLayer(LABEL_LAYER_ID, SYMBOL_LAYER_ID);
-        activeMap.moveLayer(SELECTED_LABEL_LAYER_ID, SELECTED_LAYER_ID);
+        activeMap.moveLayer(SELECTED_LABEL_LAYER_ID, SYMBOL_LAYER_ID);
         activeMap.on("click", handlePointClick);
         activeMap.on("mouseenter", SYMBOL_LAYER_ID, handleMouseEnter);
         activeMap.on("mouseleave", SYMBOL_LAYER_ID, handleMouseLeave);
@@ -547,28 +546,33 @@ export function TripMap({
       }
     }
 
-    activeMap.setMissingStyleImageResolver((imageId) => {
+    activeMap.setMissingStyleImageResolver(async (imageId) => {
       if (imageId.startsWith("name-")) {
         activeMap.addImage(imageId, createNameLabel(imageId.slice(5)), { pixelRatio: 2 });
 
         return;
       }
-      if (imageId.startsWith("category-")) {
-        activeMap.addImage(imageId, createCategoryMarker(imageId.slice(9)), { pixelRatio: 2 });
+      if (imageId.startsWith("cluster-")) {
+        activeMap.addImage(imageId, createMapMarker("cluster", imageId.slice(8)), {
+          pixelRatio: 2,
+        });
 
         return;
       }
-      const selected = imageId.startsWith("selected-");
-      const spriteId = selected ? imageId.slice(9) : imageId;
-      const cluster = spriteId.startsWith("cluster-");
-      if (!cluster && !spriteId.startsWith("place-")) {
+      const selected = imageId.startsWith("selected-head-");
+      const id = imageId.slice(selected ? 14 : 5);
+      const place = placesRef.current.features.find((feature) => feature.properties.id === id);
+      if (place === undefined) {
         return;
       }
-      const label = spriteId.slice(cluster ? 8 : 6);
-      if (!activeMap.hasImage(imageId)) {
-        activeMap.addImage(imageId, createMapMarker(cluster ? "cluster" : "pin", label, selected), {
-          pixelRatio: 2,
-        });
+      const sprite = await createPlaceHead(
+        place.properties.category,
+        place.properties.image,
+        markerMode === "order" ? place.properties.marker?.slice(6) : undefined,
+        selected,
+      );
+      if (!disposed && !activeMap.hasImage(imageId)) {
+        activeMap.addImage(imageId, sprite, { pixelRatio: 2 });
       }
     });
     activeMap.on("error", handleMapError);
@@ -660,39 +664,6 @@ export function TripMap({
   useEffect(() => {
     window.requestAnimationFrame(() => mapRef.current?.resize());
   }, [expanded, inactive]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const place = places.features.find((feature) => feature.properties.id === selectedId);
-    const imageUrl = place?.properties.image;
-    if (map === null || markerMode !== "places" || place === undefined || imageUrl === undefined) {
-      return undefined;
-    }
-    const element = document.createElement("button");
-    element.type = "button";
-    element.className = "trip-map__photo";
-    element.setAttribute("aria-label", `View ${place.properties.name}`);
-    element.title = place.properties.name;
-    const image = document.createElement("img");
-    image.src = imageUrl;
-    image.alt = `${place.properties.name} map photo`;
-    image.addEventListener("error", () => {
-      image.remove();
-      element.textContent = place.properties.name.slice(0, 2);
-    });
-    element.append(image);
-    element.addEventListener("click", (event) => {
-      event.stopPropagation();
-      selectRef.current(place.properties.id);
-    });
-    const marker = new Marker({ element, anchor: "bottom", offset: [0, -12] })
-      .setLngLat(place.geometry.coordinates as [number, number])
-      .addTo(map);
-
-    return () => {
-      marker.remove();
-    };
-  }, [places, selectedId, markerMode, retryCount]);
 
   function retry(): void {
     setErrorMessage("");

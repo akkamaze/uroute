@@ -13,6 +13,7 @@ interface MapSnapshot {
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
   markerMode: "places" | "order";
+  renderedPhotoIds: string[];
   placeLabels: { name: string; label: string }[];
   numberedPlaces: { id: string; marker: string }[];
   sourceId: string;
@@ -142,7 +143,9 @@ test("keeps the selected place and its photo visible after zooming out into clus
   page,
 }) => {
   await page.goto("/places?place=nishiki&day=13");
-  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
+    .toContain("nishiki");
   await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
@@ -201,9 +204,11 @@ test("switches between photo exploration and only the current day's ordered stop
       { id: "arabica", marker: "place-2" },
     ]);
   await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(false);
-  await expect(page.locator(".trip-map__photo")).toHaveCount(0);
+  await expect.poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds).toEqual([]);
   await page.goto("/places?place=nishiki&day=14");
-  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
+    .toContain("nishiki");
   await page.getByRole("button", { name: "Day order", exact: true }).click();
   await expect
     .poll(async () => (await readMapSnapshot(page))?.numberedPlaces)
@@ -211,9 +216,11 @@ test("switches between photo exploration and only the current day's ordered stop
       { id: "nishiki", marker: "place-1" },
       { id: "arabica", marker: "place-2" },
     ]);
-  await expect(page.locator(".trip-map__photo")).toHaveCount(0);
+  await expect.poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds).toEqual([]);
   await page.getByRole("button", { name: "Places", exact: true }).click();
-  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds)
+    .toContain("nishiki");
   await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(3);
   await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(true);
   await page.goto("/places?place=nishiki&day=15");
@@ -222,16 +229,37 @@ test("switches between photo exploration and only the current day's ordered stop
   await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(0);
 });
 
-test("renders compact ellipsized place names in both marker modes", async ({ page }) => {
+test("renders right-side two-line place names in both marker modes", async ({ page }) => {
   await page.goto("/places?place=arabica&day=13");
   const readLabel = async (): Promise<string | undefined> =>
     (await readMapSnapshot(page))?.placeLabels.find(
       (place) => place.name === "% Arabica Higashiyama",
     )?.label;
-  await expect.poll(readLabel).toMatch(/…$/);
+  await expect.poll(readLabel).toBe("% Arabica\nHigashiyama");
   const label = await readLabel();
-  expect(label?.length).toBeLessThan("% Arabica Higashiyama".length);
+  expect(label?.split("\n")).toHaveLength(2);
   await page.getByRole("button", { name: "Day order", exact: true }).click();
-  await expect.poll(readLabel).toMatch(/…$/);
+  await expect.poll(readLabel).toBe("% Arabica\nHigashiyama");
   await expect.poll(async () => (await readMapSnapshot(page))?.markerMode).toBe("order");
+});
+
+test("shows photos for all available places before any selection", async ({ page }) => {
+  await page.goto("/places?place=nishiki&day=13");
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds.sort())
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+  const lines = await page.evaluate(async () => {
+    const moduleUrl = "/src/plan/map-markers.ts";
+    const markerModule = (await import(/* @vite-ignore */ moduleUrl)) as {
+      getMapLabel: (name: string) => string;
+    };
+
+    return markerModule
+      .getMapLabel(
+        "A very long place name that cannot possibly fit inside a compact two line map marker",
+      )
+      .split("\n");
+  });
+  expect(lines).toHaveLength(2);
+  expect(lines[1]).toMatch(/…$/);
 });

@@ -133,43 +133,140 @@ export function getMapLabel(name: string): string {
     return name;
   }
   context.font = LABEL_FONT;
-  if (context.measureText(name).width <= LABEL_TEXT_WIDTH) {
-    return name;
-  }
-  const letters = Array.from(name);
-  while (
-    letters.length > 0 &&
-    context.measureText(letters.join("") + "…").width > LABEL_TEXT_WIDTH
-  ) {
-    letters.pop();
+  const remaining = Array.from(name.trim());
+  const lines: string[] = [];
+  for (let row = 0; row < 2 && remaining.length > 0; row += 1) {
+    let line = "";
+    while (
+      remaining.length > 0 &&
+      context.measureText(line + remaining[0]).width <= LABEL_TEXT_WIDTH
+    ) {
+      line += remaining.shift();
+    }
+    if (row === 0 && remaining.length > 0 && line.includes(" ")) {
+      const lastSpace = line.lastIndexOf(" ");
+      remaining.unshift(...Array.from(line.slice(lastSpace + 1)));
+      line = line.slice(0, lastSpace);
+    }
+    if (row === 1 && remaining.length > 0) {
+      while (context.measureText(line + "…").width > LABEL_TEXT_WIDTH) {
+        line = Array.from(line).slice(0, -1).join("");
+      }
+      line = line.trimEnd() + "…";
+    }
+    lines.push(line.trim());
+    while (remaining[0] === " ") {
+      remaining.shift();
+    }
   }
 
-  return letters.join("").trimEnd() + "…";
+  return lines.join("\n");
 }
 
 export function createNameLabel(name: string): ImageData {
-  const label = getMapLabel(name);
+  const lines = getMapLabel(name).split("\n");
   const canvas = document.createElement("canvas");
-  canvas.width = 248;
-  canvas.height = 48;
+  canvas.width = 232;
+  canvas.height = 72;
   const context = canvas.getContext("2d");
   if (context === null) {
     throw new Error("Map labels are unavailable in this browser.");
   }
   context.scale(2, 2);
   context.font = LABEL_FONT;
-  const width = Math.min(120, context.measureText(label).width + 12);
-  context.fillStyle = "rgba(255,255,255,0.96)";
-  context.beginPath();
-  context.roundRect((124 - width) / 2, 2, width, 20, 6);
-  context.fill();
-  context.strokeStyle = "rgba(117,139,163,0.24)";
-  context.lineWidth = 1;
-  context.stroke();
-  context.fillStyle = "#24364b";
-  context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(label, 62, 12.5);
+  context.lineJoin = "round";
+  context.lineWidth = 3.5;
+  context.strokeStyle = "rgba(255,255,255,0.97)";
+  context.fillStyle = "#24364b";
+  lines.forEach((line, index) => {
+    const y = lines.length === 1 ? 18 : 11 + index * 13;
+    context.strokeText(line, 4, y);
+    context.fillText(line, 4, y);
+  });
 
   return context.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+const photoCache = new Map<string, Promise<HTMLImageElement | null>>();
+function loadPhoto(url: string): Promise<HTMLImageElement | null> {
+  let photo = photoCache.get(url);
+  if (photo === undefined) {
+    photo = new Promise((resolve) => {
+      const image = new Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => resolve(image);
+      image.onerror = () => resolve(null);
+      image.src = url;
+    });
+    photoCache.set(url, photo);
+  }
+
+  return photo;
+}
+
+export async function createPlaceHead(
+  category: string,
+  imageUrl: string | undefined,
+  number: string | undefined,
+  selected: boolean,
+): Promise<ImageData> {
+  const photo = imageUrl === undefined || number !== undefined ? null : await loadPhoto(imageUrl);
+  const canvas = document.createElement("canvas");
+  canvas.width = 80;
+  canvas.height = 80;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Map markers are unavailable in this browser.");
+  }
+  context.scale(2, 2);
+  if (photo === null && number === undefined) {
+    const fallback = document.createElement("canvas");
+    fallback.width = 72;
+    fallback.height = 72;
+    fallback.getContext("2d")?.putImageData(createCategoryMarker(category), 0, 0);
+    context.drawImage(fallback, 2, 2, 36, 36);
+  } else {
+    context.save();
+    context.beginPath();
+    context.arc(20, 20, 14, 0, Math.PI * 2);
+    context.clip();
+    if (photo !== null) {
+      const side = Math.min(photo.naturalWidth, photo.naturalHeight);
+      context.drawImage(
+        photo,
+        (photo.naturalWidth - side) / 2,
+        (photo.naturalHeight - side) / 2,
+        side,
+        side,
+        6,
+        6,
+        28,
+        28,
+      );
+    } else {
+      context.fillStyle = "#1677ff";
+      context.fillRect(6, 6, 28, 28);
+      context.fillStyle = "#fff";
+      context.font = "700 13px Arial";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(number ?? "", 20, 20.5);
+    }
+    context.restore();
+    context.beginPath();
+    context.arc(20, 20, 14, 0, Math.PI * 2);
+    context.strokeStyle = "#fff";
+    context.lineWidth = 2;
+    context.stroke();
+  }
+  if (selected) {
+    context.beginPath();
+    context.arc(20, 20, 16.5, 0, Math.PI * 2);
+    context.strokeStyle = "#1677ff";
+    context.lineWidth = 1.5;
+    context.stroke();
+  }
+
+  return context.getImageData(0, 0, 80, 80);
 }
