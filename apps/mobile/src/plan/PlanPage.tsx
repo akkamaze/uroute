@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { createSamplePlaces, createStressPlaces, type PlaceCollection } from "./map-data";
+import { createSamplePlaces, createStressPlaces, createOrderedPlaces } from "./map-data";
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import { TripMap } from "./TripMap";
 import { TripHeader } from "./TripHeader";
@@ -111,31 +111,12 @@ export function PlanPage(): React.JSX.Element {
   const [reorderNotice, setReorderNotice] = useState("");
   const [reorderHintVisible, setReorderHintVisible] = useState(true);
   const stressFixtureEnabled = isStressFixtureEnabled(search.stress);
-  const places = useMemo<PlaceCollection>(() => {
-    if (stressFixtureEnabled && selectedDay === 13) {
-      return createStressPlaces();
-    }
-
-    const order = new Map(stops.map((stop, index) => [stop.id, index + 1]));
-    const samples = createSamplePlaces();
-
-    return {
-      ...samples,
-      features: samples.features
-        .filter((place) => order.has(place.properties.id))
-        .sort(
-          (left, right) =>
-            (order.get(left.properties.id) ?? 0) - (order.get(right.properties.id) ?? 0),
-        )
-        .map((place) => ({
-          ...place,
-          properties: {
-            ...place.properties,
-            marker: `place-${order.get(place.properties.id) ?? 1}`,
-          },
-        })),
-    };
-  }, [selectedDay, stops, stressFixtureEnabled]);
+  const places = useMemo(
+    () =>
+      stressFixtureEnabled && selectedDay === 13 ? createStressPlaces() : createSamplePlaces(),
+    [selectedDay, stressFixtureEnabled],
+  );
+  const orderPlaces = useMemo(() => createOrderedPlaces(stops.map((stop) => stop.id)), [stops]);
   const selectedPlace = places.features.find((place) => place.properties.id === selectedId);
   const selectedDayLabel = TRIP_DAYS.find((day) => day.date === selectedDay)?.fullWeekday;
 
@@ -499,6 +480,7 @@ export function PlanPage(): React.JSX.Element {
         onExpandedChange={changeMapExpanded}
         onSelect={selectFromMap}
         places={places}
+        orderPlaces={orderPlaces}
         selectedId={selectedId}
       />
 

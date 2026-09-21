@@ -12,6 +12,9 @@ interface MapSnapshot {
   renderedClusterCount: number;
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
+  markerMode: "places" | "order";
+  placeLabels: { name: string; label: string }[];
+  numberedPlaces: { id: string; marker: string }[];
   sourceId: string;
   sourceLoaded: boolean;
   status: "loading" | "ready" | "error";
@@ -135,10 +138,11 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
 });
 
-test("keeps the selected itinerary pin visible after zooming out into clusters", async ({
+test("keeps the selected place and its photo visible after zooming out into clusters", async ({
   page,
 }) => {
   await page.goto("/places?place=nishiki&day=13");
+  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
   await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
@@ -164,4 +168,70 @@ test("keeps the selected itinerary pin visible after zooming out into clusters",
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
+});
+
+test("switches between photo exploration and only the current day's ordered stops", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "uroute.mock.kyoto-plan.v1",
+      JSON.stringify({
+        days: {
+          14: [
+            { placeId: "nishiki", time: "10:00", notes: "" },
+            { placeId: "arabica", time: "12:00", notes: "" },
+          ],
+        },
+      }),
+    );
+  });
+  await page.goto("/plan?day=14");
+  await page.getByRole("button", { name: "Map view", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Places", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(3);
+  await page.getByRole("button", { name: "Day order", exact: true }).click();
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.numberedPlaces)
+    .toEqual([
+      { id: "nishiki", marker: "place-1" },
+      { id: "arabica", marker: "place-2" },
+    ]);
+  await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(false);
+  await expect(page.locator(".trip-map__photo")).toHaveCount(0);
+  await page.goto("/places?place=nishiki&day=14");
+  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
+  await page.getByRole("button", { name: "Day order", exact: true }).click();
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.numberedPlaces)
+    .toEqual([
+      { id: "nishiki", marker: "place-1" },
+      { id: "arabica", marker: "place-2" },
+    ]);
+  await expect(page.locator(".trip-map__photo")).toHaveCount(0);
+  await page.getByRole("button", { name: "Places", exact: true }).click();
+  await expect(page.getByRole("img", { name: "Nishiki Market map photo" })).toBeVisible();
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(3);
+  await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(true);
+  await page.goto("/places?place=nishiki&day=15");
+  await page.getByRole("button", { name: "Day order", exact: true }).click();
+  await expect(page.getByText("No stops planned for this day")).toBeVisible();
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(0);
+});
+
+test("renders compact ellipsized place names in both marker modes", async ({ page }) => {
+  await page.goto("/places?place=arabica&day=13");
+  const readLabel = async (): Promise<string | undefined> =>
+    (await readMapSnapshot(page))?.placeLabels.find(
+      (place) => place.name === "% Arabica Higashiyama",
+    )?.label;
+  await expect.poll(readLabel).toMatch(/…$/);
+  const label = await readLabel();
+  expect(label?.length).toBeLessThan("% Arabica Higashiyama".length);
+  await page.getByRole("button", { name: "Day order", exact: true }).click();
+  await expect.poll(readLabel).toMatch(/…$/);
+  await expect.poll(async () => (await readMapSnapshot(page))?.markerMode).toBe("order");
 });

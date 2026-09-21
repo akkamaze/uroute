@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, Point } from "geojson";
+import { FRIDAY_STOPS } from "./plan-data";
 
 export const KYOTO_CENTER = [135.775, 34.999] as const;
 
@@ -6,6 +7,7 @@ export interface PlaceProperties {
   category: string;
   id: string;
   marker?: string;
+  image?: string | undefined;
   name: string;
   synthetic: boolean;
 }
@@ -50,7 +52,8 @@ function toFeature(place: PlaceDefinition, index: number): PlaceFeature {
       coordinates: [place.coordinates[0], place.coordinates[1]],
     },
     properties: {
-      category: place.category,
+      category: FRIDAY_STOPS.find((stop) => stop.id === place.id)?.category ?? "place",
+      image: FRIDAY_STOPS.find((stop) => stop.id === place.id)?.image,
       id: place.id,
       marker: `place-${index + 1}`,
       name: place.name,
@@ -98,4 +101,19 @@ export function createStressPlaces(count = 1_200): PlaceCollection {
   });
 
   return { type: "FeatureCollection", features };
+}
+
+export function createOrderedPlaces(ids: readonly string[]): PlaceCollection {
+  const samples = createSamplePlaces();
+
+  return {
+    type: "FeatureCollection",
+    features: ids.flatMap((id, index) => {
+      const place = samples.features.find((feature) => feature.properties.id === id);
+
+      return place === undefined
+        ? []
+        : [{ ...place, properties: { ...place.properties, marker: `place-${index + 1}` } }];
+    }),
+  };
 }

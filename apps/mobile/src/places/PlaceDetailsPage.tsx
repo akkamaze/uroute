@@ -20,7 +20,7 @@ import {
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
-import { createSamplePlaces } from "../plan/map-data";
+import { createSamplePlaces, createOrderedPlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
 import {
@@ -135,6 +135,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const searchOpenedHereRef = useRef(false);
   const searchWasOpenRef = useRef(false);
   const places = useMemo(createSamplePlaces, []);
+  const orderPlaces = useMemo(
+    () => createOrderedPlaces(plan.days[search.day ?? 13].map((visit) => visit.placeId)),
+    [plan.days, search.day],
+  );
   const selectedPlace = getPlace(selectedId);
   const saved = savedIds.has(selectedPlace.id);
   const destination = places.features.find((place) => place.properties.id === selectedPlace.id)
@@ -561,6 +565,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
           onExpandedChange={changeMapExpanded}
           onSelect={selectPlace}
           places={places}
+          orderPlaces={orderPlaces}
           selectedId={selectedPlace.id}
           showLocate={mapExpanded || visibleSheetSnap !== "expanded"}
           variant="discovery"

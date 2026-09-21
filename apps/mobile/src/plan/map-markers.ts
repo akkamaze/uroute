@@ -62,3 +62,114 @@ export function createMapMarker(kind: MarkerKind, label: string, selected = fals
 
   return context.getImageData(0, 0, canvas.width, canvas.height);
 }
+
+/** Small category medallions distinguish exploration from itinerary order. */
+export function createCategoryMarker(category: string): ImageData {
+  const canvas = document.createElement("canvas");
+  canvas.width = 72;
+  canvas.height = 72;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Marker images are unavailable in this browser.");
+  }
+  context.scale(2, 2);
+  context.beginPath();
+  context.arc(18, 18, 12, 0, Math.PI * 2);
+  context.fillStyle =
+    category === "coffee" ? "#98653b" : category === "food" ? "#cf7736" : "#4679a8";
+  context.shadowColor = "rgba(15, 42, 77, 0.22)";
+  context.shadowBlur = 5;
+  context.shadowOffsetY = 2;
+  context.fill();
+  context.shadowColor = "transparent";
+  context.strokeStyle = "#ffffff";
+  context.lineWidth = 2;
+  context.stroke();
+  context.lineWidth = 1.5;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.beginPath();
+  if (category === "coffee") {
+    context.moveTo(12, 14);
+    context.lineTo(22, 14);
+    context.lineTo(21, 22);
+    context.lineTo(13, 22);
+    context.closePath();
+    context.moveTo(22, 15);
+    context.bezierCurveTo(27, 14, 27, 20, 22, 20);
+    context.moveTo(12, 25);
+    context.lineTo(23, 25);
+  } else if (category === "temple") {
+    context.moveTo(11, 15);
+    context.lineTo(18, 10);
+    context.lineTo(25, 15);
+    context.closePath();
+    context.moveTo(12, 24);
+    context.lineTo(24, 24);
+    for (const x of [14, 18, 22]) {
+      context.moveTo(x, 17);
+      context.lineTo(x, 22);
+    }
+  } else if (category === "food") {
+    context.roundRect(12, 15, 12, 11, 1);
+    context.moveTo(15, 15);
+    context.lineTo(15, 12);
+    context.bezierCurveTo(15, 9, 21, 9, 21, 12);
+    context.lineTo(21, 15);
+  } else {
+    context.arc(18, 18, 4, 0, Math.PI * 2);
+  }
+  context.stroke();
+
+  return context.getImageData(0, 0, 72, 72);
+}
+
+const LABEL_FONT = "600 11px Arial";
+const LABEL_TEXT_WIDTH = 108;
+
+export function getMapLabel(name: string): string {
+  const context = document.createElement("canvas").getContext("2d");
+  if (context === null) {
+    return name;
+  }
+  context.font = LABEL_FONT;
+  if (context.measureText(name).width <= LABEL_TEXT_WIDTH) {
+    return name;
+  }
+  const letters = Array.from(name);
+  while (
+    letters.length > 0 &&
+    context.measureText(letters.join("") + "…").width > LABEL_TEXT_WIDTH
+  ) {
+    letters.pop();
+  }
+
+  return letters.join("").trimEnd() + "…";
+}
+
+export function createNameLabel(name: string): ImageData {
+  const label = getMapLabel(name);
+  const canvas = document.createElement("canvas");
+  canvas.width = 248;
+  canvas.height = 48;
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    throw new Error("Map labels are unavailable in this browser.");
+  }
+  context.scale(2, 2);
+  context.font = LABEL_FONT;
+  const width = Math.min(120, context.measureText(label).width + 12);
+  context.fillStyle = "rgba(255,255,255,0.96)";
+  context.beginPath();
+  context.roundRect((124 - width) / 2, 2, width, 20, 6);
+  context.fill();
+  context.strokeStyle = "rgba(117,139,163,0.24)";
+  context.lineWidth = 1;
+  context.stroke();
+  context.fillStyle = "#24364b";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(label, 62, 12.5);
+
+  return context.getImageData(0, 0, canvas.width, canvas.height);
+}
