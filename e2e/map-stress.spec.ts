@@ -10,6 +10,8 @@ interface MapSnapshot {
   firstClusterPoint: { x: number; y: number } | null;
   moving: boolean;
   renderedClusterCount: number;
+  renderedClusterLabels: string[];
+  renderedSelectedIds: string[];
   sourceId: string;
   sourceLoaded: boolean;
   status: "loading" | "ready" | "error";
@@ -43,6 +45,8 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
     status: "ready",
   });
   expect(snapshot?.renderedClusterCount).toBeGreaterThan(0);
+  expect(snapshot?.renderedClusterLabels.length).toBe(snapshot?.renderedClusterCount);
+  expect(snapshot?.renderedClusterLabels.every((label) => /[0-9]/.test(label))).toBe(true);
 
   await page.getByRole("button", { name: "Map view" }).click();
   await expect(page.getByRole("button", { name: "Map view" })).toHaveAttribute(
@@ -129,4 +133,35 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
   await expect(page).not.toHaveURL(/map=full/);
   await expect(page.locator("html")).toHaveAttribute("data-orientation-policy", "portrait");
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+});
+
+test("keeps the selected itinerary pin visible after zooming out into clusters", async ({
+  page,
+}) => {
+  await page.goto("/places?place=nishiki&day=13");
+  await expect.poll(async () => (await readMapSnapshot(page))?.status).toBe("ready");
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
+    .toContain("nishiki");
+  await page.getByRole("button", { name: "Expand map" }).click();
+  await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
+  const canvas = page.locator(".trip-map__canvas");
+  await canvas.hover({ position: { x: 180, y: 250 } });
+  await expect
+    .poll(
+      async () => {
+        const snapshot = await readMapSnapshot(page);
+        if ((snapshot?.renderedClusterCount ?? 0) > 0) {
+          return true;
+        }
+        await page.mouse.wheel(0, 1000);
+
+        return false;
+      },
+      { intervals: [800], timeout: 15_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
+    .toContain("nishiki");
 });

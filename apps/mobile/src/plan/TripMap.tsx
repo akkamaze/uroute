@@ -12,11 +12,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
+import { createMapMarker } from "./map-markers";
 
 const POINT_SOURCE_ID = "trip-places";
 const CLUSTER_LAYER_ID = "place-clusters";
 const POINT_LAYER_ID = "place-points";
 const SYMBOL_LAYER_ID = "place-symbols";
+const SELECTED_SOURCE_ID = "selected-place";
+const SELECTED_LAYER_ID = "selected-place-symbol";
 const TILE_TIMEOUT_MS = 12_000;
 
 setWorkerUrl(mapLibreWorkerUrl);
@@ -59,6 +62,8 @@ interface MapDiagnosticsSnapshot {
   firstClusterPoint: { x: number; y: number } | null;
   moving: boolean;
   renderedClusterCount: number;
+  renderedClusterLabels: string[];
+  renderedSelectedIds: string[];
   sourceId: typeof POINT_SOURCE_ID;
   sourceLoaded: boolean;
   status: MapStatus;
@@ -87,8 +92,8 @@ function framePlaces(
   bottomInset = 0,
 ): void {
   const cameraPadding = {
-    top: 36,
-    right: 36,
+    top: 120,
+    right: 64,
     bottom: Math.max(64, bottomInset + 32),
     left: 36,
   };
@@ -152,33 +157,6 @@ function supportsWebGl(): boolean {
   }
 }
 
-function createNumberMarker(label: string): ImageData {
-  const canvas = document.createElement("canvas");
-  const size = 48;
-  canvas.width = size;
-  canvas.height = size;
-  const context = canvas.getContext("2d");
-
-  if (context === null) {
-    throw new Error("Marker images are unavailable in this browser.");
-  }
-
-  context.beginPath();
-  context.arc(size / 2, size / 2, 20, 0, Math.PI * 2);
-  context.fillStyle = "#1677ff";
-  context.fill();
-  context.lineWidth = 4;
-  context.strokeStyle = "#ffffff";
-  context.stroke();
-  context.fillStyle = "#ffffff";
-  context.font = "700 22px Arial";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(label, size / 2, size / 2 + 1);
-
-  return context.getImageData(0, 0, size, size);
-}
-
 function isGeoJsonSource(source: Source): source is GeoJSONSource {
   return source.type === "geojson";
 }
@@ -187,6 +165,20 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
   const source = map.getSource(POINT_SOURCE_ID);
 
   return source !== undefined && isGeoJsonSource(source) ? source : null;
+}
+
+function syncSelectedPlace(
+  map: MapLibreMap,
+  places: PlaceCollection,
+  selectedId: string | null,
+): void {
+  const source = map.getSource(SELECTED_SOURCE_ID);
+  if (source !== undefined && isGeoJsonSource(source)) {
+    void source.setData({
+      type: "FeatureCollection",
+      features: places.features.filter((place) => place.properties.id === selectedId),
+    });
+  }
 }
 
 export function TripMap({
@@ -207,7 +199,6 @@ export function TripMap({
   const placesRef = useRef(places);
   const selectRef = useRef(onSelect);
   const selectedIdRef = useRef(selectedId);
-  const previousSelectionRef = useRef<string | null>(null);
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
   const expandButtonRef = useRef<HTMLButtonElement>(null);
@@ -309,6 +300,15 @@ export function TripMap({
           firstCluster === undefined ? null : { x: firstCluster.x, y: firstCluster.y },
         moving: activeMap.isMoving(),
         renderedClusterCount: clusters.length,
+        renderedClusterLabels: clusters.map((cluster) =>
+          String(cluster.properties.point_count_abbreviated),
+        ),
+        renderedSelectedIds:
+          activeMap.getLayer(SELECTED_LAYER_ID) === undefined
+            ? []
+            : activeMap
+                .queryRenderedFeatures({ layers: [SELECTED_LAYER_ID] })
+                .map((feature) => String(feature.properties.id)),
         sourceId: POINT_SOURCE_ID,
         sourceLoaded: source !== null && activeMap.isSourceLoaded(POINT_SOURCE_ID),
         status: statusRef.current,
@@ -341,8 +341,28 @@ export function TripMap({
     }
 
     function handlePointClick(event: MapLayerMouseEvent): void {
-      const id: unknown = event.features?.[0]?.properties.id;
+      if (!layersReady) {
+        return;
+      }
+      const selectedHit = activeMap.queryRenderedFeatures(event.point, {
+        layers: [SELECTED_LAYER_ID],
+      })[0];
+      const clusterHit = activeMap.queryRenderedFeatures(event.point, {
+        layers: [CLUSTER_LAYER_ID],
+      })[0];
+      if (selectedHit === undefined && clusterHit !== undefined) {
+        handleClusterClick(event);
 
+        return;
+      }
+      const hits = activeMap.queryRenderedFeatures(
+        [
+          [event.point.x - 16, event.point.y - 16],
+          [event.point.x + 16, event.point.y + 16],
+        ],
+        { layers: [SELECTED_LAYER_ID, SYMBOL_LAYER_ID, POINT_LAYER_ID] },
+      );
+      const id: unknown = hits[0]?.properties.id;
       if (typeof id === "string") {
         selectRef.current(id);
       }
@@ -382,15 +402,7 @@ export function TripMap({
     }
 
     function applySelection(): void {
-      if (selectedIdRef.current === null) {
-        return;
-      }
-
-      void activeMap.setFeatureState(
-        { source: POINT_SOURCE_ID, id: selectedIdRef.current },
-        { selected: true },
-      );
-      previousSelectionRef.current = selectedIdRef.current;
+      syncSelectedPlace(activeMap, placesRef.current, selectedIdRef.current);
     }
 
     function handleStyleLoad(): void {
@@ -399,9 +411,6 @@ export function TripMap({
       }
 
       try {
-        ["1", "2", "3"].forEach((label) => {
-          activeMap.addImage(`place-${label}`, createNumberMarker(label), { pixelRatio: 2 });
-        });
         activeMap.addSource(POINT_SOURCE_ID, {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
@@ -412,32 +421,24 @@ export function TripMap({
         });
         activeMap.addLayer({
           id: CLUSTER_LAYER_ID,
-          type: "circle",
+          type: "symbol",
           source: POINT_SOURCE_ID,
           filter: ["has", "point_count"],
-          paint: {
-            "circle-color": "#1677ff",
-            "circle-opacity": 0.84,
-            "circle-radius": ["step", ["get", "point_count"], 14, 50, 18, 250, 22, 800, 26],
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2,
+          layout: {
+            "icon-image": ["concat", "cluster-", ["to-string", ["get", "point_count_abbreviated"]]],
+            "icon-allow-overlap": true,
           },
         });
         activeMap.addLayer({
           id: POINT_LAYER_ID,
           type: "circle",
           source: POINT_SOURCE_ID,
-          filter: ["!", ["has", "point_count"]],
+          filter: ["all", ["!", ["has", "point_count"]], ["!", ["has", "marker"]]],
           paint: {
-            "circle-color": [
-              "case",
-              ["boolean", ["feature-state", "selected"], false],
-              "#0b5bd3",
-              "#1677ff",
-            ],
-            "circle-radius": ["case", ["boolean", ["feature-state", "selected"], false], 16, 10],
+            "circle-color": "#1677ff",
+            "circle-radius": 6,
             "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2,
+            "circle-stroke-width": 2.5,
           },
         });
         activeMap.addLayer({
@@ -448,12 +449,27 @@ export function TripMap({
           layout: {
             "icon-allow-overlap": true,
             "icon-image": ["get", "marker"],
-            "icon-size": 1,
+            "icon-anchor": "bottom",
+            "icon-offset": [0, 5],
           },
         });
-        activeMap.on("click", POINT_LAYER_ID, handlePointClick);
-        activeMap.on("click", SYMBOL_LAYER_ID, handlePointClick);
-        activeMap.on("click", CLUSTER_LAYER_ID, handleClusterClick);
+        activeMap.addSource(SELECTED_SOURCE_ID, {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        activeMap.addLayer({
+          id: SELECTED_LAYER_ID,
+          type: "symbol",
+          source: SELECTED_SOURCE_ID,
+          layout: {
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+            "icon-image": ["concat", "selected-", ["coalesce", ["get", "marker"], "place-"]],
+            "icon-anchor": "bottom",
+            "icon-offset": [0, 5],
+          },
+        });
+        activeMap.on("click", handlePointClick);
         activeMap.on("mouseenter", POINT_LAYER_ID, handleMouseEnter);
         activeMap.on("mouseleave", POINT_LAYER_ID, handleMouseLeave);
         layersReady = true;
@@ -484,6 +500,20 @@ export function TripMap({
       }
     }
 
+    activeMap.setMissingStyleImageResolver((imageId) => {
+      const selected = imageId.startsWith("selected-");
+      const spriteId = selected ? imageId.slice(9) : imageId;
+      const cluster = spriteId.startsWith("cluster-");
+      if (!cluster && !spriteId.startsWith("place-")) {
+        return;
+      }
+      const label = spriteId.slice(cluster ? 8 : 6);
+      if (!activeMap.hasImage(imageId)) {
+        activeMap.addImage(imageId, createMapMarker(cluster ? "cluster" : "pin", label, selected), {
+          pixelRatio: 2,
+        });
+      }
+    });
     activeMap.on("error", handleMapError);
     activeMap.on("style.load", handleStyleLoad);
     activeMap.on("render", finishReady);
@@ -510,9 +540,7 @@ export function TripMap({
       activeMap.off("idle", finishReady);
 
       if (layersReady) {
-        activeMap.off("click", POINT_LAYER_ID, handlePointClick);
-        activeMap.off("click", SYMBOL_LAYER_ID, handlePointClick);
-        activeMap.off("click", CLUSTER_LAYER_ID, handleClusterClick);
+        activeMap.off("click", handlePointClick);
         activeMap.off("mouseenter", POINT_LAYER_ID, handleMouseEnter);
         activeMap.off("mouseleave", POINT_LAYER_ID, handleMouseLeave);
       }
@@ -542,6 +570,7 @@ export function TripMap({
       .setData(places)
       .then(() => {
         if (mapRef.current === map) {
+          syncSelectedPlace(map, places, selectedIdRef.current);
           framePlaces(map, places, true, bottomInsetRef.current);
           map.triggerRepaint();
         }
@@ -564,24 +593,12 @@ export function TripMap({
 
   useEffect(() => {
     const map = mapRef.current;
-    const previousSelection = previousSelectionRef.current;
 
     if (map === null || getSource(map) === null) {
       return;
     }
 
-    if (previousSelection !== null) {
-      void map.setFeatureState(
-        { source: POINT_SOURCE_ID, id: previousSelection },
-        { selected: false },
-      );
-    }
-
-    if (selectedId !== null) {
-      void map.setFeatureState({ source: POINT_SOURCE_ID, id: selectedId }, { selected: true });
-    }
-
-    previousSelectionRef.current = selectedId;
+    syncSelectedPlace(map, placesRef.current, selectedId);
   }, [selectedId]);
 
   useEffect(() => {
