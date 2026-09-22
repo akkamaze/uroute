@@ -470,17 +470,17 @@ test("Version history puts unsaved work above the current saved version", async 
   await expect(timeline).toBeVisible();
   const entries = timeline.locator(".version-entry");
   await expect(entries.nth(0)).toContainText("Unsaved draft");
-  await expect(entries.nth(0)).toContainText("Not yet applied to your plan");
+  await expect(entries.nth(0)).not.toContainText("Not yet applied to your plan");
   await expect(entries.nth(1)).toContainText("Current saved version");
   await expect(entries.nth(1)).toContainText("3 places");
   await expect(entries.nth(1)).not.toContainText("Shown in your plan");
-  const continueEditing = page.getByRole("button", { name: "Continue editing" });
-  await expect(continueEditing).toBeVisible();
+  const editPlan = page.getByRole("button", { name: "Edit plan", exact: true });
+  await expect(editPlan).toBeVisible();
   await expect(page.getByText("Saved on this device", { exact: true })).toHaveCount(0);
   await expect(
     page.getByText("Versions are created automatically when you save.", { exact: true }),
   ).toHaveCount(0);
-  await continueEditing.click();
+  await editPlan.click();
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   expect(await storedFridayIds(page)).toEqual(["kiyomizu", "arabica", "nishiki"]);

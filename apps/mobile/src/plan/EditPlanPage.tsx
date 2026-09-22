@@ -1,7 +1,6 @@
 import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  ArrowRight,
   ArrowUpDown,
   Check,
   ChevronRight,
@@ -1438,18 +1437,19 @@ export function EditPlanPage(): React.JSX.Element {
                 <div className="version-entry__details">
                   <span className="version-entry__eyebrow">In progress</span>
                   <strong>Unsaved draft</strong>
-                  <span>{draft.length} places · Not yet applied to your plan</span>
+                  <span>{draft.length} places</span>
                 </div>
-                <button
-                  className="version-entry__continue"
-                  onClick={() =>
-                    void navigate({ to: "/plan/manage", search: { day }, replace: true })
-                  }
-                  type="button"
-                >
-                  Continue editing
-                  <ArrowRight aria-hidden="true" size={17} strokeWidth={1.9} />
-                </button>
+                <div className="version-entry__actions">
+                  <button
+                    onClick={() =>
+                      void navigate({ to: "/plan/manage", search: { day }, replace: true })
+                    }
+                    type="button"
+                  >
+                    Edit plan
+                    <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
+                  </button>
+                </div>
               </article>
             ) : null}
             <article className="version-entry version-entry--current">
