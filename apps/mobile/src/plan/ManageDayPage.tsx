@@ -28,7 +28,11 @@ import {
 } from "./manage-day-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
 import { useManageDaySwipeBack } from "./use-manage-day-swipe-back";
-import { createVersionDiff, type VersionPlaceDiff } from "./version-diff";
+import {
+  createVersionDiff,
+  type VersionChangeKind,
+  type VersionPlaceDiff,
+} from "./version-diff";
 import { VisitTime } from "./VisitTime";
 import "./manage-day.css";
 import "./stop-actions.css";
@@ -42,6 +46,16 @@ const DAY_NAMES = new Map([
 ]);
 const REMOVE_COMMIT_RATIO = 0.35;
 const REMOVE_COMMIT_DURATION_MS = 180;
+const VERSION_CHANGE_GROUPS: ReadonlyArray<{
+  kind: VersionChangeKind;
+  title: string;
+}> = [
+  { kind: "removed", title: "Removed" },
+  { kind: "order", title: "Reordered" },
+  { kind: "note", title: "Notes" },
+  { kind: "time", title: "Time" },
+  { kind: "added", title: "Added" },
+];
 
 interface DragState {
   active: boolean;
@@ -274,7 +288,7 @@ export function ManageDayPage(): React.JSX.Element {
   const [confirmSave, setConfirmSave] = useState(false);
   const [restoreCandidate, setRestoreCandidate] = useState<ManageDayVersion | null>(null);
   const [restoreError, setRestoreError] = useState("");
-  const [versionFilter, setVersionFilter] = useState<"all" | "changes">("all");
+  const [versionFilter, setVersionFilter] = useState<"all" | "changes">("changes");
   const [saving, setSaving] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const allowExitRef = useRef(false);
@@ -964,16 +978,24 @@ export function ManageDayPage(): React.JSX.Element {
 
   function renderVersionPlace(
     placeDiff: VersionPlaceDiff,
-    removed = false,
+    options: {
+      changeKind?: VersionChangeKind;
+      compact?: boolean;
+      removed?: boolean;
+    } = {},
   ): React.JSX.Element | null {
     const stop = stops.get(placeDiff.placeId);
     if (stop === undefined) {
       return null;
     }
+    const changes =
+      options.changeKind === undefined
+        ? placeDiff.changes
+        : placeDiff.changes.filter((change) => change.kind === options.changeKind);
 
     return (
       <article
-        className={`version-place${placeDiff.changes.length > 0 ? " version-place--changed" : ""}${removed ? " version-place--removed" : ""}`}
+        className={`version-place${changes.length > 0 ? " version-place--changed" : ""}${options.removed === true ? " version-place--removed" : ""}`}
         data-version-row-id={placeDiff.placeId}
         key={placeDiff.placeId}
       >
@@ -988,15 +1010,19 @@ export function ManageDayPage(): React.JSX.Element {
           </span>
           <img alt="" src={stop.image} />
         </div>
-        {placeDiff.changes.length === 0 ? null : (
+        {changes.length === 0 || (options.compact === true && options.removed === true) ? null : (
           <div className="version-place__changes">
-            {placeDiff.changes.map((change) => (
+            {changes.map((change) => (
               <div
                 className={`version-place__change version-place__change--${change.kind}`}
                 key={change.kind}
               >
-                <strong>{change.label}</strong>
-                {change.value === undefined ? (
+                {options.compact === true ? null : <strong>{change.label}</strong>}
+                {options.compact === true && change.from !== undefined && change.to !== undefined ? (
+                  <span className="version-place__change-summary">
+                    {change.from} <span aria-hidden="true">→</span> {change.to}
+                  </span>
+                ) : change.value === undefined ? (
                   <dl>
                     <div>
                       <dt>From</dt>
@@ -1024,10 +1050,18 @@ export function ManageDayPage(): React.JSX.Element {
       previewVersion === undefined
         ? null
         : createVersionDiff(plan.days[day], previewVersion.visits);
-    const visiblePlaces =
-      versionDiff === null || versionFilter === "all"
-        ? (versionDiff?.places ?? [])
-        : versionDiff.places.filter((place) => place.changes.length > 0);
+    const changeGroups =
+      versionDiff === null
+        ? []
+        : VERSION_CHANGE_GROUPS.flatMap((group) => {
+            const source = group.kind === "removed" ? versionDiff.removed : versionDiff.places;
+            const places = source.filter((place) =>
+              place.changes.some((change) => change.kind === group.kind),
+            );
+            places.sort((left, right) => left.position - right.position);
+
+            return places.length === 0 ? [] : [{ ...group, places }];
+          });
 
     return (
       <section
@@ -1037,6 +1071,7 @@ export function ManageDayPage(): React.JSX.Element {
       >
         <header className="manage-day__app-bar">
           <button
+            aria-label="Back to Version history"
             className="manage-day__back"
             onClick={() =>
               void navigate({
@@ -1048,9 +1083,8 @@ export function ManageDayPage(): React.JSX.Element {
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
-            History
           </button>
-          <h1>Version details</h1>
+          <h1>Version history</h1>
           <span />
         </header>
         {previewVersion === undefined ? (
@@ -1076,11 +1110,6 @@ export function ManageDayPage(): React.JSX.Element {
               <small>{dayLabel}</small>
               <strong>{formatVersionTime(previewVersion.savedAt)}</strong>
               <span>{previewVersion.summary}</span>
-              <div className="version-preview__comparison">
-                <span>Current saved plan</span>
-                <span aria-hidden="true">→</span>
-                <strong>This version</strong>
-              </div>
               <p>
                 {versionDiff?.changedPlaceCount ?? 0}{" "}
                 {(versionDiff?.changedPlaceCount ?? 0) === 1
@@ -1090,32 +1119,52 @@ export function ManageDayPage(): React.JSX.Element {
             </div>
             <div className="version-preview__filters" role="group" aria-label="Filter places">
               <button
-                aria-pressed={versionFilter === "all"}
-                onClick={() => setVersionFilter("all")}
-                type="button"
-              >
-                All places
-              </button>
-              <button
                 aria-pressed={versionFilter === "changes"}
                 onClick={() => setVersionFilter("changes")}
                 type="button"
               >
                 Changes only
               </button>
+              <button
+                aria-pressed={versionFilter === "all"}
+                onClick={() => setVersionFilter("all")}
+                type="button"
+              >
+                All places
+              </button>
             </div>
             <div
               aria-label={`${formatVersionTime(previewVersion.savedAt)} places`}
               className="version-preview__list"
             >
-              {visiblePlaces.map((place) => renderVersionPlace(place))}
-              {versionDiff !== null && versionDiff.removed.length > 0 ? (
-                <section
-                  className="version-preview__removed"
-                  aria-labelledby="removed-places-title"
-                >
-                  <h2 id="removed-places-title">Removed from this version</h2>
-                  {versionDiff.removed.map((place) => renderVersionPlace(place, true))}
+              {versionFilter === "changes"
+                ? changeGroups.map((group) => (
+                    <section
+                      aria-labelledby={`version-group-${group.kind}`}
+                      className="version-preview__group"
+                      key={group.kind}
+                    >
+                      <h2 id={`version-group-${group.kind}`}>{group.title}</h2>
+                      {group.places.map((place) =>
+                        renderVersionPlace(place, {
+                          changeKind: group.kind,
+                          compact: true,
+                          removed: group.kind === "removed",
+                        }),
+                      )}
+                    </section>
+                  ))
+                : versionDiff?.places.map((place) => renderVersionPlace(place))}
+              {versionFilter === "all" && versionDiff !== null && versionDiff.removed.length > 0 ? (
+                <section className="version-preview__group" aria-labelledby="removed-places-title">
+                  <h2 id="removed-places-title">Removed</h2>
+                  {versionDiff.removed.map((place) =>
+                    renderVersionPlace(place, {
+                      changeKind: "removed",
+                      compact: true,
+                      removed: true,
+                    }),
+                  )}
                 </section>
               ) : null}
               {versionFilter === "changes" && versionDiff?.changedPlaceCount === 0 ? (
@@ -1162,12 +1211,12 @@ export function ManageDayPage(): React.JSX.Element {
       >
         <header className="manage-day__app-bar">
           <button
+            aria-label="Back to Edit plan"
             className="manage-day__back"
             onClick={() => void navigate({ to: "/plan/manage", search: { day }, replace: true })}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
-            Edit plan
           </button>
           <h1>Version history</h1>
           <span />
@@ -1221,7 +1270,7 @@ export function ManageDayPage(): React.JSX.Element {
                   <button
                     aria-label={`View version from ${formatVersionTime(version.savedAt)}`}
                     onClick={() => {
-                      setVersionFilter("all");
+                      setVersionFilter("changes");
                       setRestoreError("");
                       void navigate({
                         to: "/plan/manage",
@@ -1260,7 +1309,6 @@ export function ManageDayPage(): React.JSX.Element {
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
-          Plan
         </button>
         <h1>Edit plan</h1>
         <button

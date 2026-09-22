@@ -338,10 +338,12 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
   await expect(initialVersion.getByRole("button", { name: /Restore version from/ })).toHaveCount(0);
   await initialVersion.getByRole("button", { name: /View version from/ }).click();
-  await expect(page.getByRole("heading", { name: "Version details" })).toBeVisible();
-  await expect(page.getByText("Order changed", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "All places", pressed: true })).toBeVisible();
-  await page.getByRole("button", { name: "Changes only" }).click();
+  await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to Version history" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reordered" })).toBeVisible();
+  await expect(page.getByText("Stop 1 → Stop 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Order changed", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Changes only", pressed: true })).toBeVisible();
   await expect(page.locator("[data-version-row-id]")).toHaveCount(1);
   await page.getByRole("button", { name: "All places" }).click();
   await expect(page.locator("[data-version-row-id]")).toHaveCount(3);
@@ -363,7 +365,7 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     "Your current saved plan will remain in Version history",
   );
   await previewRestoreDialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("heading", { name: "Version details" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
   await page.getByRole("button", { name: "Restore & save" }).click();
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
   await page
@@ -408,7 +410,7 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
     { key: VERSIONS_STORAGE_KEY },
   );
   await page.goto("/plan/manage?day=13&view=versions&version=swipe-version");
-  await expect(page.getByRole("heading", { name: "Version details" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
 
   async function swipeBack(): Promise<void> {
     await page.mouse.move(30, 180);
@@ -418,7 +420,8 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
   }
 
   await swipeBack();
-  await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
+  await expect(page).toHaveURL(/view=versions(?!.*version=)/);
+  await expect(page.getByRole("button", { name: "Back to Edit plan" })).toBeVisible();
   await swipeBack();
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
   await swipeBack();

@@ -23,7 +23,7 @@
 .manage-day__app-bar {
   display: grid;
   min-height: 58px;
-  grid-template-columns: minmax(76px, 1fr) auto minmax(76px, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   gap: 8px;
   align-items: center;
   padding: 0 14px;
@@ -58,8 +58,8 @@
 
 .manage-day__app-bar .manage-day__back {
   display: inline-flex;
-  gap: 4px;
   align-items: center;
+  justify-content: flex-start;
   white-space: nowrap;
 }
 
@@ -659,25 +659,6 @@
   margin: 4px 0 0;
 }
 
-.version-preview__comparison {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 10px;
-  padding: 11px 0;
-  border-top: 1px solid var(--color-border);
-  border-bottom: 1px solid var(--color-border);
-  font-size: var(--type-label-size);
-}
-
-.version-preview__comparison > span:first-child {
-  color: var(--color-muted);
-}
-
-.version-preview__comparison > span:nth-child(2) {
-  color: var(--color-active);
-}
-
 .version-preview__filters {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -764,6 +745,11 @@
   font-size: var(--type-body-sm-size);
 }
 
+.version-place__change .version-place__change-summary {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 .version-place__change dl {
   display: grid;
   gap: 5px;
@@ -799,11 +785,15 @@
   color: #a33228;
 }
 
-.version-preview__removed {
+.version-preview__group {
   margin-top: 22px;
 }
 
-.version-preview__removed h2 {
+.version-preview__group:first-child {
+  margin-top: 8px;
+}
+
+.version-preview__group h2 {
   margin: 0;
   padding: 10px 0;
   color: var(--color-muted);
