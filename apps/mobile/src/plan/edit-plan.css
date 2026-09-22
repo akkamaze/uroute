@@ -636,6 +636,7 @@
 }
 
 .version-entry__number {
+  margin-right: 4px;
   color: var(--color-muted);
   font-size: var(--type-caption-size);
   font-weight: 700;
@@ -688,9 +689,14 @@
 }
 
 .version-entry__actions button {
+  gap: 0;
   align-items: flex-end;
   justify-content: flex-end;
   padding-right: 0;
+}
+
+.version-entry__actions button > svg {
+  margin-left: -1px;
 }
 
 .version-entry__continue {
@@ -740,10 +746,6 @@
 }
 
 @media (hover: hover) {
-  .version-entry__actions button:hover {
-    background: var(--color-border);
-  }
-
   .version-entry__continue:hover {
     opacity: 0.85;
   }

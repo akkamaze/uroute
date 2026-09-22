@@ -400,7 +400,7 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(restoredEntry).toContainText("3 places");
   const beforeRestoreEntry = page
     .locator(".version-entry")
-    .filter({ hasText: "Automatically saved before restoring Version 1" });
+    .filter({ hasText: "Auto-saved before restoring" });
   await expect(beforeRestoreEntry).toContainText("3 places");
   await expect(beforeRestoreEntry).not.toContainText("Plan before restore");
 
@@ -527,6 +527,53 @@ test("Version history reveals older versions ten at a time", async ({ page }) =>
   await expect(older).toHaveCount(0);
 });
 
+test("Version history shows place-count changes from the previous version", async ({ page }) => {
+  await page.evaluate(
+    ({ planKey, versionsKey }) => {
+      const stored = JSON.parse(window.localStorage.getItem(planKey) ?? "{}") as {
+        days: Record<string, Array<{ placeId: string; time: string; notes: string }>>;
+      };
+      const visits = stored.days[13] ?? [];
+      window.localStorage.setItem(
+        versionsKey,
+        JSON.stringify({
+          13: [
+            {
+              id: "count-3",
+              savedAt: 300,
+              sequence: 3,
+              summary: "Removed 1 place",
+              visits: visits.slice(0, 2),
+            },
+            {
+              id: "count-2",
+              savedAt: 200,
+              sequence: 2,
+              summary: "Added place",
+              visits,
+            },
+            {
+              id: "count-1",
+              savedAt: 100,
+              sequence: 1,
+              summary: "Initial plan",
+              visits: visits.slice(0, 2),
+            },
+          ],
+        }),
+      );
+    },
+    { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
+  );
+  await page.goto("/plan/manage?day=13&view=versions");
+
+  await expect(page.locator('[data-version-id="count-3"]')).toContainText("2 places (−1)");
+  await expect(page.locator('[data-version-id="count-2"]')).toContainText("3 places (+1)");
+  await expect(page.locator('[data-version-id="count-1"]')).toContainText("2 places");
+  await expect(page.locator('[data-version-id="count-1"]')).not.toContainText("(+");
+  await expect(page.locator('[data-version-id="count-1"]')).not.toContainText("(−");
+});
+
 test("Version history migrates legacy Before restore wording", async ({ page }) => {
   await page.evaluate(
     ({ planKey, versionsKey }) => {
@@ -566,7 +613,7 @@ test("Version history migrates legacy Before restore wording", async ({ page }) 
   await page.goto("/plan/manage?day=13&view=versions");
 
   await expect(
-    page.getByText("Automatically saved before restoring Version 1", { exact: true }),
+    page.getByText("Auto-saved before restoring", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Before restore", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Restored from Version 1" })).toBeVisible();
@@ -620,7 +667,7 @@ test("history separates place counts and shows only applicable change indicators
         (versionNumberBox?.width ?? 0) -
         ((viewButtonBox?.x ?? 0) + (viewButtonBox?.width ?? 0)),
     ),
-  ).toBeLessThanOrEqual(1);
+  ).toBeLessThanOrEqual(4);
   await expect(combined.locator(".version-entry__change")).toHaveCount(2);
   await expect(combined.locator(".version-entry__change--reorder")).toHaveAttribute(
     "aria-label",

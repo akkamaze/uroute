@@ -169,22 +169,50 @@ function describeChange(before: readonly PlannedVisit[], after: readonly Planned
   return "Updated day";
 }
 
+function VersionPlaceCount({
+  count,
+  delta,
+}: {
+  count: number;
+  delta: number | null;
+}): React.JSX.Element {
+  const deltaLabel =
+    delta === null || delta === 0 ? "" : ` (${delta > 0 ? "+" : "−"}${Math.abs(delta)})`;
+
+  return (
+    <span>
+      {count} {count === 1 ? "place" : "places"}
+      {deltaLabel}
+    </span>
+  );
+}
+
+function getVersionPlaceDelta(
+  version: ManageDayVersion,
+  versions: readonly ManageDayVersion[],
+  index: number,
+): number | null {
+  const previous = versions[index + 1];
+
+  return previous === undefined ? null : version.visits.length - previous.visits.length;
+}
+
 function VersionHistoryMetadata({
   onRevealSource,
+  placeDelta,
   sourceAvailable,
   version,
 }: {
   onRevealSource: (sourceId: string) => void;
+  placeDelta: number | null;
   sourceAvailable: boolean;
   version: ManageDayVersion;
 }): React.JSX.Element {
   if (version.restoreContext?.kind === "before") {
     return (
       <>
-        <span>{version.visits.length} places</span>
-        <span>
-          Automatically saved before restoring Version {version.restoreContext.sourceSequence}
-        </span>
+        <VersionPlaceCount count={version.visits.length} delta={placeDelta} />
+        <span>Auto-saved before restoring</span>
       </>
     );
   }
@@ -194,7 +222,7 @@ function VersionHistoryMetadata({
 
     return (
       <>
-        <span>{version.visits.length} places</span>
+        <VersionPlaceCount count={version.visits.length} delta={placeDelta} />
         {sourceAvailable ? (
           <button
             className="version-entry__source"
@@ -220,7 +248,7 @@ function VersionHistoryMetadata({
 
   return (
     <>
-      <span>{version.visits.length} places</span>
+      <VersionPlaceCount count={version.visits.length} delta={placeDelta} />
       {reordered || removal !== undefined ? (
         <div className="version-entry__changes">
           {reordered ? (
@@ -1432,7 +1460,7 @@ export function EditPlanPage(): React.JSX.Element {
                 <span>{plan.days[day].length} places</span>
               </div>
             </article>
-            {visibleVersions.map((version) => (
+            {visibleVersions.map((version, index) => (
               <article
                 className={`version-entry${highlightedVersionId === version.id ? " version-entry--highlighted" : ""}`}
                 data-version-id={version.id}
@@ -1444,6 +1472,7 @@ export function EditPlanPage(): React.JSX.Element {
                   <strong>{formatVersionTime(version.savedAt)}</strong>
                   <VersionHistoryMetadata
                     onRevealSource={revealSourceVersion}
+                    placeDelta={getVersionPlaceDelta(version, versions, index)}
                     sourceAvailable={versions.some(
                       (candidate) => candidate.id === version.restoreContext?.sourceId,
                     )}

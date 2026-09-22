@@ -68,7 +68,7 @@ test("restores the plan, records both sides of history and clears the draft toge
   ).toEqual(restoredVisits);
   expect(result.versions.slice(0, 2).map((version) => version.summary)).toEqual([
     "Restored from Version 1",
-    "Automatically saved before restoring Version 1",
+    "Auto-saved before restoring",
   ]);
   expect(result.versions.slice(0, 2).map((version) => version.sequence)).toEqual([3, 2]);
   expect(result.versions[0]?.restoreContext).toEqual({
@@ -172,7 +172,7 @@ test("labels legacy restore backups with the restored source version", () => {
 
   const versions = loadManageDayVersions(13);
   expect(versions[0]?.summary).toBe("Restored from Version 1");
-  expect(versions[1]?.summary).toBe("Automatically saved before restoring Version 1");
+  expect(versions[1]?.summary).toBe("Auto-saved before restoring");
   expect(versions[1]?.restoreContext).toEqual({
     kind: "before",
     sourceId: "source",

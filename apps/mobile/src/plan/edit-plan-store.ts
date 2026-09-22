@@ -218,7 +218,7 @@ function migrateLegacyRestoreContexts(versions: ManageDayVersion[]): ManageDayVe
     migrated[index] = {
       ...beforeRestore,
       restoreContext: { kind: "before", ...restoreContext },
-      summary: `Automatically saved before restoring Version ${source.sequence}`,
+      summary: "Auto-saved before restoring",
     };
     migrated[index - 1] = {
       ...restored,
@@ -351,7 +351,7 @@ export function restoreAndSaveManageDayVersion(
   const previousSequence = nextSequence(existing);
   const previousVersion = createVersion(
     current,
-    `Automatically saved before restoring Version ${selectedSequence}`,
+    "Auto-saved before restoring",
     savedAt,
     previousSequence,
     { kind: "before", ...restoreContext },
