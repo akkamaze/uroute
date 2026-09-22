@@ -41,6 +41,66 @@ const SAMPLE_PLACES: readonly PlaceDefinition[] = [
     id: "nishiki",
     name: "Nishiki Market",
   },
+  {
+    category: "Shrine",
+    coordinates: [135.7727, 34.9671],
+    id: "fushimi-inari-senbon-torii",
+    name: "Fushimi Inari Taisha Senbon Torii Observation Path",
+  },
+  {
+    category: "Garden",
+    coordinates: [135.6713, 35.0094],
+    id: "arashiyama-bamboo-grove-north-entrance",
+    name: "Arashiyama Bamboo Grove North Entrance Walking Route",
+  },
+  {
+    category: "Temple",
+    coordinates: [135.7292, 35.0394],
+    id: "kinkakuji-golden-pavilion-garden",
+    name: "Kinkaku-ji Golden Pavilion Garden Viewing Terrace",
+  },
+  {
+    category: "Walk",
+    coordinates: [135.7948, 35.0268],
+    id: "philosophers-path-canal-promenade",
+    name: "Philosopher's Path Canal-side Cherry Tree Promenade",
+  },
+  {
+    category: "Landmark",
+    coordinates: [135.7902, 35.0092],
+    id: "keage-incline-historic-railway",
+    name: "Keage Incline Historic Railway and Slope Viewpoint",
+  },
+  {
+    category: "Shrine",
+    coordinates: [135.7785, 35.0037],
+    id: "yasaka-shrine-lantern-courtyard",
+    name: "Yasaka Shrine Main Gate and Evening Lantern Courtyard",
+  },
+  {
+    category: "District",
+    coordinates: [135.7753, 35.0063],
+    id: "gion-shirakawa-machiya-riverside",
+    name: "Gion Shirakawa Traditional Machiya Riverside District",
+  },
+  {
+    category: "Temple",
+    coordinates: [135.7935, 35.0117],
+    id: "nanzenji-sanmon-hojo-garden",
+    name: "Nanzen-ji Temple Sanmon Gate and Hojo Garden",
+  },
+  {
+    category: "Garden",
+    coordinates: [135.7621, 35.0254],
+    id: "kyoto-imperial-palace-sento-garden",
+    name: "Kyoto Imperial Palace Sento Garden Southern Entrance",
+  },
+  {
+    category: "Temple",
+    coordinates: [135.773, 34.9769],
+    id: "tofukuji-tsutenkyo-maple-corridor",
+    name: "Tofuku-ji Tsutenkyo Bridge Maple Viewing Corridor",
+  },
 ];
 
 function toFeature(place: PlaceDefinition, index: number): PlaceFeature {
