@@ -26,6 +26,7 @@ import {
 } from "./manage-day-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
 import "./manage-day.css";
+import "./stop-actions.css";
 
 const DAY_NAMES = new Map([
   [12, "Thursday"],
@@ -173,6 +174,55 @@ function describeVersionComparison(
   return changes.length > 0 ? changes : ["Matches the current draft"];
 }
 
+interface RestoreVersionDialogProps {
+  onCancel: () => void;
+  onConfirm: () => void;
+  version: ManageDayVersion | null;
+}
+
+function RestoreVersionDialog({
+  onCancel,
+  onConfirm,
+  version,
+}: RestoreVersionDialogProps): React.JSX.Element {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog !== null && version !== null && !dialog.open) {
+      dialog.showModal();
+    } else if (dialog !== null && version === null && dialog.open) {
+      dialog.close();
+    }
+  }, [version]);
+
+  return (
+    <dialog
+      aria-labelledby="manage-day-restore-title"
+      className="remove-stops-dialog manage-day__restore-dialog"
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+      ref={dialogRef}
+    >
+      <h2 id="manage-day-restore-title">Restore this version?</h2>
+      <p>
+        {version === null ? null : `${formatVersionTime(version.savedAt)} · ${version.summary}. `}
+        This replaces your current draft. You can undo it, and Plan will not change until you Save.
+      </p>
+      <div>
+        <button onClick={onCancel} type="button">
+          Cancel
+        </button>
+        <button className="manage-day__primary" onClick={onConfirm} type="button">
+          Restore draft
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 export function ManageDayPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/plan/manage" });
@@ -196,6 +246,7 @@ export function ManageDayPage(): React.JSX.Element {
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
   const [leaveRequested, setLeaveRequested] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
+  const [restoreCandidate, setRestoreCandidate] = useState<ManageDayVersion | null>(null);
   const [saving, setSaving] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const allowExitRef = useRef(false);
@@ -236,8 +287,12 @@ export function ManageDayPage(): React.JSX.Element {
     setNotice(message);
   }
 
-  function restoreVersionToDraft(version: ManageDayVersion): void {
-    commitDraft(version.visits, "Version restored to draft");
+  function confirmRestoreVersion(): void {
+    if (restoreCandidate === null) {
+      return;
+    }
+    commitDraft(restoreCandidate.visits, "Version restored to draft");
+    setRestoreCandidate(null);
     void navigate({ to: "/plan/manage", search: { day }, replace: true });
   }
 
@@ -642,7 +697,7 @@ export function ManageDayPage(): React.JSX.Element {
             <div className="version-preview__restore-bar">
               <button
                 disabled={matchesDraft}
-                onClick={() => restoreVersionToDraft(previewVersion)}
+                onClick={() => setRestoreCandidate(previewVersion)}
                 type="button"
               >
                 {matchesDraft ? "Already current draft" : "Restore this version"}
@@ -651,6 +706,11 @@ export function ManageDayPage(): React.JSX.Element {
             </div>
           </>
         )}
+        <RestoreVersionDialog
+          onCancel={() => setRestoreCandidate(null)}
+          onConfirm={confirmRestoreVersion}
+          version={restoreCandidate}
+        />
       </section>
     );
   }
@@ -722,7 +782,7 @@ export function ManageDayPage(): React.JSX.Element {
                   </button>
                   <button
                     aria-label={`Restore version from ${formatVersionTime(version.savedAt)}`}
-                    onClick={() => restoreVersionToDraft(version)}
+                    onClick={() => setRestoreCandidate(version)}
                     type="button"
                   >
                     Restore
@@ -734,6 +794,11 @@ export function ManageDayPage(): React.JSX.Element {
           <p className="manage-day__version-note">
             Versions are created automatically when you save.
           </p>
+          <RestoreVersionDialog
+            onCancel={() => setRestoreCandidate(null)}
+            onConfirm={confirmRestoreVersion}
+            version={restoreCandidate}
+          />
         </div>
       </section>
     );

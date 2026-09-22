@@ -107,13 +107,22 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     .toEqual(original);
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
 
-  await expect(page.getByRole("button", { name: "Restore this version" })).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  const previewRestoreDialog = page.getByRole("dialog", { name: "Restore this version?" });
+  await expect(previewRestoreDialog).toBeVisible();
+  await expect(previewRestoreDialog).toContainText("Plan will not change until you Save");
+  await previewRestoreDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Version preview" })).toBeVisible();
   await page.getByRole("button", { name: "History" }).click();
   await page
     .locator(".version-entry")
     .filter({ hasText: "Initial plan" })
     .getByRole("button", { name: /Restore version from/ })
     .click();
+  const historyRestoreDialog = page.getByRole("dialog", { name: "Restore this version?" });
+  await expect(historyRestoreDialog).toBeVisible();
+  expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
+  await historyRestoreDialog.getByRole("button", { name: "Restore draft" }).click();
   await expect(page.getByRole("heading", { name: "Manage day" })).toBeVisible();
   await expect
     .poll(() =>

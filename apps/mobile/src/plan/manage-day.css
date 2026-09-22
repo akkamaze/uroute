@@ -480,7 +480,7 @@
 
 .version-entry__actions {
   display: flex;
-  gap: 4px;
+  align-items: center;
 }
 
 .version-entry__actions button,
@@ -489,14 +489,26 @@
   padding: 0 8px;
   color: var(--color-active);
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
-  font-weight: 700;
+  font-size: var(--type-action-size);
+  font-weight: 600;
 }
 
-.version-entry__actions button:last-child {
-  color: var(--color-on-accent);
-  background: var(--color-active);
+.version-entry__actions button + button {
+  position: relative;
+  margin-left: 1px;
+  padding-left: 11px;
+}
+
+.version-entry__actions button + button::before {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 1px;
+  background: var(--color-border);
+  content: "";
 }
 
 .version-entry--current > button {
@@ -596,6 +608,7 @@
   border: 0;
   border-radius: 14px;
   background: var(--color-active);
+  font-size: var(--type-action-size);
   font-weight: 700;
 }
 
