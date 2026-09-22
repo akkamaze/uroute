@@ -562,7 +562,18 @@ a {
 }
 
 .day-strip__day strong {
+  position: relative;
   font-size: var(--type-body-size);
+}
+
+.day-strip__draft-indicator {
+  position: absolute;
+  top: -1px;
+  right: -9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-pending);
 }
 
 .day-strip__day--selected {

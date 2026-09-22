@@ -169,6 +169,7 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   ).toBeVisible();
   await expect(page.locator(".day-plan__select-toggle .lucide-pencil")).toBeVisible();
   await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
+  await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await expect(page).toHaveURL(/\/plan\/manage\?day=13/);
@@ -922,6 +923,10 @@ test("Back flushes the latest draft and explicit discard removes it", async ({ p
   await expect(page.getByRole("dialog", { name: "Leave Edit plan?" })).toHaveCount(0);
   expect(await storedFridayIds(page)).toEqual(original);
   await expect(page.locator(".day-plan__draft-indicator")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Friday 13, draft available" }),
+  ).toBeVisible();
+  await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await expect
@@ -944,4 +949,5 @@ test("Back flushes the latest draft and explicit discard removes it", async ({ p
   await expect(page).toHaveURL(/\/plan\?day=13/);
   expect(await storedFridayIds(page)).toEqual(original);
   await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
+  await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(0);
 });

@@ -97,8 +97,12 @@ export function PlanPage(): React.JSX.Element {
   const search = useSearch({ from: "/mobile-shell/plan" });
   const selectedDay = search.day ?? 13;
   const plan = useKyotoPlan();
-  const hasDraft =
-    loadManageDayDraft(selectedDay, visitsSignature(plan.days[selectedDay])) !== null;
+  const draftDays = new Set<KyotoDay>(
+    TRIP_DAYS.flatMap(({ date }) =>
+      loadManageDayDraft(date, visitsSignature(plan.days[date])) === null ? [] : [date],
+    ),
+  );
+  const hasDraft = draftDays.has(selectedDay);
   const mapExpanded = search.map === "full";
   const [showMap, setShowMap] = useState(false);
   const mapVisible = showMap || mapExpanded;
@@ -344,22 +348,32 @@ export function PlanPage(): React.JSX.Element {
         inert={mapExpanded}
         role="group"
       >
-        {TRIP_DAYS.map((day) => (
-          <button
-            aria-pressed={selectedDay === day.date}
-            className={
-              selectedDay === day.date
-                ? "day-strip__day day-strip__day--selected"
-                : "day-strip__day"
-            }
-            key={day.date}
-            onClick={() => selectDay(day.date)}
-            type="button"
-          >
-            <span>{day.weekday}</span>
-            <strong>{day.date}</strong>
-          </button>
-        ))}
+        {TRIP_DAYS.map((day) => {
+          const dayHasDraft = draftDays.has(day.date);
+
+          return (
+            <button
+              aria-label={`${day.fullWeekday} ${day.date}${dayHasDraft ? ", draft available" : ""}`}
+              aria-pressed={selectedDay === day.date}
+              className={
+                selectedDay === day.date
+                  ? "day-strip__day day-strip__day--selected"
+                  : "day-strip__day"
+              }
+              key={day.date}
+              onClick={() => selectDay(day.date)}
+              type="button"
+            >
+              <span>{day.weekday}</span>
+              <strong>
+                {day.date}
+                {dayHasDraft ? (
+                  <span aria-hidden="true" className="day-strip__draft-indicator" />
+                ) : null}
+              </strong>
+            </button>
+          );
+        })}
       </div>
       {stressEnabled ? (
         <p aria-hidden={mapExpanded} className="stress-fixture-label">
