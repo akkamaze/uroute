@@ -80,8 +80,29 @@ interface RowSwipeGesture {
 }
 
 interface NoticeState {
+  detail: string | undefined;
   message: string;
   persistent: boolean;
+  visible: boolean;
+}
+
+interface MoveHistoryChange {
+  fromIndex: number;
+  kind: "move";
+  placeId: string;
+  toIndex: number;
+}
+
+interface RemoveHistoryChange {
+  kind: "remove";
+  removed: Array<{ index: number; placeId: string }>;
+}
+
+type HistoryChange = MoveHistoryChange | RemoveHistoryChange;
+
+interface HistoryEntry {
+  change: HistoryChange;
+  visits: PlannedVisit[];
 }
 
 function cloneVisits(visits: readonly PlannedVisit[]): PlannedVisit[] {
@@ -230,8 +251,8 @@ export function ManageDayPage(): React.JSX.Element {
   const [draft, setDraft] = useState<PlannedVisit[]>(() =>
     cloneVisits(storedDraftRef.current?.visits ?? initialVisitsRef.current),
   );
-  const [undoStack, setUndoStack] = useState<PlannedVisit[][]>([]);
-  const [redoStack, setRedoStack] = useState<PlannedVisit[][]>([]);
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [versions, setVersions] = useState<ManageDayVersion[]>(() => loadManageDayVersions(day));
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -290,18 +311,44 @@ export function ManageDayPage(): React.JSX.Element {
     }
   });
 
-  function commitDraft(next: readonly PlannedVisit[], message: string): void {
+  function commitDraft(
+    next: readonly PlannedVisit[],
+    message: string,
+    change: HistoryChange,
+  ): void {
     if (visitsSignature(next) === visitsSignature(draft)) {
       return;
     }
-    setUndoStack((current) => [...current, cloneVisits(draft)]);
+    setUndoStack((current) => [...current, { change, visits: cloneVisits(draft) }]);
     setRedoStack([]);
     setDraft(cloneVisits(next));
     showNotice(message);
   }
 
-  function showNotice(message: string, persistent = false): void {
-    setNotice({ message, persistent });
+  function showNotice(message: string, persistent = false, visible = false, detail?: string): void {
+    setNotice({ detail, message, persistent, visible });
+  }
+
+  function describeUndo(change: HistoryChange): string {
+    if (change.kind === "move") {
+      const name = stops.get(change.placeId)?.name ?? "Place";
+
+      return `Undid move · ${name} #${change.toIndex + 1} → #${change.fromIndex + 1}`;
+    }
+    if (change.removed.length === 1) {
+      const restored = change.removed[0];
+      const name = stops.get(restored?.placeId ?? "")?.name ?? "Place";
+
+      return `Undid removal · ${name} restored at #${(restored?.index ?? 0) + 1}`;
+    }
+
+    const positions = change.removed.map(({ index }) => `#${index + 1}`).join(", ");
+
+    return `Undid removal · ${change.removed.length} places restored at ${positions}`;
+  }
+
+  function remainingUndoLabel(count: number): string {
+    return `${count} undo ${count === 1 ? "step" : "steps"} remaining`;
   }
 
   function confirmRestoreVersion(): void {
@@ -329,25 +376,25 @@ export function ManageDayPage(): React.JSX.Element {
   }
 
   function undo(): void {
-    const previous = undoStack.at(-1);
-    if (previous === undefined) {
+    const entry = undoStack.at(-1);
+    if (entry === undefined) {
       return;
     }
-    setRedoStack((current) => [cloneVisits(draft), ...current]);
+    setRedoStack((current) => [{ change: entry.change, visits: cloneVisits(draft) }, ...current]);
     setUndoStack((current) => current.slice(0, -1));
-    setDraft(cloneVisits(previous));
+    setDraft(cloneVisits(entry.visits));
     closeRowSwipe();
-    showNotice("Last change undone");
+    showNotice(describeUndo(entry.change), false, true, remainingUndoLabel(undoStack.length - 1));
   }
 
   function redo(): void {
-    const next = redoStack[0];
-    if (next === undefined) {
+    const entry = redoStack[0];
+    if (entry === undefined) {
       return;
     }
-    setUndoStack((current) => [...current, cloneVisits(draft)]);
+    setUndoStack((current) => [...current, { change: entry.change, visits: cloneVisits(draft) }]);
     setRedoStack((current) => current.slice(1));
-    setDraft(cloneVisits(next));
+    setDraft(cloneVisits(entry.visits));
     closeRowSwipe();
     showNotice("Change restored");
   }
@@ -415,9 +462,13 @@ export function ManageDayPage(): React.JSX.Element {
       return;
     }
     const count = selectedIds.size;
+    const removed = draft.flatMap((visit, index) =>
+      selectedIds.has(visit.placeId) ? [{ index, placeId: visit.placeId }] : [],
+    );
     commitDraft(
       draft.filter((visit) => !selectedIds.has(visit.placeId)),
       `${count} ${count === 1 ? "place" : "places"} removed from draft`,
+      { kind: "remove", removed },
     );
     setSelectionMode(false);
     setSelectedIds(new Set());
@@ -425,6 +476,7 @@ export function ManageDayPage(): React.JSX.Element {
 
   function removeOneFromDraft(id: string): void {
     const stop = stops.get(id);
+    const index = draft.findIndex((visit) => visit.placeId === id);
     previewAnimationRef.current = {
       before: captureRowRects(),
       draggedTop: null,
@@ -434,6 +486,7 @@ export function ManageDayPage(): React.JSX.Element {
     commitDraft(
       draft.filter((visit) => visit.placeId !== id),
       `${stop?.name ?? "Place"} removed from draft`,
+      { kind: "remove", removed: [{ index, placeId: id }] },
     );
   }
 
@@ -583,7 +636,12 @@ export function ManageDayPage(): React.JSX.Element {
     if (index < 0 || target === undefined) {
       return;
     }
-    commitDraft(moveVisit(draft, id, target.placeId), `${stop?.name ?? "Place"} moved`);
+    commitDraft(moveVisit(draft, id, target.placeId), `${stop?.name ?? "Place"} moved`, {
+      fromIndex: index,
+      kind: "move",
+      placeId: id,
+      toIndex: index + direction,
+    });
   }
 
   function captureRowRects(): Map<string, DOMRect> {
@@ -723,7 +781,12 @@ export function ManageDayPage(): React.JSX.Element {
         return;
       }
       const stop = stops.get(id);
-      commitDraft(drag.current, `${stop?.name ?? "Place"} moved`);
+      commitDraft(drag.current, `${stop?.name ?? "Place"} moved`, {
+        fromIndex: drag.original.findIndex((visit) => visit.placeId === id),
+        kind: "move",
+        placeId: id,
+        toIndex: drag.current.findIndex((visit) => visit.placeId === id),
+      });
     };
     dragRef.current = drag;
     window.addEventListener("pointermove", drag.onMove, { passive: false });
@@ -1377,15 +1440,26 @@ export function ManageDayPage(): React.JSX.Element {
       )}
 
       <span aria-live="polite" className="sr-only" id="manage-day-change-announcement">
-        {notice?.message ?? ""}
+        {notice === null
+          ? ""
+          : `${notice.message}${notice.detail === undefined ? "" : ` · ${notice.detail}`}`}
       </span>
 
-      {notice === null || !notice.persistent || draggedId !== null ? null : (
-        <div className="manage-day__notice" role="alert">
-          <span>{notice.message}</span>
-          <button aria-label="Dismiss message" onClick={() => setNotice(null)} type="button">
-            <X aria-hidden="true" size={18} strokeWidth={1.8} />
-          </button>
+      {notice === null || (!notice.visible && !notice.persistent) || draggedId !== null ? null : (
+        <div
+          aria-hidden={notice.persistent ? undefined : true}
+          className="manage-day__notice"
+          role={notice.persistent ? "alert" : undefined}
+        >
+          <span className="manage-day__notice-copy">
+            <span>{notice.message}</span>
+            {notice.detail === undefined ? null : <small>{notice.detail}</small>}
+          </span>
+          {notice.persistent ? (
+            <button aria-label="Dismiss message" onClick={() => setNotice(null)} type="button">
+              <X aria-hidden="true" size={18} strokeWidth={1.8} />
+            </button>
+          ) : null}
         </div>
       )}
 

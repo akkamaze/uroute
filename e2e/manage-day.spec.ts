@@ -85,6 +85,13 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
+    await expect(page.locator(".manage-day__notice")).toContainText(
+      "Undid removal · Kiyomizu-dera restored at #1",
+    );
+    await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
+    await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+      "Undid removal · Kiyomizu-dera restored at #1 · 0 undo steps remaining",
+    );
   }
   // Fast, short flicks must delete in both directions rather than stop at Remove.
   for (const direction of [-1, 1]) {
@@ -97,6 +104,10 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
+    await expect(page.locator(".manage-day__notice")).toContainText(
+      "Undid removal · Kiyomizu-dera restored at #1",
+    );
+    await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
   }
   // A real touch drag must remain visible outside its original clipped row.
   const grip = await row.locator(".manage-day__grip").boundingBox();
@@ -202,6 +213,24 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
   await grip.focus();
   await grip.press("Alt+ArrowDown");
+  await grip.press("Alt+ArrowDown");
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-manage-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+    )
+    .toEqual(["arabica", "nishiki", "kiyomizu"]);
+  expect(await storedFridayIds(page)).toEqual(original);
+
+  await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".manage-day__notice")).toContainText(
+    "Undid move · Kiyomizu-dera #3 → #2",
+  );
+  await expect(page.locator(".manage-day__notice")).toContainText("1 undo step remaining");
+  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+    "Undid move · Kiyomizu-dera #3 → #2 · 1 undo step remaining",
+  );
   await expect
     .poll(() =>
       page
@@ -209,9 +238,15 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
         .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
     )
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
-  expect(await storedFridayIds(page)).toEqual(original);
-
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".manage-day__notice")).toContainText(
+    "Undid move · Kiyomizu-dera #2 → #1",
+  );
+  await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
+  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+    "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
+  );
+  await expect(page.locator(".manage-day__notice")).toHaveCount(0, { timeout: 3_000 });
   await expect
     .poll(() =>
       page
@@ -331,8 +366,13 @@ test("dragging reorders the draft without writing the saved Plan", async ({ page
   await grip.focus();
   await grip.press("Alt+ArrowDown");
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toHaveCount(0);
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText("Last change undone");
+  await expect(page.locator(".manage-day__notice")).toContainText(
+    "Undid move · Kiyomizu-dera #2 → #1",
+  );
+  await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
+  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+    "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
+  );
   const target = page.locator('[data-manage-row-id="nishiki"]');
   const gripBox = await grip.boundingBox();
   const targetBox = await target.boundingBox();
@@ -393,16 +433,14 @@ test("Cancel move restores the original draft order without enabling Save", asyn
     );
   }
   const restingLayout = await layout();
-  const restingRows = await page
-    .locator("[data-manage-row-id]")
-    .evaluateAll((rows) =>
-      rows
-        .map((row) => ({
-          id: row.getAttribute("data-manage-row-id"),
-          height: Math.round(row.getBoundingClientRect().height * 100) / 100,
-        }))
-        .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
-    );
+  const restingRows = await page.locator("[data-manage-row-id]").evaluateAll((rows) =>
+    rows
+      .map((row) => ({
+        id: row.getAttribute("data-manage-row-id"),
+        height: Math.round(row.getBoundingClientRect().height * 100) / 100,
+      }))
+      .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
+  );
   const original = await storedFridayIds(page);
   const originalDraftOrder = await page
     .locator("[data-manage-row-id]")
@@ -439,16 +477,14 @@ test("Cancel move restores the original draft order without enabling Save", asyn
   ).toEqual(previewOrder);
   expect(await layout()).toEqual(restingLayout);
   expect(
-    await page
-      .locator("[data-manage-row-id]")
-      .evaluateAll((rows) =>
-        rows
-          .map((row) => ({
-            id: row.getAttribute("data-manage-row-id"),
-            height: Math.round(row.getBoundingClientRect().height * 100) / 100,
-          }))
-          .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
-      ),
+    await page.locator("[data-manage-row-id]").evaluateAll((rows) =>
+      rows
+        .map((row) => ({
+          id: row.getAttribute("data-manage-row-id"),
+          height: Math.round(row.getBoundingClientRect().height * 100) / 100,
+        }))
+        .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
+    ),
   ).toEqual(restingRows);
   const dragged = page.locator('[data-manage-row-id="kiyomizu"]');
   const cancelX = cancelBox.x + cancelBox.width / 2;
