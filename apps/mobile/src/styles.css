@@ -308,7 +308,7 @@ a {
   width: 44px;
   height: 44px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   color: var(--color-text);
   border-radius: 50%;
 }
@@ -374,9 +374,9 @@ a {
 
 .trip-sections__link--active::after {
   position: absolute;
-  right: 0.75rem;
+  right: 0;
   bottom: -1px;
-  left: 0.75rem;
+  left: 0;
   height: 2px;
   border-radius: 999px;
   background: var(--color-active);
