@@ -1,102 +1,337 @@
-.stop-actions {
+.timeline__toolbar {
+  display: flex;
+  min-height: 44px;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 6px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.timeline__toolbar button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  color: var(--color-active);
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.timeline__swipe-shell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  overflow: clip;
+  border-radius: 14px;
+  background: transparent;
+  touch-action: pan-y pinch-zoom;
+}
+
+.timeline__remove {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: 64px;
+  min-height: 44px;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #ffffff;
+  border: 0;
+  border-radius: 0 14px 14px 0;
+  background: #a33228;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 0.875rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms linear;
+}
+
+.timeline__swipe-shell:has(.timeline__surface--swipe-open) .timeline__remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.timeline__surface {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--color-surface);
+  transform: translateX(var(--swipe-offset, 0));
+  transition:
+    transform 180ms ease-out,
+    background-color 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+
+.timeline__surface--selection-mode {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.timeline__surface--selected {
+  background: #f5f7fa;
+}
+
+.timeline__surface--selected .timeline__time,
+.timeline__surface--selected .timeline__info,
+.timeline__surface--selected .timeline__photo {
+  opacity: 0.56;
+}
+
+.timeline__surface--selected .timeline__photo {
+  filter: saturate(0.35);
+}
+
+.timeline__surface--dragging {
+  z-index: 3;
+  opacity: 0.58;
+  box-shadow: 0 8px 24px rgb(32 33 36 / 14%);
+}
+
+.timeline__surface .timeline__stop {
+  min-width: 0;
+  border-radius: 14px 0 0 14px;
+  background: transparent;
+}
+
+.timeline__surface--selection-mode .timeline__stop {
+  grid-template-columns: 32px 44px minmax(0, 1fr) 48px;
+  border-radius: 14px;
+}
+
+/* Selected rows without an intervening travel entry read as one grouped block. */
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel)):has(
+    + .timeline__entry
+      > .timeline__swipe-shell
+      > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel)):has(
+    + .timeline__entry
+      > .timeline__swipe-shell
+      > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell
+  > .timeline__surface {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel))
+  + .timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel))
+  + .timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell
+  > .timeline__surface {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.timeline__selection-checkbox {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  margin: 0 auto;
+  color: var(--color-on-accent);
+  border: 1.5px solid #c7ced8;
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.timeline__selection-checkbox--checked {
+  border-color: var(--color-active);
+  background: var(--color-active);
+}
+
+.timeline__grip {
+  display: grid;
+  width: 44px;
+  min-width: 44px;
+  height: 100%;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+  color: var(--color-muted);
+  border: 0;
+  border-radius: 0 14px 14px 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.timeline__grip {
+  cursor: grab;
+}
+
+.timeline__grip:active {
+  cursor: grabbing;
+}
+
+.timeline__toolbar button:focus-visible,
+.timeline__remove:focus-visible,
+.timeline__grip:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: -2px;
+}
+
+.plan-bulk-remove {
+  position: fixed;
+  z-index: 8;
+  right: max(1rem, calc((100vw - 414px) / 2 + 1rem));
+  bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  animation: reveal-bulk-action 180ms ease-out both;
+}
+
+.plan-bulk-remove > button {
+  position: relative;
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  padding: 0;
+  color: #ffffff;
+  border: 0;
+  border-radius: 50%;
+  background: #a33228;
+  box-shadow: 0 6px 16px rgb(163 50 40 / 24%);
+  transition:
+    transform 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+
+.plan-bulk-remove > button > span {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 5px;
+  color: #a33228;
+  border: 1px solid #e2b7b3;
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 2px 6px rgb(32 33 36 / 12%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.plan-bulk-remove > button:active {
+  box-shadow: 0 3px 10px rgb(117 38 31 / 20%);
+  transform: translateY(1px) scale(0.98);
+}
+
+@keyframes reveal-bulk-action {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.remove-stops-dialog {
   width: calc(100% - 24px);
   max-width: 390px;
-  max-height: calc(
-    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
-  );
   margin: auto auto max(12px, env(safe-area-inset-bottom, 0px));
   padding: 16px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   color: var(--color-text);
   border: 0;
   border-radius: 20px;
   background: var(--color-surface);
   box-shadow: 0 20px 64px rgb(32 33 36 / 18%);
 }
-.stop-actions::backdrop {
+
+.remove-stops-dialog::backdrop {
   background: rgb(32 33 36 / 34%);
 }
-.stop-actions header {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.stop-actions h2 {
+
+.remove-stops-dialog h2 {
   margin: 0;
   font-size: 1.125rem;
-  line-height: 1.4;
 }
-.stop-actions header p,
-.stop-actions__unavailable {
-  margin: 4px 0 0;
+
+.remove-stops-dialog p {
+  margin: 8px 0 18px;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
-.stop-actions__close {
+
+.remove-stops-dialog > div {
   display: grid;
-  width: 44px;
-  height: 44px;
-  flex: none;
-  place-items: center;
-  margin: -6px -6px 0 0;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-muted);
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
-.stop-actions__action {
-  display: flex;
-  width: 100%;
+
+.remove-stops-dialog button {
   min-height: 48px;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 4px;
+  padding: 0 12px;
   color: var(--color-text);
-  border: 0;
-  border-top: 1px solid var(--color-border);
-  background: transparent;
-  font: inherit;
-  font-size: 0.9375rem;
-  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-weight: 700;
 }
-.stop-actions__action--remove {
-  color: #a33228;
+
+.remove-stops-dialog .remove-stops-dialog__confirm {
+  color: #ffffff;
+  border-color: #a33228;
+  background: #a33228;
 }
-.stop-actions button:focus-visible {
+
+.remove-stops-dialog .selection-leave-dialog__confirm {
+  color: var(--color-on-accent);
+  border-color: var(--color-active);
+  background: var(--color-active);
+}
+
+.remove-stops-dialog button:focus-visible,
+.plan-bulk-remove button:focus-visible {
   outline: 2px solid var(--color-active);
   outline-offset: 2px;
 }
-.timeline__options {
-  position: absolute;
-  z-index: 2;
-  top: 7px;
-  right: 4px;
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--color-text);
-}
-.timeline__options svg {
-  box-sizing: content-box;
-  padding: 5px;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 94%);
-  box-shadow: 0 1px 4px rgb(32 33 36 / 14%);
-}
-.timeline__options:focus-visible {
-  outline: 2px solid var(--color-active);
-  outline-offset: 0;
-}
+
 .plan-undo {
   position: fixed;
   z-index: 8;
@@ -115,18 +350,21 @@
   box-shadow: 0 6px 24px rgb(32 33 36 / 16%);
   transform: translateX(-50%);
 }
+
 .plan-undo > span {
   min-width: 0;
   flex: 1;
   font-size: 0.8125rem;
   line-height: 1.4;
 }
+
 .plan-undo strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .plan-undo button {
   min-width: 44px;
   min-height: 44px;
@@ -136,16 +374,20 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  font: inherit;
   font-size: 0.875rem;
   font-weight: 700;
 }
+
 .plan-undo button:last-child {
   display: grid;
   place-items: center;
   color: var(--color-muted);
 }
-.plan-undo button:focus-visible {
-  outline: 2px solid var(--color-active);
-  outline-offset: 0;
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline__surface,
+  .plan-bulk-remove {
+    animation-duration: 1ms;
+    transition-duration: 1ms;
+  }
 }

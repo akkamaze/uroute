@@ -1,31 +1,33 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import {
+  Check,
   CloudSun,
   Coffee,
   Footprints,
   GripVertical,
   Landmark,
+  ListChecks,
   Map as MapIcon,
-  MoreHorizontal,
-  X,
   Plus,
+  Trash2,
   Utensils,
+  X,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
-import { createSamplePlaces, createStressPlaces, createOrderedPlaces } from "./map-data";
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
-import { TripHeader } from "./TripHeader";
+import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
-  removeKyotoVisit,
-  restoreKyotoVisit,
+  removeKyotoVisits,
   reorderKyotoDay,
+  restoreKyotoVisits,
   useKyotoPlan,
   type KyotoDay,
   type RemovedVisit,
 } from "./plan-store";
-import { StopActionsDialog } from "./StopActionsDialog";
+import { TripHeader } from "./TripHeader";
+import "./stop-actions.css";
 
 const TRIP_DAYS = [
   { date: 12, fullWeekday: "Thursday", weekday: "Thu" },
@@ -35,72 +37,114 @@ const TRIP_DAYS = [
   { date: 16, fullWeekday: "Monday", weekday: "Mon" },
 ] as const;
 
-const TOUCH_REORDER_DELAY_MS = 260;
-const TOUCH_SCROLL_THRESHOLD_PX = 8;
-const DeferredTripMap = lazy(async () => {
-  const module = await import("./TripMap");
-
-  return { default: module.TripMap };
-});
-
+const LONG_PRESS_MS = 450;
+const REVEAL_PX = 64;
+const REVEAL_THRESHOLD_PX = 32;
+const DeferredTripMap = lazy(async () => ({ default: (await import("./TripMap")).TripMap }));
 const TRAVEL_BY_PAIR = new Map(
   FRIDAY_STOPS.flatMap((stop, index) => {
-    const nextStop = FRIDAY_STOPS[index + 1];
+    const next = FRIDAY_STOPS[index + 1];
 
-    if (nextStop === undefined || stop.travelAfter === undefined) {
-      return [];
-    }
-
-    return [[`${stop.id}:${nextStop.id}`, stop.travelAfter] as const];
+    return next === undefined || stop.travelAfter === undefined
+      ? []
+      : [[`${stop.id}:${next.id}`, stop.travelAfter] as const];
   }),
 );
 
-interface TouchReorderState {
-  active: boolean;
-  sourceId: string;
+interface StopGesture {
+  direction: "pending" | "swipe" | "vertical";
+  id: string;
+  initialOffset: number;
+  pointerId: number;
   startX: number;
   startY: number;
-  targetId: string;
+  timer: number | null;
 }
 
-interface PointerReorderState {
+interface ReorderGesture {
   active: boolean;
   pointerId: number;
   sourceId: string;
+  targetId: string;
   startX: number;
   startY: number;
-  targetId: string;
+}
+
+interface RemovalOperation {
+  dayLabel: string;
+  removed: RemovedVisit[];
+}
+
+function mergeRemovedVisits(
+  previous: readonly RemovedVisit[],
+  latest: readonly RemovedVisit[],
+): RemovedVisit[] {
+  const adjustedLatest = latest.map((removed) => {
+    let originalIndex = removed.index;
+    const priorForDay = previous
+      .filter((prior) => prior.day === removed.day)
+      .sort((left, right) => left.index - right.index);
+
+    for (const prior of priorForDay) {
+      if (prior.index <= originalIndex) {
+        originalIndex += 1;
+      }
+    }
+
+    return { ...removed, index: originalIndex };
+  });
+
+  return [...previous, ...adjustedLatest];
 }
 
 function isStressFixtureEnabled(stress: "1200" | undefined): boolean {
-  const fixtureAvailable =
-    import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_FIXTURE === "true";
+  return (
+    (import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_FIXTURE === "true") &&
+    stress === "1200"
+  );
+}
 
-  return fixtureAvailable && stress === "1200";
+function getPlanDay(search: unknown): KyotoDay {
+  if (typeof search !== "object" || search === null || !("day" in search)) {
+    return 13;
+  }
+  const day = search.day;
+
+  return TRIP_DAYS.some((candidate) => candidate.date === day) ? (day as KyotoDay) : 13;
 }
 
 export function PlanPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/plan" });
-  const mapExpanded = search.map === "full";
-  const actionStop = FRIDAY_STOPS.find((place) => place.id === search.stop);
-  const actionsOpenedHereRef = useRef(false);
-  const lastActionIdRef = useRef<string | undefined>(undefined);
-  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [removedVisit, setRemovedVisit] = useState<RemovedVisit | null>(null);
-  const mapOpenedHereRef = useRef(false);
-  const wasMapExpandedRef = useRef(false);
-  const mapViewButtonRef = useRef<HTMLButtonElement>(null);
-  const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const touchReorderRef = useRef<TouchReorderState | null>(null);
-  const pointerReorderRef = useRef<PointerReorderState | null>(null);
-  const touchTimerRef = useRef<number | null>(null);
-  const suppressClickRef = useRef(false);
   const selectedDay = search.day ?? 13;
   const plan = useKyotoPlan();
-  const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
+  const mapExpanded = search.map === "full";
   const [showMap, setShowMap] = useState(false);
   const mapVisible = showMap || mapExpanded;
+  const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedStopIds, setSelectedStopIds] = useState<Set<string>>(() => new Set());
+  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const [removal, setRemoval] = useState<RemovalOperation | null>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [liveNotice, setLiveNotice] = useState("");
+  const gestureRef = useRef<StopGesture | null>(null);
+  const reorderRef = useRef<ReorderGesture | null>(null);
+  const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const mapViewButtonRef = useRef<HTMLButtonElement>(null);
+  const emptyHeadingRef = useRef<HTMLHeadingElement>(null);
+  const bulkButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const leaveSelectionDialogRef = useRef<HTMLDialogElement>(null);
+  const keepSelectingRef = useRef<HTMLButtonElement>(null);
+  const suppressClickRef = useRef(false);
+  const mapOpenedHereRef = useRef(false);
+  const wasMapExpandedRef = useRef(false);
+  const stressEnabled = isStressFixtureEnabled(search.stress);
   const stops = useMemo(
     () =>
       plan.days[selectedDay].flatMap((visit) => {
@@ -110,283 +154,350 @@ export function PlanPage(): React.JSX.Element {
       }),
     [plan.days, selectedDay],
   );
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const [reorderNotice, setReorderNotice] = useState("");
-  const [reorderHintVisible, setReorderHintVisible] = useState(true);
-  const stressFixtureEnabled = isStressFixtureEnabled(search.stress);
+  const orderPlaces = useMemo(() => createOrderedPlaces(stops.map(({ id }) => id)), [stops]);
   const places = useMemo(
-    () =>
-      stressFixtureEnabled && selectedDay === 13 ? createStressPlaces() : createSamplePlaces(),
-    [selectedDay, stressFixtureEnabled],
+    () => (stressEnabled && selectedDay === 13 ? createStressPlaces() : orderPlaces),
+    [orderPlaces, selectedDay, stressEnabled],
   );
-  const orderPlaces = useMemo(() => createOrderedPlaces(stops.map((stop) => stop.id)), [stops]);
-  const selectedPlace = places.features.find((place) => place.properties.id === selectedId);
-  const selectedDayLabel = TRIP_DAYS.find((day) => day.date === selectedDay)?.fullWeekday;
-
-  useEffect(
-    () => () => {
-      if (touchTimerRef.current !== null) {
-        window.clearTimeout(touchTimerRef.current);
+  const weekday = TRIP_DAYS.find(({ date }) => date === selectedDay)?.fullWeekday ?? "Selected day";
+  const dayLabel = `${weekday}, ${selectedDay} November`;
+  const selectedCount = selectedStopIds.size;
+  const navigationBlocker = useBlocker({
+    enableBeforeUnload: selectionMode && selectedCount > 0,
+    shouldBlockFn: ({ current, next }) => {
+      if (!selectionMode || selectedCount === 0 || current.pathname !== "/plan") {
+        return false;
       }
+
+      return next.pathname !== "/plan" || getPlanDay(next.search) !== selectedDay;
     },
-    [],
-  );
+    withResolver: true,
+  });
+  const changingDay =
+    navigationBlocker.status === "blocked" &&
+    navigationBlocker.current.pathname === "/plan" &&
+    navigationBlocker.next.pathname === "/plan";
+
+  function clearGesture(): void {
+    if (gestureRef.current?.timer !== null && gestureRef.current?.timer !== undefined) {
+      window.clearTimeout(gestureRef.current.timer);
+    }
+    gestureRef.current = null;
+  }
+
+  function suppressClick(): void {
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 300);
+  }
+
+  function closeSwipe(): void {
+    clearGesture();
+    setOpenSwipeId(null);
+    setSwipeOffset(0);
+  }
+
+  function exitSelection(): void {
+    setSelectionMode(false);
+    setSelectedStopIds(new Set());
+    setConfirming(false);
+  }
+
+  function enterSelection(firstId?: string): void {
+    closeSwipe();
+    setSelectionMode(true);
+    setSelectedStopIds(firstId === undefined ? new Set() : new Set([firstId]));
+    setLiveNotice(
+      firstId === undefined ? "Selection mode. No places selected." : "1 place selected.",
+    );
+  }
 
   useEffect(() => {
-    if (actionStop !== undefined) {
-      lastActionIdRef.current = actionStop.id;
-    } else if (lastActionIdRef.current !== undefined) {
-      const opener = optionRefs.current[lastActionIdRef.current];
-      (opener ?? mapViewButtonRef.current)?.focus({ preventScroll: true });
-      lastActionIdRef.current = undefined;
-      actionsOpenedHereRef.current = false;
-    }
-  }, [actionStop]);
+    closeSwipe();
+    exitSelection();
+    setSelectedId(stressEnabled ? null : (plan.days[selectedDay][0]?.placeId ?? null));
+    // State reset is intentionally keyed only to the active day.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDay]);
 
-  function openStopActions(id: string): void {
-    actionsOpenedHereRef.current = true;
-    void navigate({
-      to: "/plan",
-      search: { ...search, day: selectedDay, stop: id },
-      resetScroll: false,
+  useEffect(() => {
+    if (mapExpanded) {
+      closeSwipe();
+      exitSelection();
+    }
+    // This reset is only required when the full-screen map opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapExpanded]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog === null) {
+      return;
+    }
+    if (confirming && !dialog.open) {
+      dialog.showModal();
+      window.requestAnimationFrame(() => cancelRef.current?.focus());
+    } else if (!confirming && dialog.open) {
+      dialog.close();
+    }
+  }, [confirming]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || confirming) {
+        return;
+      }
+      if (leaveSelectionDialogRef.current?.open) {
+        return;
+      }
+      if (selectionMode) {
+        exitSelection();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [confirming, selectionMode]);
+
+  useEffect(() => {
+    const dialog = leaveSelectionDialogRef.current;
+    if (dialog === null) {
+      return;
+    }
+    if (navigationBlocker.status === "blocked" && !dialog.open) {
+      dialog.showModal();
+      window.requestAnimationFrame(() => keepSelectingRef.current?.focus());
+    } else if (navigationBlocker.status === "idle" && dialog.open) {
+      dialog.close();
+    }
+  }, [navigationBlocker.status]);
+
+  useEffect(() => () => clearGesture(), []);
+
+  function toggleSelection(id: string): void {
+    setSelectedStopIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      setLiveNotice(`${next.size} ${next.size === 1 ? "place" : "places"} selected.`);
+
+      return next;
     });
   }
 
-  function closeStopActions(): void {
-    if (actionsOpenedHereRef.current) {
-      window.history.back();
-    } else {
-      void navigate({
-        to: "/plan",
-        search: {
-          day: selectedDay,
-          ...(search.stress === "1200" ? { stress: "1200" as const } : {}),
-        },
-        replace: true,
-        resetScroll: false,
-      });
+  function startStopGesture(event: React.PointerEvent<HTMLDivElement>, id: string): void {
+    if (selectionMode || draggedId !== null || event.button !== 0) {
+      return;
+    }
+    if (gestureRef.current !== null && gestureRef.current.pointerId !== event.pointerId) {
+      closeSwipe();
+
+      return;
+    }
+    const gesture: StopGesture = {
+      direction: "pending",
+      id,
+      initialOffset: openSwipeId === id ? -REVEAL_PX : 0,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer: null,
+    };
+    gesture.timer = window.setTimeout(() => {
+      if (gestureRef.current === gesture && gesture.direction === "pending") {
+        suppressClick();
+        clearGesture();
+        enterSelection(id);
+      }
+    }, LONG_PRESS_MS);
+    gestureRef.current = gesture;
+  }
+
+  function moveStopGesture(event: React.PointerEvent<HTMLDivElement>): void {
+    const gesture = gestureRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+    if (Math.hypot(dx, dy) > 8 && gesture.timer !== null) {
+      window.clearTimeout(gesture.timer);
+      gesture.timer = null;
+    }
+    if (gesture.direction === "pending") {
+      if (Math.abs(dx) >= 10 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        gesture.direction = "swipe";
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setOpenSwipeId(gesture.id);
+      } else if (Math.abs(dy) >= 10 && Math.abs(dy) >= Math.abs(dx) / 1.25) {
+        gesture.direction = "vertical";
+      }
+    }
+    if (gesture.direction === "swipe") {
+      setSwipeOffset(Math.max(-REVEAL_PX, Math.min(0, gesture.initialOffset + dx)));
     }
   }
 
-  function removeStop(): void {
-    if (actionStop === undefined) {
+  function endStopGesture(event: React.PointerEvent<HTMLDivElement>): void {
+    const gesture = gestureRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId) {
       return;
     }
-    const removed = removeKyotoVisit(selectedDay, actionStop.id);
-    if (removed !== undefined) {
-      setRemovedVisit(removed);
-      if (selectedId === actionStop.id) {
-        setSelectedId(null);
-      }
+    const wasSwipe = gesture.direction === "swipe";
+    const finalOffset = Math.max(
+      -REVEAL_PX,
+      Math.min(0, gesture.initialOffset + event.clientX - gesture.startX),
+    );
+    clearGesture();
+    if (!wasSwipe) {
+      return;
     }
-    closeStopActions();
+    suppressClick();
+    if (finalOffset <= -REVEAL_THRESHOLD_PX) {
+      setOpenSwipeId(gesture.id);
+      setSwipeOffset(-REVEAL_PX);
+    } else {
+      closeSwipe();
+    }
+  }
+
+  function focusAfterRemoval(removedIds: ReadonlySet<string>): void {
+    const index = stops.findIndex(({ id }) => removedIds.has(id));
+    const remaining = stops.filter(({ id }) => !removedIds.has(id));
+    const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
+    window.requestAnimationFrame(() => {
+      if (next !== undefined) {
+        stopRefs.current[next.id]?.focus({ preventScroll: true });
+      } else {
+        emptyHeadingRef.current?.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function removeStops(ids: readonly string[]): void {
+    const removed = removeKyotoVisits(
+      selectedDay,
+      ids.filter((id) => stops.some((stop) => stop.id === id)),
+    );
+    if (removed.length === 0) {
+      return;
+    }
+    const removedIds = new Set(removed.map(({ visit }) => visit.placeId));
+    setRemoval((current) => ({
+      dayLabel: current === null || current.dayLabel === dayLabel ? dayLabel : "Trip plan",
+      removed: current === null ? removed : mergeRemovedVisits(current.removed, removed),
+    }));
+    setLiveNotice(`${removed.length} ${removed.length === 1 ? "place" : "places"} removed.`);
+    if (selectedId !== null && removedIds.has(selectedId)) {
+      setSelectedId(null);
+    }
+    closeSwipe();
+    exitSelection();
+    focusAfterRemoval(removedIds);
+  }
+
+  function requestSelectedRemoval(): void {
+    const ids = [...selectedStopIds].filter((id) => stops.some((stop) => stop.id === id));
+    if (ids.length === 1) {
+      removeStops(ids);
+    } else if (ids.length > 1) {
+      setConfirming(true);
+    }
   }
 
   function undoRemoval(): void {
-    if (removedVisit === null) {
+    if (removal === null) {
       return;
     }
-    const restored = restoreKyotoVisit(removedVisit);
-    setReorderNotice(
-      restored ? "Place restored to its original position." : "This place is already in your day.",
-    );
-    setRemovedVisit(null);
-    if (restored && selectedDay === removedVisit.day) {
+    const operation = removal;
+    const count = restoreKyotoVisits(operation.removed);
+    setRemoval(null);
+    setLiveNotice(`${count} ${count === 1 ? "place" : "places"} restored.`);
+    const first = operation.removed[0];
+    if (count > 0 && first?.day === selectedDay) {
+      setSelectedId(first.visit.placeId);
       window.requestAnimationFrame(() =>
-        stopRefs.current[removedVisit.visit.placeId]?.focus({ preventScroll: true }),
+        stopRefs.current[first.visit.placeId]?.focus({ preventScroll: true }),
       );
     }
   }
 
-  function clearTouchTimer(): void {
-    if (touchTimerRef.current !== null) {
-      window.clearTimeout(touchTimerRef.current);
-      touchTimerRef.current = null;
-    }
-  }
-
   function finishReorder(sourceId: string, targetId: string): void {
-    const movedStop = stops.find((stop) => stop.id === sourceId);
-    const targetIndex = stops.findIndex((stop) => stop.id === targetId);
-    if (movedStop !== undefined && reorderKyotoDay(selectedDay, sourceId, targetId)) {
-      setReorderHintVisible(false);
-      setReorderNotice(`${movedStop.name} moved to position ${targetIndex + 1}.`);
+    const stop = stops.find(({ id }) => id === sourceId);
+    const targetIndex = stops.findIndex(({ id }) => id === targetId);
+    if (stop !== undefined && reorderKyotoDay(selectedDay, sourceId, targetId)) {
+      setLiveNotice(`${stop.name} moved to position ${targetIndex + 1}.`);
     }
   }
 
-  function resetDragState(): void {
-    clearTouchTimer();
-    touchReorderRef.current = null;
-    setDraggedId(null);
-    setDropTargetId(null);
-  }
-
-  function startPointerReorder(event: React.PointerEvent<HTMLButtonElement>, stopId: string): void {
-    if (event.pointerType !== "mouse" || event.button !== 0) {
+  function startReorder(event: React.PointerEvent<HTMLButtonElement>, id: string): void {
+    if (selectionMode || event.button !== 0) {
       return;
     }
-
-    pointerReorderRef.current = {
+    closeSwipe();
+    reorderRef.current = {
       active: false,
       pointerId: event.pointerId,
-      sourceId: stopId,
+      sourceId: id,
+      targetId: id,
       startX: event.clientX,
       startY: event.clientY,
-      targetId: stopId,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function movePointerReorder(event: React.PointerEvent<HTMLButtonElement>): void {
-    const reorder = pointerReorderRef.current;
-
-    if (reorder === null || event.pointerId !== reorder.pointerId) {
+  function moveReorder(event: React.PointerEvent<HTMLButtonElement>): void {
+    const drag = reorderRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) {
       return;
     }
-
-    if (!reorder.active) {
-      const distance = Math.hypot(event.clientX - reorder.startX, event.clientY - reorder.startY);
-
-      if (distance < TOUCH_SCROLL_THRESHOLD_PX) {
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 8) {
         return;
       }
-
-      reorder.active = true;
-      setDraggedId(reorder.sourceId);
-      setDropTargetId(reorder.sourceId);
+      drag.active = true;
+      setDraggedId(drag.sourceId);
+      setDropTargetId(drag.sourceId);
     }
-
     event.preventDefault();
-    const target = document
+    const targetId = document
       .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>("[data-stop-id]");
-    const targetId = target?.dataset.stopId;
-
+      ?.closest<HTMLElement>("[data-drop-stop-id]")?.dataset.dropStopId;
     if (targetId !== undefined) {
-      reorder.targetId = targetId;
+      drag.targetId = targetId;
       setDropTargetId(targetId);
     }
   }
 
-  function endPointerReorder(event: React.PointerEvent<HTMLButtonElement>): void {
-    const reorder = pointerReorderRef.current;
-
-    if (reorder === null || event.pointerId !== reorder.pointerId) {
+  function endReorder(event: React.PointerEvent<HTMLButtonElement>): void {
+    const drag = reorderRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) {
       return;
     }
-
-    if (reorder.active) {
-      finishReorder(reorder.sourceId, reorder.targetId);
-      suppressClickRef.current = true;
-      window.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 0);
+    if (drag.active) {
+      finishReorder(drag.sourceId, drag.targetId);
+      suppressClick();
     }
-
-    pointerReorderRef.current = null;
+    reorderRef.current = null;
     setDraggedId(null);
     setDropTargetId(null);
   }
 
-  function startTouchReorder(event: React.TouchEvent<HTMLButtonElement>, stopId: string): void {
-    if (event.touches.length !== 1) {
-      return;
+  function moveStopWithKeyboard(id: string, direction: -1 | 1): void {
+    const index = stops.findIndex((stop) => stop.id === id);
+    const target = stops[index + direction];
+    if (index >= 0 && target !== undefined) {
+      finishReorder(id, target.id);
     }
-
-    const touch = event.touches[0];
-
-    if (touch === undefined) {
-      return;
-    }
-
-    clearTouchTimer();
-    touchReorderRef.current = {
-      active: false,
-      sourceId: stopId,
-      startX: touch.clientX,
-      startY: touch.clientY,
-      targetId: stopId,
-    };
-    touchTimerRef.current = window.setTimeout(() => {
-      const reorder = touchReorderRef.current;
-
-      if (reorder === null) {
-        return;
-      }
-
-      reorder.active = true;
-      setDraggedId(reorder.sourceId);
-      setDropTargetId(reorder.sourceId);
-    }, TOUCH_REORDER_DELAY_MS);
-  }
-
-  function moveTouchReorder(event: React.TouchEvent<HTMLButtonElement>): void {
-    const reorder = touchReorderRef.current;
-    const touch = event.touches[0];
-
-    if (reorder === null || touch === undefined) {
-      return;
-    }
-
-    if (!reorder.active) {
-      if (
-        Math.hypot(touch.clientX - reorder.startX, touch.clientY - reorder.startY) >
-        TOUCH_SCROLL_THRESHOLD_PX
-      ) {
-        resetDragState();
-      }
-
-      return;
-    }
-
-    event.preventDefault();
-    const target = document
-      .elementFromPoint(touch.clientX, touch.clientY)
-      ?.closest<HTMLElement>("[data-stop-id]");
-    const targetId = target?.dataset.stopId;
-
-    if (targetId !== undefined) {
-      reorder.targetId = targetId;
-      setDropTargetId(targetId);
-    }
-  }
-
-  function endTouchReorder(): void {
-    const reorder = touchReorderRef.current;
-
-    if (reorder?.active) {
-      finishReorder(reorder.sourceId, reorder.targetId);
-      suppressClickRef.current = true;
-      window.setTimeout(() => {
-        suppressClickRef.current = false;
-      }, 300);
-    }
-
-    resetDragState();
-  }
-
-  function moveStopWithKeyboard(stopId: string, direction: -1 | 1): void {
-    const sourceIndex = stops.findIndex((stop) => stop.id === stopId);
-    const target = stops[sourceIndex + direction];
-
-    if (sourceIndex < 0 || target === undefined) {
-      return;
-    }
-
-    finishReorder(stopId, target.id);
   }
 
   function selectDay(day: KyotoDay): void {
+    closeSwipe();
     void navigate({ to: "/plan", search: { ...search, day }, replace: true, resetScroll: false });
-    setSelectedId(stressFixtureEnabled ? null : (plan.days[day][0]?.placeId ?? null));
-  }
-
-  function selectFromMap(id: string): void {
-    setSelectedId(id);
-    window.requestAnimationFrame(() => {
-      stopRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
   }
 
   function addPlace(): void {
@@ -411,6 +522,7 @@ export function PlanPage(): React.JSX.Element {
   }, [mapExpanded, showMap]);
 
   function changeMapExpanded(next: boolean): void {
+    closeSwipe();
     if (next) {
       mapOpenedHereRef.current = true;
       void navigate({ to: "/plan", search: { ...search, map: "full" }, resetScroll: false });
@@ -428,11 +540,11 @@ export function PlanPage(): React.JSX.Element {
       });
     }
   }
+
   function renderStopIcon(stop: PlannedStop): React.JSX.Element {
     if (stop.category === "coffee") {
       return <Coffee aria-hidden="true" size={22} strokeWidth={1.8} />;
     }
-
     if (stop.category === "food") {
       return <Utensils aria-hidden="true" size={22} strokeWidth={1.8} />;
     }
@@ -443,7 +555,6 @@ export function PlanPage(): React.JSX.Element {
   return (
     <section className={mapVisible ? "plan-page" : "plan-page plan-page--plan-only"}>
       <TripHeader active="plan" inactive={mapExpanded} />
-
       <div
         aria-hidden={mapExpanded}
         aria-label="Trip days"
@@ -468,15 +579,12 @@ export function PlanPage(): React.JSX.Element {
           </button>
         ))}
       </div>
-
-      {stressFixtureEnabled ? (
+      {stressEnabled ? (
         <p aria-hidden={mapExpanded} className="stress-fixture-label">
           Synthetic stress fixture · {places.features.length.toLocaleString()} points
         </p>
       ) : null}
-
       {mapExpanded ? <div aria-hidden="true" className="plan-map-placeholder" /> : null}
-
       {mapVisible ? (
         <Suspense
           fallback={
@@ -494,7 +602,12 @@ export function PlanPage(): React.JSX.Element {
             id="plan-map"
             expanded={mapExpanded}
             onExpandedChange={changeMapExpanded}
-            onSelect={selectFromMap}
+            onSelect={(id) => {
+              setSelectedId(id);
+              window.requestAnimationFrame(() =>
+                stopRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+              );
+            }}
             places={places}
             orderPlaces={orderPlaces}
             selectedId={selectedId}
@@ -503,30 +616,62 @@ export function PlanPage(): React.JSX.Element {
       ) : null}
 
       <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
-        <header className="day-plan__header">
+        <header
+          className={
+            selectionMode ? "day-plan__header day-plan__header--selection" : "day-plan__header"
+          }
+        >
           <span className="day-plan__heading">
-            <h2>
-              {selectedDayLabel}, {selectedDay} November
-            </h2>
+            <h2>{dayLabel}</h2>
             <span className="day-plan__weather">
               <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
               18°
             </span>
           </span>
-          <button
-            aria-controls="plan-map"
-            aria-label="Map view"
-            aria-pressed={mapVisible}
-            className="day-plan__view-toggle"
-            ref={mapViewButtonRef}
-            onClick={() => setShowMap((current) => !current)}
-            type="button"
-          >
-            <MapIcon aria-hidden="true" size={18} strokeWidth={1.8} />
-            Map
-          </button>
+          <span className="day-plan__header-actions">
+            <button
+              aria-controls="plan-map"
+              aria-label="Map view"
+              aria-pressed={mapVisible}
+              className="day-plan__view-toggle"
+              ref={mapViewButtonRef}
+              onClick={() => setShowMap((current) => !current)}
+              type="button"
+            >
+              <MapIcon aria-hidden="true" size={22} strokeWidth={1.8} />
+            </button>
+            <span className="day-plan__select-wrap">
+              <button
+                aria-label={selectionMode ? "Exit selection mode" : "Select places"}
+                aria-pressed={selectionMode}
+                className="day-plan__select-toggle"
+                onClick={() => (selectionMode ? exitSelection() : enterSelection())}
+                type="button"
+              >
+                <ListChecks aria-hidden="true" size={22} strokeWidth={1.8} />
+              </button>
+            </span>
+          </span>
+          {selectionMode ? (
+            <div className="timeline__toolbar">
+              <button onClick={exitSelection} type="button">
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const allSelected = selectedCount === stops.length;
+                  setSelectedStopIds(allSelected ? new Set() : new Set(stops.map(({ id }) => id)));
+                  setLiveNotice(
+                    allSelected ? "No places selected." : `${stops.length} places selected.`,
+                  );
+                }}
+                type="button"
+              >
+                {selectedCount === stops.length ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+          ) : null}
         </header>
-
         {plan.persistenceFailed ? (
           <p role="status" className="day-plan__storage-notice">
             Changes are kept for this session. Device storage is unavailable.
@@ -534,105 +679,142 @@ export function PlanPage(): React.JSX.Element {
         ) : null}
 
         {stops.length > 0 ? (
-          <div
-            aria-describedby="reorder-help"
-            aria-label={`${selectedDayLabel} itinerary`}
-            className="timeline"
-          >
-            {reorderHintVisible ? (
-              <p className="timeline__reorder-hint">
-                <GripVertical aria-hidden="true" size={17} strokeWidth={1.8} />
-                Hold and drag a place to reorder
-              </p>
-            ) : null}
+          <div aria-label={`${weekday} itinerary`} className="timeline">
             <span className="sr-only" id="reorder-help">
-              Hold and drag a place to reorder. With a keyboard, focus a place and press Alt plus
-              Arrow Up or Alt plus Arrow Down.
+              Drag this handle to reorder. With a keyboard, press Alt plus Arrow Up or Alt plus
+              Arrow Down.
             </span>
             {stops.map((stop, index) => {
-              const nextStop = stops[index + 1];
+              const next = stops[index + 1];
               const travel =
-                nextStop === undefined
-                  ? undefined
-                  : TRAVEL_BY_PAIR.get(`${stop.id}:${nextStop.id}`);
+                next === undefined ? undefined : TRAVEL_BY_PAIR.get(`${stop.id}:${next.id}`);
+              const checked = selectedStopIds.has(stop.id);
+              const swipeOpen = openSwipeId === stop.id;
 
               return (
                 <div
-                  className={
-                    dropTargetId === stop.id && draggedId !== stop.id
-                      ? "timeline__entry timeline__entry--drop-target"
-                      : "timeline__entry"
-                  }
+                  className={`timeline__entry${dropTargetId === stop.id && draggedId !== stop.id ? " timeline__entry--drop-target" : ""}`}
+                  data-drop-stop-id={stop.id}
                   key={stop.id}
                 >
-                  <button
-                    aria-roledescription="sortable stop"
-                    aria-pressed={selectedId === stop.id}
-                    className={[
-                      "timeline__stop",
-                      selectedId === stop.id ? "timeline__stop--selected" : "",
-                      draggedId === stop.id ? "timeline__stop--dragging" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                    data-stop-id={stop.id}
-                    onClick={() => {
-                      if (suppressClickRef.current) {
-                        return;
+                  <div className="timeline__swipe-shell" data-swipe-back-ignore="true">
+                    <button
+                      aria-hidden={!swipeOpen}
+                      aria-label={`Remove ${stop.name} from ${dayLabel}`}
+                      className="timeline__remove"
+                      onClick={() => removeStops([stop.id])}
+                      tabIndex={swipeOpen ? 0 : -1}
+                      type="button"
+                    >
+                      <Trash2 aria-hidden="true" size={18} strokeWidth={1.8} />
+                      <span>Remove</span>
+                    </button>
+                    <div
+                      className={`timeline__surface${selectionMode ? " timeline__surface--selection-mode" : ""}${swipeOpen ? " timeline__surface--swipe-open" : ""}${checked ? " timeline__surface--selected" : ""}${draggedId === stop.id ? " timeline__surface--dragging" : ""}`}
+                      onLostPointerCapture={clearGesture}
+                      onPointerCancel={clearGesture}
+                      onPointerDown={(event) => startStopGesture(event, stop.id)}
+                      onPointerMove={moveStopGesture}
+                      onPointerUp={endStopGesture}
+                      style={
+                        {
+                          "--swipe-offset": `${swipeOpen ? swipeOffset : 0}px`,
+                        } as React.CSSProperties
                       }
+                    >
+                      <button
+                        aria-checked={selectionMode ? checked : undefined}
+                        aria-label={selectionMode ? `Select ${stop.name}` : undefined}
+                        aria-pressed={!selectionMode ? selectedId === stop.id : undefined}
+                        className="timeline__stop"
+                        data-stop-id={stop.id}
+                        onClick={() => {
+                          if (suppressClickRef.current) {
+                            return;
+                          }
+                          if (swipeOpen) {
+                            closeSwipe();
 
-                      setSelectedId(stop.id);
-                      captureNavigationSnapshot("/places");
-                      void navigate({
-                        search: { place: stop.id, day: selectedDay },
-                        to: "/places",
-                      });
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-                        event.preventDefault();
-                        moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
-                      }
-                    }}
-                    onPointerCancel={endPointerReorder}
-                    onPointerDown={(event) => startPointerReorder(event, stop.id)}
-                    onPointerMove={movePointerReorder}
-                    onPointerUp={endPointerReorder}
-                    onTouchCancel={resetDragState}
-                    onTouchEnd={endTouchReorder}
-                    onTouchMove={moveTouchReorder}
-                    onTouchStart={(event) => startTouchReorder(event, stop.id)}
-                    ref={(element) => {
-                      stopRefs.current[stop.id] = element;
-                    }}
-                    type="button"
-                  >
-                    <span className="timeline__time">{stop.time || "Anytime"}</span>
-                    <span className={`timeline__icon timeline__icon--${stop.category}`}>
-                      {renderStopIcon(stop)}
-                    </span>
-                    <span className="timeline__info">
-                      <strong>{stop.name}</strong>
-                      <span>
-                        {stop.type} · {stop.duration}
-                      </span>
-                    </span>
-                    <img alt="" className="timeline__photo" src={stop.image} />
-                  </button>
-                  <button
-                    aria-label={`More options for ${stop.name}`}
-                    className="timeline__options"
-                    data-swipe-back-ignore="true"
-                    disabled={draggedId !== null}
-                    onClick={() => openStopActions(stop.id)}
-                    ref={(element) => {
-                      optionRefs.current[stop.id] = element;
-                    }}
-                    type="button"
-                  >
-                    <MoreHorizontal aria-hidden="true" size={18} strokeWidth={1.8} />
-                  </button>
+                            return;
+                          }
+                          if (selectionMode) {
+                            toggleSelection(stop.id);
 
+                            return;
+                          }
+                          setSelectedId(stop.id);
+                          captureNavigationSnapshot("/places");
+                          void navigate({
+                            search: { place: stop.id, day: selectedDay },
+                            to: "/places",
+                          });
+                        }}
+                        ref={(element) => {
+                          stopRefs.current[stop.id] = element;
+                        }}
+                        role={selectionMode ? "checkbox" : undefined}
+                        type="button"
+                      >
+                        {selectionMode ? (
+                          <span
+                            aria-hidden="true"
+                            className={`timeline__selection-checkbox${checked ? " timeline__selection-checkbox--checked" : ""}`}
+                          >
+                            {checked ? <Check size={15} strokeWidth={2.4} /> : null}
+                          </span>
+                        ) : (
+                          <span className="timeline__time">{stop.time || "Anytime"}</span>
+                        )}
+                        {selectionMode ? (
+                          <span className="timeline__time">{stop.time || "Anytime"}</span>
+                        ) : (
+                          <span className={`timeline__icon timeline__icon--${stop.category}`}>
+                            {renderStopIcon(stop)}
+                          </span>
+                        )}
+                        <span className="timeline__info">
+                          <strong>{stop.name}</strong>
+                          <span>
+                            {stop.type} · {stop.duration}
+                          </span>
+                        </span>
+                        <img alt="" className="timeline__photo" src={stop.image} />
+                      </button>
+                      {!selectionMode ? (
+                        <button
+                          aria-describedby="reorder-help"
+                          aria-label={`Reorder ${stop.name}`}
+                          className="timeline__grip"
+                          data-swipe-back-ignore="true"
+                          onKeyDown={(event) => {
+                            if (
+                              event.altKey &&
+                              (event.key === "ArrowUp" || event.key === "ArrowDown")
+                            ) {
+                              event.preventDefault();
+                              moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
+                            }
+                          }}
+                          onPointerCancel={endReorder}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            startReorder(event, stop.id);
+                          }}
+                          onPointerMove={(event) => {
+                            event.stopPropagation();
+                            moveReorder(event);
+                          }}
+                          onPointerUp={(event) => {
+                            event.stopPropagation();
+                            endReorder(event);
+                          }}
+                          type="button"
+                        >
+                          <GripVertical aria-hidden="true" size={18} strokeWidth={1.8} />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                   {travel === undefined ? null : (
                     <div className="timeline__travel">
                       <span aria-hidden="true" className="timeline__line" />
@@ -649,14 +831,15 @@ export function PlanPage(): React.JSX.Element {
         ) : (
           <div className="day-plan__empty">
             <Landmark aria-hidden="true" size={26} strokeWidth={1.7} />
-            <h3>A day to make your own</h3>
+            <h3 ref={emptyHeadingRef} tabIndex={-1}>
+              A day to make your own
+            </h3>
             <p>Add your first place when you are ready.</p>
           </div>
         )}
-
-        {removedVisit === null ? (
+        {!selectionMode && removal === null && openSwipeId === null ? (
           <button
-            aria-label={`Add a place to ${selectedDayLabel}, ${selectedDay} November`}
+            aria-label={`Add a place to ${dayLabel}`}
             className="day-plan__add"
             onClick={addPlace}
             type="button"
@@ -666,58 +849,126 @@ export function PlanPage(): React.JSX.Element {
         ) : null}
       </section>
 
-      <StopActionsDialog
-        dayLabel={`${selectedDayLabel}, ${selectedDay} November`}
-        inPlan={stops.some((stop) => stop.id === actionStop?.id)}
-        name={actionStop?.name ?? "Place options"}
-        onClose={closeStopActions}
-        onOpenDetails={() => {
-          if (actionStop === undefined) {
-            return;
-          }
-          captureNavigationSnapshot("/places");
-          void navigate({
-            to: "/places",
-            search: { place: actionStop.id, day: selectedDay },
-            replace: true,
-          });
-        }}
-        onRemove={removeStop}
-        open={actionStop !== undefined}
-      />
-
-      {removedVisit === null ? null : (
+      {selectionMode && selectedCount > 0 ? (
+        <div
+          aria-hidden={mapExpanded}
+          className="plan-bulk-remove"
+          data-swipe-back-ignore="true"
+          inert={mapExpanded}
+        >
+          <button
+            aria-label={`Remove ${selectedCount} ${selectedCount === 1 ? "place" : "places"}`}
+            onClick={requestSelectedRemoval}
+            ref={bulkButtonRef}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={20} strokeWidth={1.9} />
+            <span aria-hidden="true">{selectedCount}</span>
+          </button>
+        </div>
+      ) : null}
+      {removal === null ? null : (
         <div
           aria-hidden={mapExpanded}
           className="plan-undo"
           data-swipe-back-ignore="true"
           inert={mapExpanded}
-          role="status"
         >
           <span>
             <strong>
-              {FRIDAY_STOPS.find((place) => place.id === removedVisit.visit.placeId)?.name}
+              {removal.removed.length} {removal.removed.length === 1 ? "place" : "places"} removed
             </strong>
-            Removed from {removedVisit.day} November
+            {removal.dayLabel === "Trip plan"
+              ? "From your trip plan"
+              : `From ${removal.dayLabel.replace(/^\w+, /, "")}`}
           </span>
           <button onClick={undoRemoval} type="button">
             Undo
           </button>
           <button
             aria-label="Dismiss removal message"
-            onClick={() => setRemovedVisit(null)}
+            onClick={() => setRemoval(null)}
             type="button"
           >
             <X aria-hidden="true" size={18} strokeWidth={1.8} />
           </button>
         </div>
       )}
-
+      <dialog
+        aria-labelledby="remove-places-title"
+        className="remove-stops-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          setConfirming(false);
+          window.requestAnimationFrame(() => bulkButtonRef.current?.focus());
+        }}
+        ref={dialogRef}
+      >
+        <h2 id="remove-places-title">Remove {selectedCount} places?</h2>
+        <p>These places will be removed from {dayLabel}. You can undo this.</p>
+        <div>
+          <button
+            onClick={() => {
+              setConfirming(false);
+              window.requestAnimationFrame(() => bulkButtonRef.current?.focus());
+            }}
+            ref={cancelRef}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            className="remove-stops-dialog__confirm"
+            onClick={() => removeStops([...selectedStopIds])}
+            type="button"
+          >
+            Remove {selectedCount} places
+          </button>
+        </div>
+      </dialog>
+      <dialog
+        aria-labelledby="leave-selection-title"
+        className="remove-stops-dialog selection-leave-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (navigationBlocker.status === "blocked") {
+            navigationBlocker.reset();
+          }
+        }}
+        ref={leaveSelectionDialogRef}
+      >
+        <h2 id="leave-selection-title">{changingDay ? "Change day?" : "Leave selection mode?"}</h2>
+        <p>
+          Your {selectedCount} selected {selectedCount === 1 ? "place" : "places"} will be cleared.
+        </p>
+        <div>
+          <button
+            onClick={() => {
+              if (navigationBlocker.status === "blocked") {
+                navigationBlocker.reset();
+              }
+            }}
+            ref={keepSelectingRef}
+            type="button"
+          >
+            Keep selecting
+          </button>
+          <button
+            className="selection-leave-dialog__confirm"
+            onClick={() => {
+              if (navigationBlocker.status === "blocked") {
+                exitSelection();
+                navigationBlocker.proceed();
+              }
+            }}
+            type="button"
+          >
+            {changingDay ? "Change day" : "Leave page"}
+          </button>
+        </div>
+      </dialog>
       <span aria-hidden={mapExpanded} aria-live="polite" className="sr-only">
-        {selectedPlace === undefined
-          ? "No place selected"
-          : `${selectedPlace.properties.name} selected`}
-        {reorderNotice.length === 0 ? "" : ` ${reorderNotice}`}
+        {liveNotice}
       </span>
     </section>
   );
