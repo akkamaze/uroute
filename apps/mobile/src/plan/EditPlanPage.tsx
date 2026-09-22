@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowUpDown,
   Check,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Coffee,
@@ -1322,6 +1323,19 @@ export function EditPlanPage(): React.JSX.Element {
     const previewVersion = versions.find((version) => version.id === search.version);
     const previewVersionIndex = versions.findIndex((version) => version.id === search.version);
     const previousVersion = versions[previewVersionIndex + 1];
+    const nextVersion =
+      previewVersionIndex > 0 ? versions[previewVersionIndex - 1] : undefined;
+    const openAdjacentVersion = (version: EditPlanVersion | undefined): void => {
+      if (version === undefined) {
+        return;
+      }
+      setRestoreError("");
+      void navigate({
+        to: "/plan/edit",
+        search: { day, view: "versions", version: version.id },
+        replace: true,
+      });
+    };
     const versionDiff =
       previewVersion === undefined || previousVersion === undefined
         ? null
@@ -1409,6 +1423,48 @@ export function EditPlanPage(): React.JSX.Element {
                 />
                 <VersionDiffIndicators counts={previewChangeCounts} />
               </div>
+              <nav aria-label="Browse versions" className="version-preview__navigation">
+                <button
+                  aria-label={
+                    previousVersion === undefined
+                      ? "No previous version"
+                      : `Previous version, Version ${previousVersion.sequence}`
+                  }
+                  disabled={previousVersion === undefined}
+                  onClick={() => openAdjacentVersion(previousVersion)}
+                  type="button"
+                >
+                  <ChevronLeft aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <span>
+                    <strong>Previous</strong>
+                    <small>
+                      {previousVersion === undefined
+                        ? "First version"
+                        : `Version ${previousVersion.sequence}`}
+                    </small>
+                  </span>
+                </button>
+                <button
+                  aria-label={
+                    nextVersion === undefined
+                      ? "No next version"
+                      : `Next version, Version ${nextVersion.sequence}`
+                  }
+                  disabled={nextVersion === undefined}
+                  onClick={() => openAdjacentVersion(nextVersion)}
+                  type="button"
+                >
+                  <span>
+                    <strong>Next</strong>
+                    <small>
+                      {nextVersion === undefined
+                        ? "Latest version"
+                        : `Version ${nextVersion.sequence}`}
+                    </small>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
+                </button>
+              </nav>
             </div>
             <div className="version-preview__filters" role="group" aria-label="Filter places">
               <button
@@ -1429,6 +1485,7 @@ export function EditPlanPage(): React.JSX.Element {
             <div
               aria-label={`${formatVersionTime(previewVersion.savedAt)} places`}
               className="version-preview__list"
+              key={previewVersion.id}
             >
               {versionFilter === "changes"
                 ? changeGroups.map((group) => (

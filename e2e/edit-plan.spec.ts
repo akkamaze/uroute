@@ -392,6 +392,14 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(
     page.locator('[data-version-row-id="arabica"] .edit-plan__place > span'),
   ).toHaveText("Coffee");
+  await expect(page.getByRole("button", { name: "No next version" })).toBeDisabled();
+  await page.getByRole("button", { name: "Previous version, Version 1" }).press("Enter");
+  await expect(page.locator(".version-preview__timestamp")).toContainText("Version 1·Today,");
+  await expect(page.getByRole("button", { name: "No previous version" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "All places", pressed: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next version, Version 2" }).click();
+  await expect(page.locator(".version-preview__timestamp")).toContainText("Version 2·Today,");
+  await expect(page.getByRole("button", { name: "All places", pressed: true })).toBeVisible();
   await page.getByRole("button", { name: "Back to Version history" }).click();
 
   const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
