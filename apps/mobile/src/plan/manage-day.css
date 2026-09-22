@@ -422,7 +422,24 @@
   gap: 2px;
 }
 
+.manage-day__notice-image {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+.manage-day__notice-copy > strong {
+  overflow: hidden;
+  font-size: var(--type-body-size);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .manage-day__notice-copy > span {
+  color: var(--color-muted);
   font-size: var(--type-body-sm-size);
   line-height: 1.35;
 }

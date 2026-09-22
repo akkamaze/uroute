@@ -81,6 +81,11 @@ interface RowSwipeGesture {
 }
 
 interface NoticeState {
+  card?: {
+    action: string;
+    image: string;
+    name: string;
+  };
   detail: string | undefined;
   message: string;
   persistent: boolean;
@@ -327,26 +332,60 @@ export function ManageDayPage(): React.JSX.Element {
     showNotice(message);
   }
 
-  function showNotice(message: string, persistent = false, visible = false, detail?: string): void {
-    setNotice({ detail, message, persistent, visible });
+  function showNotice(
+    message: string,
+    persistent = false,
+    visible = false,
+    detail?: string,
+    card?: NoticeState["card"],
+  ): void {
+    setNotice({
+      ...(card === undefined ? {} : { card }),
+      detail,
+      message,
+      persistent,
+      visible,
+    });
   }
 
-  function describeUndo(change: HistoryChange): string {
+  function describeUndo(change: HistoryChange): {
+    announcement: string;
+    card: NonNullable<NoticeState["card"]>;
+  } {
     if (change.kind === "move") {
-      const name = stops.get(change.placeId)?.name ?? "Place";
+      const stop = stops.get(change.placeId);
+      const name = stop?.name ?? "Place";
+      const action = `Move · #${change.toIndex + 1} → #${change.fromIndex + 1}`;
 
-      return `Undid move · ${name} #${change.toIndex + 1} → #${change.fromIndex + 1}`;
+      return {
+        announcement: `Undid move · ${name} #${change.toIndex + 1} → #${change.fromIndex + 1}`,
+        card: { action, image: stop?.image ?? "", name },
+      };
     }
     if (change.removed.length === 1) {
       const restored = change.removed[0];
-      const name = stops.get(restored?.placeId ?? "")?.name ?? "Place";
+      const stop = stops.get(restored?.placeId ?? "");
+      const name = stop?.name ?? "Place";
+      const position = (restored?.index ?? 0) + 1;
 
-      return `Undid removal · ${name} restored at #${(restored?.index ?? 0) + 1}`;
+      return {
+        announcement: `Undid removal · ${name} restored at #${position}`,
+        card: { action: `Restore · #${position}`, image: stop?.image ?? "", name },
+      };
     }
 
     const positions = change.removed.map(({ index }) => `#${index + 1}`).join(", ");
+    const firstStop = stops.get(change.removed[0]?.placeId ?? "");
+    const firstName = firstStop?.name ?? "Places";
 
-    return `Undid removal · ${change.removed.length} places restored at ${positions}`;
+    return {
+      announcement: `Undid removal · ${change.removed.length} places restored at ${positions}`,
+      card: {
+        action: `Restore · ${positions}`,
+        image: firstStop?.image ?? "",
+        name: `${firstName} +${change.removed.length - 1}`,
+      },
+    };
   }
 
   function remainingUndoLabel(count: number): string {
@@ -386,7 +425,14 @@ export function ManageDayPage(): React.JSX.Element {
     setUndoStack((current) => current.slice(0, -1));
     setDraft(cloneVisits(entry.visits));
     closeRowSwipe();
-    showNotice(describeUndo(entry.change), false, true, remainingUndoLabel(undoStack.length - 1));
+    const feedback = describeUndo(entry.change);
+    showNotice(
+      feedback.announcement,
+      false,
+      true,
+      remainingUndoLabel(undoStack.length - 1),
+      feedback.card,
+    );
   }
 
   function redo(): void {
@@ -1478,8 +1524,18 @@ export function ManageDayPage(): React.JSX.Element {
           className="manage-day__notice"
           role={notice.persistent ? "alert" : undefined}
         >
+          {notice.card === undefined ? null : (
+            <img alt="" className="manage-day__notice-image" src={notice.card.image} />
+          )}
           <span className="manage-day__notice-copy">
-            <span>{notice.message}</span>
+            {notice.card === undefined ? (
+              <span>{notice.message}</span>
+            ) : (
+              <>
+                <strong>{notice.card.name}</strong>
+                <span>{notice.card.action}</span>
+              </>
+            )}
             {notice.detail === undefined ? null : <small>{notice.detail}</small>}
           </span>
           {notice.persistent ? (

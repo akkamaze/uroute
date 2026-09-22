@@ -85,9 +85,12 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
-    await expect(page.locator(".manage-day__notice")).toContainText(
-      "Undid removal · Kiyomizu-dera restored at #1",
+    await expect(page.locator(".manage-day__notice img")).toHaveAttribute(
+      "src",
+      "/images/temple.png",
     );
+    await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
+    await expect(page.locator(".manage-day__notice")).toContainText("Restore · #1");
     await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
     await expect(page.locator("#manage-day-change-announcement")).toHaveText(
       "Undid removal · Kiyomizu-dera restored at #1 · 0 undo steps remaining",
@@ -104,9 +107,7 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
-    await expect(page.locator(".manage-day__notice")).toContainText(
-      "Undid removal · Kiyomizu-dera restored at #1",
-    );
+    await expect(page.locator(".manage-day__notice")).toContainText("Restore · #1");
     await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
   }
   // A real touch drag must remain visible outside its original clipped row.
@@ -295,9 +296,8 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   expect(await storedFridayIds(page)).toEqual(original);
 
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText(
-    "Undid move · Kiyomizu-dera #3 → #2",
-  );
+  await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
+  await expect(page.locator(".manage-day__notice")).toContainText("Move · #3 → #2");
   await expect(page.locator(".manage-day__notice")).toContainText("1 undo step remaining");
   await expect(page.locator("#manage-day-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #3 → #2 · 1 undo step remaining",
@@ -310,9 +310,7 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     )
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText(
-    "Undid move · Kiyomizu-dera #2 → #1",
-  );
+  await expect(page.locator(".manage-day__notice")).toContainText("Move · #2 → #1");
   await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
   await expect(page.locator("#manage-day-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
@@ -437,9 +435,7 @@ test("dragging reorders the draft without writing the saved Plan", async ({ page
   await grip.focus();
   await grip.press("Alt+ArrowDown");
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText(
-    "Undid move · Kiyomizu-dera #2 → #1",
-  );
+  await expect(page.locator(".manage-day__notice")).toContainText("Move · #2 → #1");
   await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
   await expect(page.locator("#manage-day-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
