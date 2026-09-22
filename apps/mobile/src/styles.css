@@ -16,6 +16,7 @@
   --color-text: #202124;
   --color-muted: #6b7280;
   --color-active: #1677ff;
+  --color-pending: #d97706;
   --color-on-accent: #ffffff;
   --color-border: #edf0f3;
   /* Shared type scale. rem preserves browser and user text scaling. */
@@ -832,6 +833,24 @@ a {
     color 160ms ease,
     background-color 160ms ease,
     transform 120ms ease;
+}
+
+.day-plan__edit-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.day-plan__draft-indicator {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: var(--color-pending);
+  box-sizing: content-box;
 }
 
 .day-plan__select-toggle[aria-pressed="true"] {

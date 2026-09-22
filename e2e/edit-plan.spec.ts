@@ -167,6 +167,8 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   await expect(
     page.getByRole("button", { name: "Edit plan for Friday, 13 November" }),
   ).toBeVisible();
+  await expect(page.locator(".day-plan__select-toggle .lucide-pencil")).toBeVisible();
+  await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await expect(page).toHaveURL(/\/plan\/manage\?day=13/);
@@ -336,6 +338,7 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
 
   await expect(page).toHaveURL(/\/plan\?day=13/);
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
+  await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
@@ -919,6 +922,7 @@ test("Cancel can keep an autosaved draft or discard it without changing Plan", a
   await leaveDialog.getByRole("button", { name: "Keep draft" }).click();
   await expect(page).toHaveURL(/\/plan\?day=13/);
   expect(await storedFridayIds(page)).toEqual(original);
+  await expect(page.locator(".day-plan__draft-indicator")).toBeVisible();
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await expect
@@ -936,4 +940,5 @@ test("Cancel can keep an autosaved draft or discard it without changing Plan", a
     .click();
   await expect(page).toHaveURL(/\/plan\?day=13/);
   expect(await storedFridayIds(page)).toEqual(original);
+  await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
 });

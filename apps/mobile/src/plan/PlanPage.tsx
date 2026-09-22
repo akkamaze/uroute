@@ -4,8 +4,8 @@ import {
   Coffee,
   Footprints,
   Landmark,
-  ListOrdered,
   Map as MapIcon,
+  Pencil,
   Plus,
   Trash2,
   Utensils,
@@ -14,6 +14,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
+import { loadManageDayDraft, visitsSignature } from "./edit-plan-store";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
@@ -96,6 +97,8 @@ export function PlanPage(): React.JSX.Element {
   const search = useSearch({ from: "/mobile-shell/plan" });
   const selectedDay = search.day ?? 13;
   const plan = useKyotoPlan();
+  const hasDraft =
+    loadManageDayDraft(selectedDay, visitsSignature(plan.days[selectedDay])) !== null;
   const mapExpanded = search.map === "full";
   const [showMap, setShowMap] = useState(false);
   const mapVisible = showMap || mapExpanded;
@@ -422,7 +425,12 @@ export function PlanPage(): React.JSX.Element {
                 onClick={() => void navigate({ to: "/plan/manage", search: { day: selectedDay } })}
                 type="button"
               >
-                <ListOrdered aria-hidden="true" size={22} strokeWidth={1.8} />
+                <span className="day-plan__edit-icon">
+                  <Pencil aria-hidden="true" size={21} strokeWidth={1.8} />
+                  {hasDraft ? (
+                    <span aria-hidden="true" className="day-plan__draft-indicator" />
+                  ) : null}
+                </span>
               </button>
             </span>
           </span>
