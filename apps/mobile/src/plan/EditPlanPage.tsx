@@ -391,7 +391,7 @@ export function EditPlanPage(): React.JSX.Element {
   const [cancelMoveActive, setCancelMoveActive] = useState(false);
   const [notice, setNotice] = useState<NoticeState | null>(null);
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
-  const [leaveRequested, setLeaveRequested] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [restoreCandidate, setRestoreCandidate] = useState<ManageDayVersion | null>(null);
   const [restoreError, setRestoreError] = useState("");
@@ -401,7 +401,7 @@ export function EditPlanPage(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const allowExitRef = useRef(false);
-  const leaveDialogRef = useRef<HTMLDialogElement>(null);
+  const discardDialogRef = useRef<HTMLDialogElement>(null);
   const saveDialogRef = useRef<HTMLDialogElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const previewAnimationRef = useRef<PreviewAnimation | null>(null);
@@ -422,7 +422,7 @@ export function EditPlanPage(): React.JSX.Element {
   const stops = useMemo(() => new Map(FRIDAY_STOPS.map((stop) => [stop.id, stop])), []);
 
   const navigationBlocker = useBlocker({
-    enableBeforeUnload: dirty,
+    enableBeforeUnload: false,
     shouldBlockFn: ({ current, next }) =>
       !allowExitRef.current &&
       dirty &&
@@ -435,10 +435,8 @@ export function EditPlanPage(): React.JSX.Element {
       void navigate({ to: "/plan/manage", search: { day, view: "versions" }, replace: true });
     } else if (search.view === "versions") {
       void navigate({ to: "/plan/manage", search: { day }, replace: true });
-    } else if (dirty) {
-      setLeaveRequested(true);
     } else {
-      exitToPlan();
+      leaveWithDraft();
     }
   });
 
@@ -634,26 +632,21 @@ export function EditPlanPage(): React.JSX.Element {
     void navigate({ to: "/plan", search: { day }, replace: true });
   }
 
-  function discardAndExit(): void {
+  function discardDraftAndExit(): void {
     clearManageDayDraft(day);
-    setLeaveRequested(false);
-    if (navigationBlocker.status === "blocked") {
-      allowExitRef.current = true;
-      navigationBlocker.proceed();
-    } else {
-      exitToPlan();
-    }
+    setConfirmDiscard(false);
+    exitToPlan();
   }
 
-  function keepDraftAndExit(): void {
-    saveManageDayDraft(day, baseSignature, draft);
-    setLeaveRequested(false);
-    if (navigationBlocker.status === "blocked") {
-      allowExitRef.current = true;
-      navigationBlocker.proceed();
-    } else {
-      exitToPlan();
+  function leaveWithDraft(): void {
+    if (dirty && !saveManageDayDraft(day, baseSignature, draft)) {
+      setDraftStorageFailed(true);
+      showNotice("Could not save the latest draft. Stay here and try again.", true);
+
+      return;
     }
+    setDraftStorageFailed(false);
+    exitToPlan();
   }
 
   function finishSave(): void {
@@ -1038,6 +1031,17 @@ export function EditPlanPage(): React.JSX.Element {
   }, [baseSignature, day, dirty, draft]);
 
   useEffect(() => {
+    const flushDraft = (): void => {
+      if (dirty) {
+        saveManageDayDraft(day, baseSignature, draft);
+      }
+    };
+    window.addEventListener("pagehide", flushDraft);
+
+    return () => window.removeEventListener("pagehide", flushDraft);
+  }, [baseSignature, day, dirty, draft]);
+
+  useEffect(() => {
     if (notice === null || notice.persistent) {
       return;
     }
@@ -1047,14 +1051,34 @@ export function EditPlanPage(): React.JSX.Element {
   }, [notice]);
 
   useEffect(() => {
-    const dialog = leaveDialogRef.current;
-    const shouldOpen = leaveRequested || navigationBlocker.status === "blocked";
-    if (dialog !== null && shouldOpen && !dialog.open) {
+    if (navigationBlocker.status !== "blocked") {
+      return;
+    }
+    if (dirty && !saveManageDayDraft(day, baseSignature, draft)) {
+      setDraftStorageFailed(true);
+      setNotice({
+        detail: undefined,
+        message: "Could not save the latest draft. Stay here and try again.",
+        persistent: true,
+        visible: true,
+      });
+      navigationBlocker.reset();
+
+      return;
+    }
+    setDraftStorageFailed(false);
+    allowExitRef.current = true;
+    navigationBlocker.proceed();
+  }, [baseSignature, day, dirty, draft, navigationBlocker]);
+
+  useEffect(() => {
+    const dialog = discardDialogRef.current;
+    if (dialog !== null && confirmDiscard && !dialog.open) {
       dialog.showModal();
-    } else if (dialog !== null && !shouldOpen && dialog.open) {
+    } else if (dialog !== null && !confirmDiscard && dialog.open) {
       dialog.close();
     }
-  }, [leaveRequested, navigationBlocker.status]);
+  }, [confirmDiscard]);
 
   useEffect(() => {
     const dialog = saveDialogRef.current;
@@ -1530,13 +1554,7 @@ export function EditPlanPage(): React.JSX.Element {
         <button
           aria-label="Back to Plan"
           className="manage-day__back"
-          onClick={() => {
-            if (dirty) {
-              setLeaveRequested(true);
-            } else {
-              exitToPlan();
-            }
-          }}
+          onClick={leaveWithDraft}
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
@@ -1553,14 +1571,21 @@ export function EditPlanPage(): React.JSX.Element {
 
       <div className="manage-day__context">
         <strong>Kyoto · {dayLabel}</strong>
-        <span>
-          {externalChange
-            ? "This day changed elsewhere. Reopen to use the latest plan."
-            : draftStorageFailed
-              ? "Draft is available only in this session"
-              : dirty
-                ? "Draft auto-saved"
-                : "No unsaved changes"}
+        <span className="manage-day__draft-status">
+          <span>
+            {externalChange
+              ? "This day changed elsewhere. Reopen to use the latest plan."
+              : draftStorageFailed
+                ? "Draft is available only in this session"
+                : dirty
+                  ? "Draft auto-saved"
+                  : "No unsaved changes"}
+          </span>
+          {dirty ? (
+            <button onClick={() => setConfirmDiscard(true)} type="button">
+              Discard draft
+            </button>
+          ) : null}
         </span>
         {!selectionMode ? (
           <div className="manage-day__history-actions">
@@ -1826,29 +1851,26 @@ export function EditPlanPage(): React.JSX.Element {
       )}
 
       <dialog
-        aria-labelledby="manage-day-leave-title"
-        className="remove-stops-dialog manage-day__leave-dialog"
-        ref={leaveDialogRef}
+        aria-labelledby="manage-day-discard-title"
+        className="remove-stops-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          setConfirmDiscard(false);
+        }}
+        ref={discardDialogRef}
       >
-        <h2 id="manage-day-leave-title">Leave Edit plan?</h2>
-        <p>Your draft can stay on this device so you can continue later.</p>
-        <div className="manage-day__leave-actions">
+        <h2 id="manage-day-discard-title">Discard draft?</h2>
+        <p>This will remove all changes made since the plan was last saved.</p>
+        <div>
+          <button onClick={() => setConfirmDiscard(false)} type="button">
+            Cancel
+          </button>
           <button
-            onClick={() => {
-              setLeaveRequested(false);
-              if (navigationBlocker.status === "blocked") {
-                navigationBlocker.reset();
-              }
-            }}
+            className="remove-stops-dialog__confirm"
+            onClick={discardDraftAndExit}
             type="button"
           >
-            Keep editing
-          </button>
-          <button onClick={discardAndExit} type="button">
-            Discard
-          </button>
-          <button className="manage-day__primary" onClick={keepDraftAndExit} type="button">
-            Keep draft
+            Discard draft
           </button>
         </div>
       </dialog>

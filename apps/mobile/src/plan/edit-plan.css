@@ -86,6 +86,16 @@
   line-height: 1.35;
 }
 
+.manage-day__draft-status button {
+  margin-left: 8px;
+  padding: 0;
+  color: #a33228;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+}
+
 .manage-day__history-actions {
   position: absolute;
   top: 50%;
@@ -491,10 +501,6 @@
   color: var(--color-active);
   border-color: var(--color-active);
   background: #edf5ff;
-}
-
-.manage-day__leave-dialog .manage-day__leave-actions {
-  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .remove-stops-dialog .manage-day__primary {

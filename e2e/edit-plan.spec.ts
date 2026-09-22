@@ -910,7 +910,7 @@ test("bulk removal changes only the draft and confirms once when saved", async (
   expect(await storedFridayIds(page)).toEqual(["arabica"]);
 });
 
-test("Cancel can keep an autosaved draft or discard it without changing Plan", async ({ page }) => {
+test("Back flushes the latest draft and explicit discard removes it", async ({ page }) => {
   await page.goto("/plan/manage?day=13");
   const original = await storedFridayIds(page);
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
@@ -918,9 +918,8 @@ test("Cancel can keep an autosaved draft or discard it without changing Plan", a
   await grip.press("Alt+ArrowDown");
 
   await page.getByRole("button", { name: "Back to Plan" }).click();
-  const leaveDialog = page.getByRole("dialog", { name: "Leave Edit plan?" });
-  await leaveDialog.getByRole("button", { name: "Keep draft" }).click();
   await expect(page).toHaveURL(/\/plan\?day=13/);
+  await expect(page.getByRole("dialog", { name: "Leave Edit plan?" })).toHaveCount(0);
   expect(await storedFridayIds(page)).toEqual(original);
   await expect(page.locator(".day-plan__draft-indicator")).toBeVisible();
 
@@ -933,11 +932,15 @@ test("Cancel can keep an autosaved draft or discard it without changing Plan", a
     )
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
 
-  await page.getByRole("button", { name: "Back to Plan" }).click();
-  await page
-    .getByRole("dialog", { name: "Leave Edit plan?" })
-    .getByRole("button", { name: "Discard" })
-    .click();
+  await page.getByRole("button", { name: "Discard draft", exact: true }).click();
+  const discardDialog = page.getByRole("dialog", { name: "Discard draft?" });
+  await expect(discardDialog).toContainText(
+    "This will remove all changes made since the plan was last saved.",
+  );
+  await discardDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(discardDialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Discard draft", exact: true }).click();
+  await discardDialog.getByRole("button", { name: "Discard draft", exact: true }).click();
   await expect(page).toHaveURL(/\/plan\?day=13/);
   expect(await storedFridayIds(page)).toEqual(original);
   await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
