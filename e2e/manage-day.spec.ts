@@ -324,6 +324,12 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     )
     .toEqual(original);
   await page.locator(".manage-day__history-actions").getByRole("button", { name: "Redo" }).click();
+  await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
+  await expect(page.locator(".manage-day__notice")).toContainText("Move · #1 → #2");
+  await expect(page.locator(".manage-day__notice")).toContainText("1 redo step remaining");
+  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+    "Redid move · Kiyomizu-dera #1 → #2 · 1 redo step remaining",
+  );
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
   await expect(page).toHaveURL(/\/plan\?day=13/);

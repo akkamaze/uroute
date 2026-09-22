@@ -406,6 +406,53 @@ export function ManageDayPage(): React.JSX.Element {
     return `${count} undo ${count === 1 ? "step" : "steps"} remaining`;
   }
 
+  function describeRedo(change: HistoryChange): {
+    announcement: string;
+    card: NonNullable<NoticeState["card"]>;
+  } {
+    if (change.kind === "move") {
+      const stop = stops.get(change.placeId);
+      const name = stop?.name ?? "Place";
+
+      return {
+        announcement: `Redid move · ${name} #${change.fromIndex + 1} → #${change.toIndex + 1}`,
+        card: {
+          action: `Move · #${change.fromIndex + 1} → #${change.toIndex + 1}`,
+          image: stop?.image ?? "",
+          name,
+        },
+      };
+    }
+    if (change.removed.length === 1) {
+      const removed = change.removed[0];
+      const stop = stops.get(removed?.placeId ?? "");
+      const name = stop?.name ?? "Place";
+      const position = (removed?.index ?? 0) + 1;
+
+      return {
+        announcement: `Redid removal · ${name} removed from #${position}`,
+        card: { action: `Remove · #${position}`, image: stop?.image ?? "", name },
+      };
+    }
+
+    const positions = change.removed.map(({ index }) => `#${index + 1}`).join(", ");
+    const firstStop = stops.get(change.removed[0]?.placeId ?? "");
+    const firstName = firstStop?.name ?? "Places";
+
+    return {
+      announcement: `Redid removal · ${change.removed.length} places removed from ${positions}`,
+      card: {
+        action: `Remove · ${positions}`,
+        image: firstStop?.image ?? "",
+        name: `${firstName} +${change.removed.length - 1}`,
+      },
+    };
+  }
+
+  function remainingRedoLabel(count: number): string {
+    return `${count} redo ${count === 1 ? "step" : "steps"} remaining`;
+  }
+
   function confirmRestoreVersion(): void {
     if (restoreCandidate === null) {
       return;
@@ -458,7 +505,14 @@ export function ManageDayPage(): React.JSX.Element {
     setRedoStack((current) => current.slice(1));
     setDraft(cloneVisits(entry.visits));
     closeRowSwipe();
-    showNotice("Change restored");
+    const feedback = describeRedo(entry.change);
+    showNotice(
+      feedback.announcement,
+      false,
+      true,
+      remainingRedoLabel(redoStack.length - 1),
+      feedback.card,
+    );
   }
 
   function exitToPlan(): void {
