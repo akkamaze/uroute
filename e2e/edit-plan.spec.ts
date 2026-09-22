@@ -464,6 +464,9 @@ test("Version history puts unsaved work above the current saved version", async 
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
   await grip.focus();
   await grip.press("Alt+ArrowDown");
+  await expect(page.getByText("Draft auto-saved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Draft saved just now", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save draft", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Version history" }).click();
 
   const timeline = page.locator(".version-timeline");

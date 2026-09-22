@@ -1559,7 +1559,7 @@ export function EditPlanPage(): React.JSX.Element {
             : draftStorageFailed
               ? "Draft is available only in this session"
               : dirty
-                ? "Draft saved just now"
+                ? "Draft auto-saved"
                 : "No unsaved changes"}
         </span>
         {!selectionMode ? (
