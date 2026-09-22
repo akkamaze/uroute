@@ -393,6 +393,32 @@ test("selection uses the full row hit area", async ({ page }) => {
   );
 });
 
+test("adjacent selected rows share corners when no travel entry separates them", async ({
+  page,
+}) => {
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Select places", exact: true }).click();
+
+  await page.locator('[data-stop-id="kiyomizu"]').click();
+  await page.locator('[data-stop-id="arabica"]').click();
+  await page.locator('[data-drop-stop-id="kiyomizu"] .timeline__travel').evaluate((travel) => {
+    travel.remove();
+  });
+
+  const firstSurface = page.locator('[data-drop-stop-id="kiyomizu"] .timeline__surface');
+  const secondSurface = page.locator('[data-drop-stop-id="arabica"] .timeline__surface');
+  const firstShell = page.locator('[data-drop-stop-id="kiyomizu"] .timeline__swipe-shell');
+  const secondShell = page.locator('[data-drop-stop-id="arabica"] .timeline__swipe-shell');
+  await expect(firstSurface).toHaveCSS("border-bottom-left-radius", "0px");
+  await expect(firstSurface).toHaveCSS("border-bottom-right-radius", "0px");
+  await expect(secondSurface).toHaveCSS("border-top-left-radius", "0px");
+  await expect(secondSurface).toHaveCSS("border-top-right-radius", "0px");
+  await expect(firstShell).toHaveCSS("border-bottom-left-radius", "0px");
+  await expect(firstShell).toHaveCSS("border-bottom-right-radius", "0px");
+  await expect(secondShell).toHaveCSS("border-top-left-radius", "0px");
+  await expect(secondShell).toHaveCSS("border-top-right-radius", "0px");
+});
+
 test("leaving the plan with selected places asks for confirmation", async ({ page }) => {
   await page.goto("/plan?day=13");
   await page.getByRole("button", { name: "Select places", exact: true }).click();

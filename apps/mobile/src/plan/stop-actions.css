@@ -112,6 +112,55 @@
   border-radius: 14px;
 }
 
+/* Selected rows without an intervening travel entry read as one grouped block. */
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel)):has(
+    + .timeline__entry
+      > .timeline__swipe-shell
+      > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel)):has(
+    + .timeline__entry
+      > .timeline__swipe-shell
+      > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell
+  > .timeline__surface {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel))
+  + .timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  ):not(:has(> .timeline__travel))
+  + .timeline__entry:has(
+    > .timeline__swipe-shell > .timeline__surface--selection-mode.timeline__surface--selected
+  )
+  > .timeline__swipe-shell
+  > .timeline__surface {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .timeline__selection-checkbox {
   display: grid;
   width: 22px;
