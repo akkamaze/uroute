@@ -93,6 +93,7 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(page.getByText("Initial plan · 3 places")).toBeVisible();
 
   const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
+  await expect(initialVersion.getByRole("button", { name: /Restore version from/ })).toBeVisible();
   await initialVersion.getByRole("button", { name: /View version from/ }).click();
   await expect(page.getByRole("heading", { name: "Version preview" })).toBeVisible();
   await expect(page.getByText("Changes the order", { exact: true })).toBeVisible();
@@ -106,7 +107,13 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     .toEqual(original);
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
 
-  await page.getByRole("button", { name: "Restore this version" }).click();
+  await expect(page.getByRole("button", { name: "Restore this version" })).toBeVisible();
+  await page.getByRole("button", { name: "History" }).click();
+  await page
+    .locator(".version-entry")
+    .filter({ hasText: "Initial plan" })
+    .getByRole("button", { name: /Restore version from/ })
+    .click();
   await expect(page.getByRole("heading", { name: "Manage day" })).toBeVisible();
   await expect
     .poll(() =>

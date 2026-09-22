@@ -236,6 +236,11 @@ export function ManageDayPage(): React.JSX.Element {
     setNotice(message);
   }
 
+  function restoreVersionToDraft(version: ManageDayVersion): void {
+    commitDraft(version.visits, "Version restored to draft");
+    void navigate({ to: "/plan/manage", search: { day }, replace: true });
+  }
+
   function undo(): void {
     const previous = undoStack.at(-1);
     if (previous === undefined) {
@@ -637,10 +642,7 @@ export function ManageDayPage(): React.JSX.Element {
             <div className="version-preview__restore-bar">
               <button
                 disabled={matchesDraft}
-                onClick={() => {
-                  commitDraft(previewVersion.visits, "Version restored to draft");
-                  void navigate({ to: "/plan/manage", search: { day }, replace: true });
-                }}
+                onClick={() => restoreVersionToDraft(previewVersion)}
                 type="button"
               >
                 {matchesDraft ? "Already current draft" : "Restore this version"}
@@ -676,7 +678,7 @@ export function ManageDayPage(): React.JSX.Element {
           {dirty ? (
             <article className="version-entry version-entry--current">
               <span aria-hidden="true" className="version-entry__dot" />
-              <div>
+              <div className="version-entry__details">
                 <strong>Current draft</strong>
                 <span>Autosaved · {draft.length} places</span>
               </div>
@@ -698,25 +700,34 @@ export function ManageDayPage(): React.JSX.Element {
             versions.map((version) => (
               <article className="version-entry" key={version.id}>
                 <span aria-hidden="true" className="version-entry__dot" />
-                <div>
+                <div className="version-entry__details">
                   <strong>{formatVersionTime(version.savedAt)}</strong>
                   <span>
                     {version.summary} · {version.visits.length} places
                   </span>
                   <small>Saved on this device</small>
                 </div>
-                <button
-                  aria-label={`View version from ${formatVersionTime(version.savedAt)}`}
-                  onClick={() =>
-                    void navigate({
-                      to: "/plan/manage",
-                      search: { day, view: "versions", version: version.id },
-                    })
-                  }
-                  type="button"
-                >
-                  View
-                </button>
+                <div className="version-entry__actions">
+                  <button
+                    aria-label={`View version from ${formatVersionTime(version.savedAt)}`}
+                    onClick={() =>
+                      void navigate({
+                        to: "/plan/manage",
+                        search: { day, view: "versions", version: version.id },
+                      })
+                    }
+                    type="button"
+                  >
+                    View
+                  </button>
+                  <button
+                    aria-label={`Restore version from ${formatVersionTime(version.savedAt)}`}
+                    onClick={() => restoreVersionToDraft(version)}
+                    type="button"
+                  >
+                    Restore
+                  </button>
+                </div>
               </article>
             ))
           )}
