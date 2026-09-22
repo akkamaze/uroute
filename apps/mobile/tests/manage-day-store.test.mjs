@@ -55,23 +55,29 @@ test("restores the plan, records both sides of history and clears the draft toge
     JSON.stringify({ days: { 12: [], 13: originalVisits, 14: [], 15: [], 16: [] } }),
   );
   saveManageDayDraft(13, visitsSignature(originalVisits), restoredVisits);
+  const selected = addManageDayVersion(13, restoredVisits, "Earlier route", 500)[0];
+  if (selected === undefined) {
+    throw new Error("Expected source version");
+  }
 
-  const result = restoreAndSaveManageDayVersion(
-    13,
-    originalVisits,
-    { id: "target", savedAt: 500, summary: "Earlier route", visits: restoredVisits },
-    "Yesterday, 09:00",
-    1_000,
-  );
+  const result = restoreAndSaveManageDayVersion(13, originalVisits, selected, 1_000);
 
   expect(result.ok).toBe(true);
   expect(
     JSON.parse(globalThis.window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY)).days[13],
   ).toEqual(restoredVisits);
   expect(result.versions.slice(0, 2).map((version) => version.summary)).toEqual([
-    "Restored version from Yesterday, 09:00",
-    "Before restore",
+    "Restored from Version 1",
+    "Automatically saved before restoring Version 1",
   ]);
+  expect(result.versions.slice(0, 2).map((version) => version.sequence)).toEqual([3, 2]);
+  expect(result.versions[0]?.restoreContext).toEqual({
+    kind: "restored",
+    sourceId: selected.id,
+    sourceSavedAt: 500,
+    sourceSequence: 1,
+    sourceSummary: "Earlier route",
+  });
   expect(loadManageDayDraft(13, visitsSignature(originalVisits))).toBeNull();
 });
 
@@ -88,8 +94,13 @@ test("rolls back plan, history and draft when atomic restoration cannot finish",
   const result = restoreAndSaveManageDayVersion(
     13,
     originalVisits,
-    { id: "target", savedAt: 500, summary: "Earlier route", visits: restoredVisits },
-    "Yesterday, 09:00",
+    {
+      id: "target",
+      savedAt: 500,
+      sequence: 1,
+      summary: "Earlier route",
+      visits: restoredVisits,
+    },
     1_000,
   );
 
@@ -113,14 +124,30 @@ test("loads an autosaved draft only for the plan revision it was based on", () =
   expect(loadManageDayDraft(13, base)).toBeNull();
 });
 
-test("keeps the ten newest restorable versions", () => {
+test("keeps every restorable version while assigning stable sequence numbers", () => {
   for (let index = 0; index < 12; index += 1) {
     addManageDayVersion(13, originalVisits, `Version ${index}`, 1_000 + index);
   }
 
   const versions = loadManageDayVersions(13);
-  expect(versions).toHaveLength(10);
+  expect(versions).toHaveLength(12);
   expect(versions[0]?.summary).toBe("Version 11");
-  expect(versions.at(-1)?.summary).toBe("Version 2");
+  expect(versions[0]?.sequence).toBe(12);
+  expect(versions.at(-1)?.summary).toBe("Version 0");
+  expect(versions.at(-1)?.sequence).toBe(1);
   expect(versions[0]?.visits).toEqual(originalVisits);
+});
+
+test("assigns stable sequence numbers when loading legacy version entries", () => {
+  globalThis.window.localStorage.setItem(
+    "uroute.mock.manage-day-versions.v1",
+    JSON.stringify({
+      13: [
+        { id: "newer", savedAt: 200, summary: "Newer", visits: originalVisits },
+        { id: "older", savedAt: 100, summary: "Older", visits: originalVisits },
+      ],
+    }),
+  );
+
+  expect(loadManageDayVersions(13).map((version) => version.sequence)).toEqual([2, 1]);
 });

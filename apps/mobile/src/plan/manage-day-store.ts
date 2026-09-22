@@ -9,7 +9,6 @@ import {
 
 const DRAFTS_KEY = "uroute.mock.manage-day-drafts.v1";
 const VERSIONS_KEY = "uroute.mock.manage-day-versions.v1";
-const MAX_VERSIONS = 10;
 const knownPlaceIds = new Set(FRIDAY_STOPS.map((place) => place.id));
 
 export interface ManageDayDraft {
@@ -20,7 +19,15 @@ export interface ManageDayDraft {
 
 export interface ManageDayVersion {
   id: string;
+  restoreContext?: {
+    kind: "before" | "restored";
+    sourceId: string;
+    sourceSavedAt: number;
+    sourceSequence: number;
+    sourceSummary: string;
+  };
   savedAt: number;
+  sequence: number;
   summary: string;
   visits: PlannedVisit[];
 }
@@ -138,13 +145,49 @@ function createVersion(
   visits: readonly PlannedVisit[],
   summary: string,
   savedAt: number,
+  sequence: number,
+  restoreContext?: ManageDayVersion["restoreContext"],
 ): ManageDayVersion {
   return {
     id: `${savedAt}-${Math.random().toString(36).slice(2, 8)}`,
+    ...(restoreContext === undefined ? {} : { restoreContext }),
     savedAt,
+    sequence,
     summary,
     visits: cloneVisits(visits),
   };
+}
+
+function isRestoreContext(value: unknown): value is NonNullable<ManageDayVersion["restoreContext"]> {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const context = value as Partial<NonNullable<ManageDayVersion["restoreContext"]>>;
+
+  return (
+    (context.kind === "before" || context.kind === "restored") &&
+    typeof context.sourceId === "string" &&
+    typeof context.sourceSavedAt === "number" &&
+    Number.isInteger(context.sourceSequence) &&
+    (context.sourceSequence ?? 0) > 0 &&
+    typeof context.sourceSummary === "string"
+  );
+}
+
+function normalizeSequences(versions: ManageDayVersion[]): ManageDayVersion[] {
+  const sequences = versions.map((version) => version.sequence);
+  const validSequences =
+    sequences.every((sequence) => Number.isInteger(sequence) && sequence > 0) &&
+    new Set(sequences).size === sequences.length;
+  if (validSequences) {
+    return versions;
+  }
+
+  return versions.map((version, index) => ({ ...version, sequence: versions.length - index }));
+}
+
+function nextSequence(versions: readonly ManageDayVersion[]): number {
+  return Math.max(0, ...versions.map((version) => version.sequence)) + 1;
 }
 
 export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
@@ -157,7 +200,7 @@ export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
     return [];
   }
 
-  return entries.flatMap((entry): ManageDayVersion[] => {
+  const versions = entries.flatMap((entry): ManageDayVersion[] => {
     if (typeof entry !== "object" || entry === null) {
       return [];
     }
@@ -171,8 +214,26 @@ export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
       return [];
     }
 
-    return [{ ...version, visits: cloneVisits(version.visits) } as ManageDayVersion];
+    const restoreContext = isRestoreContext(version.restoreContext)
+      ? version.restoreContext
+      : undefined;
+
+    return [
+      {
+        id: version.id,
+        ...(restoreContext === undefined ? {} : { restoreContext }),
+        savedAt: version.savedAt,
+        sequence:
+          typeof version.sequence === "number" && Number.isInteger(version.sequence)
+            ? version.sequence
+            : 0,
+        summary: version.summary,
+        visits: cloneVisits(version.visits),
+      },
+    ];
   });
+
+  return normalizeSequences(versions);
 }
 
 export function addManageDayVersion(
@@ -186,8 +247,9 @@ export function addManageDayVersion(
   }
   const stored = readRecord(VERSIONS_KEY);
   const record: VersionRecord = typeof stored === "object" && stored !== null ? stored : {};
-  const version = createVersion(visits, summary, savedAt);
-  const versions = [version, ...loadManageDayVersions(day)].slice(0, MAX_VERSIONS);
+  const existing = loadManageDayVersions(day);
+  const version = createVersion(visits, summary, savedAt, nextSequence(existing));
+  const versions = [version, ...existing];
   try {
     window.localStorage.setItem(VERSIONS_KEY, JSON.stringify({ ...record, [day]: versions }));
   } catch {
@@ -214,7 +276,6 @@ export function restoreAndSaveManageDayVersion(
   day: KyotoDay,
   current: readonly PlannedVisit[],
   selected: ManageDayVersion,
-  restoredFrom: string,
   savedAt = Date.now(),
 ): RestoreVersionResult {
   if (!validVisits(current) || !validVisits(selected.visits)) {
@@ -235,16 +296,30 @@ export function restoreAndSaveManageDayVersion(
   const storedVersions = readRecord(VERSIONS_KEY);
   const versionRecord: VersionRecord =
     typeof storedVersions === "object" && storedVersions !== null ? storedVersions : {};
-  const previousVersion = createVersion(current, "Before restore", savedAt);
+  const existing = loadManageDayVersions(day);
+  const selectedSequence = selected.sequence > 0 ? selected.sequence : nextSequence(existing);
+  const restoreContext = {
+    sourceId: selected.id,
+    sourceSavedAt: selected.savedAt,
+    sourceSequence: selectedSequence,
+    sourceSummary: selected.summary,
+  };
+  const previousSequence = nextSequence(existing);
+  const previousVersion = createVersion(
+    current,
+    `Automatically saved before restoring Version ${selectedSequence}`,
+    savedAt,
+    previousSequence,
+    { kind: "before", ...restoreContext },
+  );
   const restoredVersion = createVersion(
     selected.visits,
-    `Restored version from ${restoredFrom}`,
+    `Restored from Version ${selectedSequence}`,
     savedAt + 1,
+    previousSequence + 1,
+    { kind: "restored", ...restoreContext },
   );
-  const versions = [restoredVersion, previousVersion, ...loadManageDayVersions(day)].slice(
-    0,
-    MAX_VERSIONS,
-  );
+  const versions = [restoredVersion, previousVersion, ...existing];
   const storedDrafts = readRecord(DRAFTS_KEY);
   const draftRecord: DraftRecord =
     typeof storedDrafts === "object" && storedDrafts !== null ? { ...storedDrafts } : {};

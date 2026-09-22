@@ -340,12 +340,16 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
-  await expect(page.getByText("Reordered places · 3 places")).toBeVisible();
-  await expect(page.getByText("Initial plan · 3 places")).toBeVisible();
+  await expect(page.locator(".version-entry").filter({ hasText: "Reordered" })).toContainText(
+    "3 places",
+  );
+  await expect(page.locator(".version-entry").filter({ hasText: "Initial plan" })).toContainText(
+    "3 places",
+  );
 
   const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
-  await expect(initialVersion.getByRole("button", { name: /Restore version from/ })).toHaveCount(0);
-  await initialVersion.getByRole("button", { name: /View version from/ }).click();
+  await expect(initialVersion.getByRole("button", { name: "Restore Version 1" })).toHaveCount(0);
+  await initialVersion.getByRole("button", { name: "View Version 1" }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
   const versionBack = page.getByRole("button", { name: "Back to Version history" });
   await expect(versionBack).toBeVisible();
@@ -366,9 +370,9 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
     .toEqual(original);
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
 
-  await page.getByRole("button", { name: "Restore & save" }).click();
+  await page.getByRole("button", { name: "Restore Version 1" }).click();
   const previewRestoreDialog = page.getByRole("dialog", {
-    name: "Restore and save this version?",
+    name: "Restore Version 1?",
   });
   await expect(previewRestoreDialog).toBeVisible();
   await expect(previewRestoreDialog).toContainText(
@@ -376,10 +380,10 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   );
   await previewRestoreDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
-  await page.getByRole("button", { name: "Restore & save" }).click();
+  await page.getByRole("button", { name: "Restore Version 1" }).click();
   expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
   await page
-    .getByRole("dialog", { name: "Restore and save this version?" })
+    .getByRole("dialog", { name: "Restore Version 1?" })
     .getByRole("button", { name: "Restore & save" })
     .click();
   await expect(page).toHaveURL(/\/plan\?day=13/);
@@ -390,8 +394,20 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
-  await expect(page.getByText(/Restored version from/)).toBeVisible();
-  await expect(page.getByText("Before restore · 3 places")).toBeVisible();
+  const restoredEntry = page.locator(".version-entry").filter({ hasText: "Restored from Version 1" });
+  await expect(restoredEntry).toContainText("3 places");
+  const beforeRestoreEntry = page
+    .locator(".version-entry")
+    .filter({ hasText: "Automatically saved before restoring Version 1" });
+  await expect(beforeRestoreEntry).toContainText("3 places");
+  await expect(beforeRestoreEntry).not.toContainText("Plan before restore");
+
+  await restoredEntry.getByRole("button", { name: "Restored from Version 1" }).click();
+  const sourceEntry = page
+    .locator("[data-version-id]")
+    .filter({ has: page.getByText("Version 1", { exact: true }) });
+  await expect(sourceEntry).toHaveClass(/version-entry--highlighted/);
+  await expect(sourceEntry).toBeFocused();
 });
 
 test("edge swipe returns through Version details, History, Edit plan and Plan", async ({
@@ -439,6 +455,143 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
   await expect(
     page.getByRole("button", { name: "Edit plan for Friday, 13 November" }),
   ).toBeVisible();
+});
+
+test("Version history puts unsaved work above the current saved version", async ({ page }) => {
+  await page.goto("/plan/manage?day=13");
+  const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
+  await grip.focus();
+  await grip.press("Alt+ArrowDown");
+  await page.getByRole("button", { name: "Version history" }).click();
+
+  const timeline = page.locator(".version-timeline");
+  await expect(timeline).toBeVisible();
+  const entries = timeline.locator(".version-entry");
+  await expect(entries.nth(0)).toContainText("Unsaved draft");
+  await expect(entries.nth(0)).toContainText("Not yet applied to your plan");
+  await expect(entries.nth(1)).toContainText("Current saved version");
+  await expect(entries.nth(1)).toContainText("3 places");
+  await expect(entries.nth(1)).not.toContainText("Shown in your plan");
+  const continueEditing = page.getByRole("button", { name: "Continue editing" });
+  await expect(continueEditing).toBeVisible();
+  await expect(page.getByText("Saved on this device", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Versions are created automatically when you save.", { exact: true }),
+  ).toHaveCount(0);
+  await continueEditing.click();
+  await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  expect(await storedFridayIds(page)).toEqual(["kiyomizu", "arabica", "nishiki"]);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
+  await page.getByRole("button", { name: "Version history" }).click();
+  await expect(entries.first()).toContainText("Current saved version");
+  await expect(page.getByText("Unsaved draft", { exact: true })).toHaveCount(0);
+});
+
+test("Version history reveals older versions ten at a time", async ({ page }) => {
+  await page.evaluate(
+    ({ planKey, versionsKey }) => {
+      const stored = JSON.parse(window.localStorage.getItem(planKey) ?? "{}") as {
+        days: Record<string, Array<{ placeId: string; time: string; notes: string }>>;
+      };
+      const visits = stored.days[13];
+      window.localStorage.setItem(
+        versionsKey,
+        JSON.stringify({
+          13: Array.from({ length: 12 }, (_, index) => ({
+            id: `page-${12 - index}`,
+            savedAt: Date.UTC(2026, 8, 22, 9, 12 - index),
+            sequence: 12 - index,
+            summary: `Saved plan ${12 - index}`,
+            visits,
+          })),
+        }),
+      );
+    },
+    { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
+  );
+  await page.goto("/plan/manage?day=13&view=versions");
+
+  const history = page.locator('[data-version-id]');
+  await expect(history).toHaveCount(10);
+  await expect(history.first()).toContainText("Version 12");
+  const older = page.getByRole("button", { name: /Older versions/ });
+  await expect(older).toContainText("2");
+
+  await older.click();
+  await expect(history).toHaveCount(12);
+  await expect(history.last()).toContainText("Version 1");
+  await expect(older).toHaveCount(0);
+});
+
+test("history separates place counts and shows only applicable change indicators", async ({
+  page,
+}) => {
+  await page.evaluate(
+    ({ planKey, versionsKey }) => {
+      const stored = JSON.parse(window.localStorage.getItem(planKey) ?? "{}") as {
+        days: Record<string, Array<{ placeId: string; time: string; notes: string }>>;
+      };
+      const visits = stored.days[13]?.map((visit, index) => ({
+        ...visit,
+        time: index === 0 ? "" : visit.time,
+      }));
+      const summaries = [
+        "Reordered places · Removed 4",
+        "Removed 1 place",
+        "Reordered places",
+        "Initial plan",
+        "Restored version from Yesterday, 09:00",
+      ];
+      window.localStorage.setItem(
+        versionsKey,
+        JSON.stringify({
+          13: summaries.map((summary, index) => ({
+            id: `metadata-${index}`,
+            savedAt: Date.UTC(2026, 8, 22 - index, 9),
+            summary,
+            visits,
+          })),
+        }),
+      );
+    },
+    { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
+  );
+  await page.goto("/plan/manage?day=13&view=versions");
+  const history = page.locator(".version-entry:not(.version-entry--current)");
+  await expect(history).toHaveCount(5);
+  const combined = history.nth(0);
+  await expect(combined.getByText("3 places", { exact: true })).toBeVisible();
+  await expect(combined.locator(".version-entry__change")).toHaveCount(2);
+  await expect(combined.locator(".version-entry__change--reorder")).toHaveText("Reordered");
+  const removedChange = combined
+    .locator(".version-entry__change")
+    .filter({ hasText: "places removed" });
+  await expect(removedChange).toHaveText("4 places removed");
+  await expect(combined.locator(".version-entry__change--reorder")).toHaveCSS(
+    "color",
+    "rgb(107, 114, 128)",
+  );
+  await expect(removedChange).toHaveCSS("color", "rgb(107, 114, 128)");
+  await expect(history.nth(1).locator(".version-entry__change")).toHaveCount(1);
+  await expect(history.nth(1).locator(".version-entry__change--reorder")).toHaveCount(0);
+  await expect(history.nth(2).locator(".version-entry__change")).toHaveCount(1);
+  await expect(history.nth(2).locator(".version-entry__change--reorder")).toBeVisible();
+  await expect(history.nth(3).locator(".version-entry__changes")).toHaveCount(0);
+  await expect(history.nth(3).getByText("Initial plan", { exact: true })).toBeVisible();
+  await expect(history.nth(4).locator(".version-entry__changes")).toHaveCount(0);
+  await expect(history.nth(4).getByText("Restored version from Yesterday, 09:00")).toBeVisible();
+  await combined.getByRole("button", { name: "View Version 5" }).click();
+  const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .manage-day__place');
+  await expect(unscheduledPlace).toHaveText("Kiyomizu-dera");
+  await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "All places", exact: true }).click();
+  await expect(unscheduledPlace).toHaveText("Kiyomizu-dera");
+  await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
+  await expect(
+    page.locator('[data-version-row-id="arabica"] .manage-day__place > span'),
+  ).toHaveText("11:00");
 });
 
 test("dragging reorders the draft without writing the saved Plan", async ({ page }) => {

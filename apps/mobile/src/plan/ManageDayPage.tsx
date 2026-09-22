@@ -1,7 +1,10 @@
 import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  ArrowRight,
+  ArrowUpDown,
   Check,
+  ChevronRight,
   Coffee,
   GripVertical,
   History,
@@ -28,11 +31,7 @@ import {
 } from "./manage-day-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
 import { useManageDaySwipeBack } from "./use-manage-day-swipe-back";
-import {
-  createVersionDiff,
-  type VersionChangeKind,
-  type VersionPlaceDiff,
-} from "./version-diff";
+import { createVersionDiff, type VersionChangeKind, type VersionPlaceDiff } from "./version-diff";
 import { VisitTime } from "./VisitTime";
 import "./manage-day.css";
 import "./stop-actions.css";
@@ -46,6 +45,7 @@ const DAY_NAMES = new Map([
 ]);
 const REMOVE_COMMIT_RATIO = 0.35;
 const REMOVE_COMMIT_DURATION_MS = 180;
+const VERSION_PAGE_SIZE = 10;
 const VERSION_CHANGE_GROUPS: ReadonlyArray<{
   kind: VersionChangeKind;
   title: string;
@@ -169,6 +169,82 @@ function describeChange(before: readonly PlannedVisit[], after: readonly Planned
   return "Updated day";
 }
 
+function VersionHistoryMetadata({
+  onRevealSource,
+  sourceAvailable,
+  version,
+}: {
+  onRevealSource: (sourceId: string) => void;
+  sourceAvailable: boolean;
+  version: ManageDayVersion;
+}): React.JSX.Element {
+  if (version.restoreContext?.kind === "before") {
+    return (
+      <>
+        <span>{version.visits.length} places</span>
+        <span>
+          Automatically saved before restoring Version {version.restoreContext.sourceSequence}
+        </span>
+      </>
+    );
+  }
+  if (version.restoreContext?.kind === "restored") {
+    const { sourceId, sourceSequence } = version.restoreContext;
+    const label = `Restored from Version ${sourceSequence}`;
+
+    return (
+      <>
+        <span>{version.visits.length} places</span>
+        {sourceAvailable ? (
+          <button
+            className="version-entry__source"
+            onClick={() => onRevealSource(sourceId)}
+            type="button"
+          >
+            {label}
+          </button>
+        ) : (
+          <span>{label} · No longer in history</span>
+        )}
+      </>
+    );
+  }
+  const parts = version.summary.split(/\s*·\s*/);
+  const reordered = parts.includes("Reordered places");
+  const removal = parts
+    .map((part) => /^Removed ([1-9]\d*)(?: places?)?$/.exec(part))
+    .find((match) => match !== null);
+  const otherChanges = parts.filter(
+    (part) => part !== "Reordered places" && !/^Removed ([1-9]\d*)(?: places?)?$/.test(part),
+  );
+
+  return (
+    <>
+      <span>{version.visits.length} places</span>
+      {reordered || removal !== undefined ? (
+        <div className="version-entry__changes">
+          {reordered ? (
+            <span className="version-entry__change version-entry__change--reorder">
+              <ArrowUpDown aria-hidden="true" size={15} strokeWidth={1.8} />
+              Reordered
+            </span>
+          ) : null}
+          {removal !== undefined ? (
+            <span className="version-entry__change">
+              <Trash2 aria-hidden="true" size={15} strokeWidth={1.8} />
+              {removal[1]}
+              <span className="sr-only">
+                {removal[1] === "1" ? " place removed" : " places removed"}
+              </span>
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      {otherChanges.length > 0 ? <span>{otherChanges.join(" · ")}</span> : null}
+    </>
+  );
+}
+
 function formatVersionTime(savedAt: number): string {
   const saved = new Date(savedAt);
   const today = new Date();
@@ -237,9 +313,11 @@ function RestoreVersionDialog({
       }}
       ref={dialogRef}
     >
-      <h2 id="manage-day-restore-title">Restore and save this version?</h2>
+      <h2 id="manage-day-restore-title">
+        {version === null ? "Restore version?" : `Restore Version ${version.sequence}?`}
+      </h2>
       <p>
-        {version === null ? null : `${formatVersionTime(version.savedAt)} · ${version.summary}. `}
+        {version === null ? null : `${version.summary}. `}
         {changedPlaceCount} {changedPlaceCount === 1 ? "place" : "places"} will change. Your current
         saved plan will remain in Version history.
       </p>
@@ -288,6 +366,8 @@ export function ManageDayPage(): React.JSX.Element {
   const [confirmSave, setConfirmSave] = useState(false);
   const [restoreCandidate, setRestoreCandidate] = useState<ManageDayVersion | null>(null);
   const [restoreError, setRestoreError] = useState("");
+  const [visibleVersionCount, setVisibleVersionCount] = useState(VERSION_PAGE_SIZE);
+  const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
   const [versionFilter, setVersionFilter] = useState<"all" | "changes">("changes");
   const [saving, setSaving] = useState(false);
   const dragRef = useRef<DragState | null>(null);
@@ -297,6 +377,7 @@ export function ManageDayPage(): React.JSX.Element {
   const listRef = useRef<HTMLDivElement>(null);
   const previewAnimationRef = useRef<PreviewAnimation | null>(null);
   const rowSwipeRef = useRef<RowSwipeGesture | null>(null);
+  const sourceHighlightTimerRef = useRef<number | undefined>(undefined);
   const swipeRemovalTimerRef = useRef<number | undefined>(undefined);
   const displayedVisits = dragPreview ?? draft;
   const baseSignature = baseSignatureRef.current;
@@ -453,16 +534,20 @@ export function ManageDayPage(): React.JSX.Element {
     return `${count} redo ${count === 1 ? "step" : "steps"} remaining`;
   }
 
+  function revealSourceVersion(sourceId: string): void {
+    const sourceIndex = versions.findIndex((version) => version.id === sourceId);
+    if (sourceIndex < 0) {
+      return;
+    }
+    setVisibleVersionCount((current) => Math.max(current, sourceIndex + 1));
+    setHighlightedVersionId(sourceId);
+  }
+
   function confirmRestoreVersion(): void {
     if (restoreCandidate === null) {
       return;
     }
-    const result = restoreAndSaveManageDayVersion(
-      day,
-      plan.days[day],
-      restoreCandidate,
-      formatVersionTime(restoreCandidate.savedAt),
-    );
+    const result = restoreAndSaveManageDayVersion(day, plan.days[day], restoreCandidate);
     if (!result.ok) {
       setRestoreCandidate(null);
       setRestoreError(
@@ -1020,6 +1105,7 @@ export function ManageDayPage(): React.JSX.Element {
   useEffect(
     () => () => {
       window.clearTimeout(swipeRemovalTimerRef.current);
+      window.clearTimeout(sourceHighlightTimerRef.current);
       const drag = dragRef.current;
       if (drag !== null) {
         window.removeEventListener("pointermove", drag.onMove);
@@ -1029,6 +1115,34 @@ export function ManageDayPage(): React.JSX.Element {
     },
     [],
   );
+
+  useEffect(() => {
+    if (highlightedVersionId === null) {
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const row = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-version-id]"),
+      ).find((element) => element.dataset.versionId === highlightedVersionId);
+      if (row === undefined) {
+        return;
+      }
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? "auto"
+          : "smooth",
+        block: "center",
+      });
+      window.clearTimeout(sourceHighlightTimerRef.current);
+      sourceHighlightTimerRef.current = window.setTimeout(
+        () => setHighlightedVersionId(null),
+        1_800,
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [highlightedVersionId, visibleVersionCount]);
 
   function renderVersionPlace(
     placeDiff: VersionPlaceDiff,
@@ -1060,7 +1174,7 @@ export function ManageDayPage(): React.JSX.Element {
           </span>
           <span className="manage-day__place">
             <strong>{stop.name}</strong>
-            <VisitTime time={placeDiff.visit.time} />
+            {placeDiff.visit.time === "" ? null : <VisitTime time={placeDiff.visit.time} />}
           </span>
           <img alt="" src={stop.image} />
         </div>
@@ -1072,7 +1186,9 @@ export function ManageDayPage(): React.JSX.Element {
                 key={change.kind}
               >
                 {options.compact === true ? null : <strong>{change.label}</strong>}
-                {options.compact === true && change.from !== undefined && change.to !== undefined ? (
+                {options.compact === true &&
+                change.from !== undefined &&
+                change.to !== undefined ? (
                   <span className="version-place__change-summary">
                     {change.from} <span aria-hidden="true">→</span> {change.to}
                   </span>
@@ -1239,7 +1355,9 @@ export function ManageDayPage(): React.JSX.Element {
                 }}
                 type="button"
               >
-                {versionDiff?.changedPlaceCount === 0 ? "Already current" : "Restore & save"}
+                {versionDiff?.changedPlaceCount === 0
+                  ? "Already current"
+                  : `Restore Version ${previewVersion.sequence}`}
               </button>
               <span>Review first. Confirm once to save.</span>
             </div>
@@ -1257,6 +1375,9 @@ export function ManageDayPage(): React.JSX.Element {
   }
 
   if (search.view === "versions") {
+    const visibleVersions = versions.slice(0, visibleVersionCount);
+    const olderVersionCount = versions.length - visibleVersions.length;
+
     return (
       <section
         className="manage-day manage-day--versions"
@@ -1280,49 +1401,57 @@ export function ManageDayPage(): React.JSX.Element {
             <strong>Kyoto · {dayLabel}</strong>
             <span>Open a version to compare it with your current saved plan.</span>
           </div>
-          <article className="version-entry version-entry--current">
-            <span aria-hidden="true" className="version-entry__dot" />
-            <div className="version-entry__details">
-              <strong>Current saved plan</strong>
-              <span>{plan.days[day].length} places</span>
-              <small>Active plan</small>
-            </div>
-          </article>
-          {dirty ? (
-            <article className="version-entry">
+          <div className="version-timeline">
+            {dirty ? (
+              <article className="version-entry version-entry--draft">
+                <span aria-hidden="true" className="version-entry__dot" />
+                <div className="version-entry__details">
+                  <span className="version-entry__eyebrow">In progress</span>
+                  <strong>Unsaved draft</strong>
+                  <span>{draft.length} places · Not yet applied to your plan</span>
+                </div>
+                <button
+                  className="version-entry__continue"
+                  onClick={() =>
+                    void navigate({ to: "/plan/manage", search: { day }, replace: true })
+                  }
+                  type="button"
+                >
+                  Continue editing
+                  <ArrowRight aria-hidden="true" size={17} strokeWidth={1.9} />
+                </button>
+              </article>
+            ) : null}
+            <article className="version-entry version-entry--current">
               <span aria-hidden="true" className="version-entry__dot" />
               <div className="version-entry__details">
-                <strong>Current draft</strong>
-                <span>Autosaved · {draft.length} places</span>
+                <span className="version-entry__eyebrow">In use</span>
+                <strong>Current saved version</strong>
+                <span>{plan.days[day].length} places</span>
               </div>
-              <button
-                onClick={() =>
-                  void navigate({ to: "/plan/manage", search: { day }, replace: true })
-                }
-                type="button"
-              >
-                Continue editing
-              </button>
             </article>
-          ) : null}
-          {versions.length === 0 ? (
-            <p className="manage-day__versions-empty">
-              Versions will appear after your first save.
-            </p>
-          ) : (
-            versions.map((version) => (
-              <article className="version-entry" key={version.id}>
+            {visibleVersions.map((version) => (
+              <article
+                className={`version-entry${highlightedVersionId === version.id ? " version-entry--highlighted" : ""}`}
+                data-version-id={version.id}
+                key={version.id}
+                tabIndex={-1}
+              >
                 <span aria-hidden="true" className="version-entry__dot" />
                 <div className="version-entry__details">
                   <strong>{formatVersionTime(version.savedAt)}</strong>
-                  <span>
-                    {version.summary} · {version.visits.length} places
-                  </span>
-                  <small>Saved on this device</small>
+                  <VersionHistoryMetadata
+                    onRevealSource={revealSourceVersion}
+                    sourceAvailable={versions.some(
+                      (candidate) => candidate.id === version.restoreContext?.sourceId,
+                    )}
+                    version={version}
+                  />
                 </div>
                 <div className="version-entry__actions">
+                  <span className="version-entry__number">Version {version.sequence}</span>
                   <button
-                    aria-label={`View version from ${formatVersionTime(version.savedAt)}`}
+                    aria-label={`View Version ${version.sequence}`}
                     onClick={() => {
                       setVersionFilter("changes");
                       setRestoreError("");
@@ -1334,14 +1463,31 @@ export function ManageDayPage(): React.JSX.Element {
                     type="button"
                   >
                     View
+                    <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
                   </button>
                 </div>
               </article>
-            ))
-          )}
-          <p className="manage-day__version-note">
-            Versions are created automatically when you save.
-          </p>
+            ))}
+            {olderVersionCount > 0 ? (
+              <button
+                className="version-timeline__older"
+                onClick={() =>
+                  setVisibleVersionCount((current) =>
+                    Math.min(current + VERSION_PAGE_SIZE, versions.length),
+                  )
+                }
+                type="button"
+              >
+                Older versions
+                <span>{olderVersionCount}</span>
+              </button>
+            ) : null}
+          </div>
+          {versions.length === 0 ? (
+            <p className="manage-day__versions-empty">
+              Previous versions will appear here after you save changes.
+            </p>
+          ) : null}
         </div>
       </section>
     );

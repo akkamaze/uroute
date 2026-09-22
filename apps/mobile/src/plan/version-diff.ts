@@ -87,7 +87,7 @@ export function createVersionDiff(
         value: `Added as Stop ${index + 1} · ${displayTime(visit.time)}`,
       });
     } else {
-      if (!stableIds.has(visit.placeId)) {
+      if (!stableIds.has(visit.placeId) && existing.index !== index) {
         changes.push({
           from: `Stop ${existing.index + 1}`,
           kind: "order",

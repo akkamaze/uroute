@@ -47,3 +47,27 @@ test("handles matching and empty versions", () => {
   expect(empty.removed.map((place) => place.placeId)).toEqual(["kiyomizu", "arabica"]);
   expect(empty.changedPlaceCount).toBe(2);
 });
+
+test("does not report an unchanged position excluded by the longest common subsequence", () => {
+  const current = [visit("kiyomizu"), visit("arabica"), visit("nishiki")];
+  const reversed = [visit("nishiki"), visit("arabica"), visit("kiyomizu")];
+  const diff = createVersionDiff(current, reversed);
+
+  expect(diff.places.find((place) => place.placeId === "arabica")?.changes).toEqual([]);
+  const moves = diff.places
+    .flatMap((place) => place.changes)
+    .filter((change) => change.kind === "order");
+  expect(moves.length).toBeGreaterThan(0);
+  expect(moves.every((change) => change.from !== change.to)).toBe(true);
+
+  const edited = createVersionDiff(current, [
+    visit("nishiki"),
+    visit("arabica", "10:00", "New note"),
+    visit("kiyomizu"),
+  ]);
+  expect(
+    edited.places
+      .find((place) => place.placeId === "arabica")
+      ?.changes.map((change) => change.kind),
+  ).toEqual(["time", "note"]);
+});
