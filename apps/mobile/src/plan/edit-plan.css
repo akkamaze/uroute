@@ -855,7 +855,7 @@
 
 .version-place__time {
   color: var(--color-muted);
-  font-size: var(--type-body-size);
+  font-size: var(--type-subtitle-size);
   font-variant-numeric: tabular-nums;
 }
 

@@ -730,7 +730,32 @@ test("history separates place counts and shows only applicable change indicators
   await page.getByRole("button", { name: "All places", exact: true }).click();
   const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .edit-plan__place');
   await expect(unscheduledPlace).toContainText("Kiyomizu-dera");
-  await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
+  const unsetTime = page.locator('[data-version-row-id="kiyomizu"] .version-place__time');
+  await expect(unsetTime).toHaveAttribute("aria-label", "No time set");
+  await expect(unsetTime).toHaveClass(/visit-time--unset/);
+  await expect(unsetTime.locator(".visit-time__unset-mark")).toHaveCSS("width", "8px");
+  const timeCenters = await page.locator(".version-preview__list").evaluate((list) => {
+    const scheduled = list.querySelector<HTMLElement>(
+      '[data-version-row-id="arabica"] .version-place__time',
+    );
+    const mark = list.querySelector<HTMLElement>(
+      '[data-version-row-id="kiyomizu"] .visit-time__unset-mark',
+    );
+    if (scheduled === null || mark === null) {
+      throw new Error("Expected scheduled time and unset-time mark in All places");
+    }
+    const range = document.createRange();
+    range.selectNodeContents(scheduled);
+    const scheduledRect = range.getBoundingClientRect();
+    const markRect = mark.getBoundingClientRect();
+
+    return {
+      mark: markRect.left + markRect.width / 2,
+      scheduled: scheduledRect.left + scheduledRect.width / 2,
+    };
+  });
+  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(0.5);
+  await expect(page.getByText("Anytime", { exact: true })).toHaveCount(0);
   await expect(
     page.locator('[data-version-row-id="arabica"] .version-place__time'),
   ).toHaveText("11:00");

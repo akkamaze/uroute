@@ -56,7 +56,7 @@ function longestCommonSubsequence(left: readonly string[], right: readonly strin
 }
 
 function displayTime(time: string): string {
-  return time === "" ? "Anytime" : time;
+  return time === "" ? "No time set" : time;
 }
 
 function displayNote(note: string): string {
@@ -84,7 +84,7 @@ export function createVersionDiff(
       changes.push({
         kind: "added",
         label: "Added",
-        value: `Added as Stop ${index + 1} · ${displayTime(visit.time)}`,
+        value: `Added as Stop ${index + 1}${visit.time === "" ? "" : ` · ${visit.time}`}`,
       });
     } else {
       if (!stableIds.has(visit.placeId) && existing.index !== index) {
@@ -127,7 +127,7 @@ export function createVersionDiff(
           {
             kind: "removed",
             label: "Removed",
-            value: `Removed from Stop ${index + 1} · ${displayTime(visit.time)}`,
+            value: `Removed from Stop ${index + 1}${visit.time === "" ? "" : ` · ${visit.time}`}`,
           },
         ],
         placeId: visit.placeId,

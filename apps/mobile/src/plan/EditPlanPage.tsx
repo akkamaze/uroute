@@ -1272,9 +1272,7 @@ export function EditPlanPage(): React.JSX.Element {
       >
         <div className="version-place__identity">
           <span className="version-place__position">{placeDiff.position + 1}</span>
-          <span className="version-place__time">
-            {placeDiff.visit.time === "" ? null : placeDiff.visit.time}
-          </span>
+          <VisitTime className="version-place__time" time={placeDiff.visit.time} />
           <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
             {renderStopIcon(stop.category)}
           </span>

@@ -48,6 +48,17 @@ test("handles matching and empty versions", () => {
   expect(empty.changedPlaceCount).toBe(2);
 });
 
+test("omits unset times from added and removed stops", () => {
+  const added = createVersionDiff([], [visit("kiyomizu", "")]);
+  expect(added.places[0]?.changes[0]?.value).toBe("Added as Stop 1");
+
+  const removed = createVersionDiff([visit("kiyomizu", "")], []);
+  expect(removed.removed[0]?.changes[0]?.value).toBe("Removed from Stop 1");
+
+  const timeChanged = createVersionDiff([visit("kiyomizu", "09:00")], [visit("kiyomizu", "")]);
+  expect(timeChanged.places[0]?.changes[0]?.to).toBe("No time set");
+});
+
 test("does not report an unchanged position excluded by the longest common subsequence", () => {
   const current = [visit("kiyomizu"), visit("arabica"), visit("nishiki")];
   const reversed = [visit("nishiki"), visit("arabica"), visit("kiyomizu")];
