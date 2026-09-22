@@ -77,6 +77,10 @@
     box-shadow 140ms ease-out;
 }
 
+.timeline__surface--plan {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .timeline__surface--selection-mode {
   grid-template-columns: minmax(0, 1fr);
 }

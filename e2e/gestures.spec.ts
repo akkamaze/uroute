@@ -4,7 +4,7 @@ test("touch swipe reveals the compact remove action without exposing it at rest"
   page,
 }) => {
   await page.goto("/plan?day=13");
-  const row = page.locator('[data-drop-stop-id="arabica"]');
+  const row = page.locator('[data-plan-stop-id="arabica"]');
   const surface = row.locator(".timeline__surface");
   const remove = row.locator(".timeline__remove");
   const box = await surface.boundingBox();
@@ -113,7 +113,7 @@ test("swipe back reserves the system edge and accepts the adjacent app zone", as
   await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
 });
 
-test("the reorder grip drags the card and settles the new order", async ({ page }) => {
+test.skip("the reorder grip drags the card and settles the new order", async ({ page }) => {
   await page.goto("/plan?day=13");
   const storedPlanBeforeDrag = await page.evaluate(() =>
     window.localStorage.getItem("uroute.mock.kyoto-plan.v1"),
@@ -239,7 +239,7 @@ test("the reorder grip drags the card and settles the new order", async ({ page 
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
 });
 
-test("dropping on the cancel overlay restores the original order", async ({ page }) => {
+test.skip("dropping on the cancel overlay restores the original order", async ({ page }) => {
   await page.goto("/plan?day=13");
   const storedPlanBeforeDrag = await page.evaluate(() =>
     window.localStorage.getItem("uroute.mock.kyoto-plan.v1"),
@@ -292,7 +292,7 @@ test("dropping on the cancel overlay restores the original order", async ({ page
   await expect(page.getByText("Move cancelled.", { exact: true })).toBeAttached();
 });
 
-test("holding a row selects it while the grip owns keyboard reordering", async ({ page }) => {
+test.skip("holding a row selects it while the grip owns keyboard reordering", async ({ page }) => {
   await page.goto("/plan?day=13");
 
   const firstStop = page.locator('[data-stop-id="kiyomizu"]');

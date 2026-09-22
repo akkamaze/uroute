@@ -93,6 +93,19 @@ function publish(days: PlanSnapshot["days"]): void {
   listeners.forEach((listener) => listener());
 }
 
+function validVisitList(visits: readonly PlannedVisit[]): boolean {
+  const seen = new Set<string>();
+
+  return visits.every((visit) => {
+    if (!isVisit(visit) || seen.has(visit.placeId)) {
+      return false;
+    }
+    seen.add(visit.placeId);
+
+    return true;
+  });
+}
+
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
 
@@ -136,6 +149,27 @@ export function reorderKyotoDay(day: KyotoDay, sourceId: string, targetId: strin
   }
   next.splice(targetIndex, 0, moved);
   publish({ ...snapshot.days, [day]: next });
+
+  return true;
+}
+
+export function saveKyotoDay(day: KyotoDay, visits: readonly PlannedVisit[]): boolean {
+  if (!validVisitList(visits)) {
+    return false;
+  }
+  const nextDays = {
+    ...snapshot.days,
+    [day]: visits.map((visit) => ({ ...visit })),
+  };
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ days: nextDays }));
+  } catch {
+    return false;
+  }
+
+  snapshot = { days: nextDays, persistenceFailed: false };
+  listeners.forEach((listener) => listener());
 
   return true;
 }

@@ -32,6 +32,11 @@ interface EditorSearch {
   editor?: "open";
 }
 
+interface ManageDaySearch {
+  day?: KyotoDay;
+  view?: "versions";
+}
+
 const rootRoute = createRootRoute({ component: AppRoot });
 
 const loadingRoute = createRoute({
@@ -95,6 +100,16 @@ const planRoute = createRoute({
     ...(String(search.stress) === "1200" ? { stress: "1200" } : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
+});
+
+const manageDayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/plan/manage",
+  validateSearch: (search: Record<string, unknown>): ManageDaySearch => ({
+    ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
+    ...(search.view === "versions" ? { view: "versions" } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./plan/ManageDayPage"), "ManageDayPage"),
 });
 
 const bookingsRoute = createRoute({
@@ -185,6 +200,7 @@ const routeTree = rootRoute.addChildren([
   loadingRoute,
   welcomeRoute,
   loginRoute,
+  manageDayRoute,
   placesRoute,
   mobileShellTree,
 ]);
