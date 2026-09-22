@@ -224,9 +224,11 @@ function VersionHistoryMetadata({
       {reordered || removal !== undefined ? (
         <div className="version-entry__changes">
           {reordered ? (
-            <span className="version-entry__change version-entry__change--reorder">
+            <span
+              aria-label="Reordered places"
+              className="version-entry__change version-entry__change--reorder"
+            >
               <ArrowUpDown aria-hidden="true" size={15} strokeWidth={1.8} />
-              Reordered
             </span>
           ) : null}
           {removal !== undefined ? (

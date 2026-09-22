@@ -340,9 +340,11 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
-  await expect(page.locator(".version-entry").filter({ hasText: "Reordered" })).toContainText(
-    "3 places",
-  );
+  await expect(
+    page.locator(".version-entry").filter({
+      has: page.locator('.version-entry__change--reorder[aria-label="Reordered places"]'),
+    }),
+  ).toContainText("3 places");
   await expect(page.locator(".version-entry").filter({ hasText: "Initial plan" })).toContainText(
     "3 places",
   );
@@ -620,7 +622,11 @@ test("history separates place counts and shows only applicable change indicators
     ),
   ).toBeLessThanOrEqual(1);
   await expect(combined.locator(".version-entry__change")).toHaveCount(2);
-  await expect(combined.locator(".version-entry__change--reorder")).toHaveText("Reordered");
+  await expect(combined.locator(".version-entry__change--reorder")).toHaveAttribute(
+    "aria-label",
+    "Reordered places",
+  );
+  await expect(combined.locator(".version-entry__change--reorder")).toHaveText("");
   const removedChange = combined
     .locator(".version-entry__change")
     .filter({ hasText: "places removed" });
