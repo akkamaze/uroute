@@ -4,10 +4,13 @@ import {
   ArrowUpDown,
   Check,
   ChevronRight,
+  Clock,
   Coffee,
+  FileText,
   GripVertical,
   History,
   Landmark,
+  Plus,
   Redo2,
   Trash2,
   Undo2,
@@ -186,6 +189,76 @@ function VersionPlaceCount({
   );
 }
 
+interface VersionChangeCounts {
+  added: number;
+  note: number;
+  order: number;
+  removed: number;
+  time: number;
+}
+
+function getVersionChangeCounts(
+  diff: ReturnType<typeof createVersionDiff> | null,
+): VersionChangeCounts {
+  const places = diff === null ? [] : [...diff.places, ...diff.removed];
+  const count = (kind: VersionChangeKind): number =>
+    places.filter((place) => place.changes.some((change) => change.kind === kind)).length;
+
+  return {
+    added: count("added"),
+    note: count("note"),
+    order: count("order"),
+    removed: count("removed"),
+    time: count("time"),
+  };
+}
+
+function VersionDiffIndicators({
+  counts,
+}: {
+  counts: VersionChangeCounts;
+}): React.JSX.Element | null {
+  const { added, note, order: reordered, removed, time } = counts;
+  if (reordered + removed + added + time + note === 0) {
+    return null;
+  }
+
+  return (
+    <div aria-label="Version changes" className="version-preview__change-icons">
+      {reordered > 0 ? (
+        <span aria-label={`${reordered} ${reordered === 1 ? "place" : "places"} reordered`}>
+          <ArrowUpDown aria-hidden="true" size={15} strokeWidth={1.8} />
+          {reordered}
+        </span>
+      ) : null}
+      {removed > 0 ? (
+        <span aria-label={`${removed} ${removed === 1 ? "place" : "places"} removed`}>
+          <Trash2 aria-hidden="true" size={15} strokeWidth={1.8} />
+          {removed}
+        </span>
+      ) : null}
+      {added > 0 ? (
+        <span aria-label={`${added} ${added === 1 ? "place" : "places"} added`}>
+          <Plus aria-hidden="true" size={15} strokeWidth={1.8} />
+          {added}
+        </span>
+      ) : null}
+      {time > 0 ? (
+        <span aria-label={`${time} ${time === 1 ? "time" : "times"} changed`}>
+          <Clock aria-hidden="true" size={15} strokeWidth={1.8} />
+          {time}
+        </span>
+      ) : null}
+      {note > 0 ? (
+        <span aria-label={`${note} ${note === 1 ? "note" : "notes"} changed`}>
+          <FileText aria-hidden="true" size={15} strokeWidth={1.8} />
+          {note}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function getVersionPlaceDelta(
   version: ManageDayVersion,
   versions: readonly ManageDayVersion[],
@@ -197,11 +270,13 @@ function getVersionPlaceDelta(
 }
 
 function VersionHistoryMetadata({
+  changeCounts,
   onRevealSource,
   placeDelta,
   sourceAvailable,
   version,
 }: {
+  changeCounts: VersionChangeCounts;
   onRevealSource: (sourceId: string) => void;
   placeDelta: number | null;
   sourceAvailable: boolean;
@@ -236,39 +311,14 @@ function VersionHistoryMetadata({
       </>
     );
   }
-  const parts = version.summary.split(/\s*·\s*/);
-  const reordered = parts.includes("Reordered places");
-  const removal = parts
-    .map((part) => /^Removed ([1-9]\d*)(?: places?)?$/.exec(part))
-    .find((match) => match !== null);
-  const otherChanges = parts.filter(
+  const otherChanges = version.summary.split(/\s*·\s*/).filter(
     (part) => part !== "Reordered places" && !/^Removed ([1-9]\d*)(?: places?)?$/.test(part),
   );
 
   return (
     <>
       <VersionPlaceCount count={version.visits.length} delta={placeDelta} />
-      {reordered || removal !== undefined ? (
-        <div className="version-entry__changes">
-          {reordered ? (
-            <span
-              aria-label="Reordered places"
-              className="version-entry__change version-entry__change--reorder"
-            >
-              <ArrowUpDown aria-hidden="true" size={15} strokeWidth={1.8} />
-            </span>
-          ) : null}
-          {removal !== undefined ? (
-            <span className="version-entry__change">
-              <Trash2 aria-hidden="true" size={15} strokeWidth={1.8} />
-              {removal[1]}
-              <span className="sr-only">
-                {removal[1] === "1" ? " place removed" : " places removed"}
-              </span>
-            </span>
-          ) : null}
-        </div>
-      ) : null}
+      <VersionDiffIndicators counts={changeCounts} />
       {otherChanges.length > 0 ? <span>{otherChanges.join(" · ")}</span> : null}
     </>
   );
@@ -1222,12 +1272,15 @@ export function EditPlanPage(): React.JSX.Element {
       >
         <div className="version-place__identity">
           <span className="version-place__position">{placeDiff.position + 1}</span>
+          <span className="version-place__time">
+            {placeDiff.visit.time === "" ? null : placeDiff.visit.time}
+          </span>
           <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
             {renderStopIcon(stop.category)}
           </span>
           <span className="manage-day__place">
             <strong>{stop.name}</strong>
-            {placeDiff.visit.time === "" ? null : <VisitTime time={placeDiff.visit.time} />}
+            <span>{stop.type}</span>
           </span>
           <img alt="" src={stop.image} />
         </div>
@@ -1269,10 +1322,25 @@ export function EditPlanPage(): React.JSX.Element {
 
   if (search.view === "versions" && search.version !== undefined) {
     const previewVersion = versions.find((version) => version.id === search.version);
+    const previewVersionIndex = versions.findIndex((version) => version.id === search.version);
+    const previousVersion = versions[previewVersionIndex + 1];
     const versionDiff =
+      previewVersion === undefined || previousVersion === undefined
+        ? null
+        : createVersionDiff(previousVersion.visits, previewVersion.visits);
+    const previewPlaces =
+      previewVersion === undefined
+        ? []
+        : createVersionDiff(previewVersion.visits, previewVersion.visits).places;
+    const restoreDiff =
       previewVersion === undefined
         ? null
         : createVersionDiff(plan.days[day], previewVersion.visits);
+    const previewPlaceDelta =
+      previewVersion === undefined || previousVersion === undefined
+        ? null
+        : previewVersion.visits.length - previousVersion.visits.length;
+    const previewChangeCounts = getVersionChangeCounts(versionDiff);
     const changeGroups =
       versionDiff === null
         ? []
@@ -1330,15 +1398,19 @@ export function EditPlanPage(): React.JSX.Element {
         ) : (
           <>
             <div className="version-preview__summary">
-              <small>{dayLabel}</small>
-              <strong>{formatVersionTime(previewVersion.savedAt)}</strong>
-              <span>{previewVersion.summary}</span>
-              <p>
-                {versionDiff?.changedPlaceCount ?? 0}{" "}
-                {(versionDiff?.changedPlaceCount ?? 0) === 1
-                  ? "place would change"
-                  : "places would change"}
-              </p>
+              <strong className="version-preview__timestamp">
+                Version {previewVersion.sequence}
+                <span aria-hidden="true">·</span>
+                {formatVersionTime(previewVersion.savedAt)}
+              </strong>
+              <span className="version-preview__location">Kyoto · {dayLabel}</span>
+              <div className="version-preview__metadata">
+                <VersionPlaceCount
+                  count={previewVersion.visits.length}
+                  delta={previewPlaceDelta}
+                />
+                <VersionDiffIndicators counts={previewChangeCounts} />
+              </div>
             </div>
             <div className="version-preview__filters" role="group" aria-label="Filter places">
               <button
@@ -1367,7 +1439,12 @@ export function EditPlanPage(): React.JSX.Element {
                       className="version-preview__group"
                       key={group.kind}
                     >
-                      <h2 id={`version-group-${group.kind}`}>{group.title}</h2>
+                      <h2 id={`version-group-${group.kind}`}>
+                        <span>{group.title}</span>
+                        <span aria-label={`${group.places.length} changes`}>
+                          {group.places.length}
+                        </span>
+                      </h2>
                       {group.places.map((place) =>
                         renderVersionPlace(place, {
                           changeKind: group.kind,
@@ -1377,21 +1454,12 @@ export function EditPlanPage(): React.JSX.Element {
                       )}
                     </section>
                   ))
-                : versionDiff?.places.map((place) => renderVersionPlace(place))}
-              {versionFilter === "all" && versionDiff !== null && versionDiff.removed.length > 0 ? (
-                <section className="version-preview__group" aria-labelledby="removed-places-title">
-                  <h2 id="removed-places-title">Removed</h2>
-                  {versionDiff.removed.map((place) =>
-                    renderVersionPlace(place, {
-                      changeKind: "removed",
-                      compact: true,
-                      removed: true,
-                    }),
-                  )}
-                </section>
+                : previewPlaces.map((place) => renderVersionPlace(place))}
+              {versionFilter === "changes" && versionDiff === null ? (
+                <p className="version-preview__empty">This is the first saved version.</p>
               ) : null}
               {versionFilter === "changes" && versionDiff?.changedPlaceCount === 0 ? (
-                <p className="version-preview__empty">This version matches your saved plan.</p>
+                <p className="version-preview__empty">No changes from the previous version.</p>
               ) : null}
             </div>
             <div className="version-preview__restore-bar">
@@ -1401,23 +1469,22 @@ export function EditPlanPage(): React.JSX.Element {
                 </p>
               )}
               <button
-                disabled={versionDiff?.changedPlaceCount === 0}
+                disabled={restoreDiff?.changedPlaceCount === 0}
                 onClick={() => {
                   setRestoreError("");
                   setRestoreCandidate(previewVersion);
                 }}
                 type="button"
               >
-                {versionDiff?.changedPlaceCount === 0
+                {restoreDiff?.changedPlaceCount === 0
                   ? "Already current"
                   : `Restore Version ${previewVersion.sequence}`}
               </button>
-              <span>Review first. Confirm once to save.</span>
             </div>
           </>
         )}
         <RestoreVersionDialog
-          changedPlaceCount={versionDiff?.changedPlaceCount ?? 0}
+          changedPlaceCount={restoreDiff?.changedPlaceCount ?? 0}
           hasDraft={dirty}
           onCancel={() => setRestoreCandidate(null)}
           onConfirm={confirmRestoreVersion}
@@ -1484,8 +1551,15 @@ export function EditPlanPage(): React.JSX.Element {
                 <span>{plan.days[day].length} places</span>
               </div>
             </article>
-            {visibleVersions.map((version, index) => (
-              <article
+            {visibleVersions.map((version, index) => {
+              const previousVersion = versions[index + 1];
+              const versionDiff =
+                previousVersion === undefined
+                  ? null
+                  : createVersionDiff(previousVersion.visits, version.visits);
+
+              return (
+                <article
                 className={`version-entry${highlightedVersionId === version.id ? " version-entry--highlighted" : ""}`}
                 data-version-id={version.id}
                 key={version.id}
@@ -1495,6 +1569,7 @@ export function EditPlanPage(): React.JSX.Element {
                 <div className="version-entry__details">
                   <strong>{formatVersionTime(version.savedAt)}</strong>
                   <VersionHistoryMetadata
+                    changeCounts={getVersionChangeCounts(versionDiff)}
                     onRevealSource={revealSourceVersion}
                     placeDelta={getVersionPlaceDelta(version, versions, index)}
                     sourceAvailable={versions.some(
@@ -1521,8 +1596,9 @@ export function EditPlanPage(): React.JSX.Element {
                     <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
                   </button>
                 </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
             {olderVersionCount > 0 ? (
               <button
                 className="version-timeline__older"

@@ -344,14 +344,55 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
-  await expect(
-    page.locator(".version-entry").filter({
-      has: page.locator('.version-entry__change--reorder[aria-label="Reordered places"]'),
-    }),
-  ).toContainText("3 places");
+  const reorderedVersion = page.locator(".version-entry").filter({
+    has: page.getByLabel("1 place reordered"),
+  });
+  await expect(reorderedVersion).toContainText("3 places");
+  await expect(reorderedVersion.getByLabel("1 place reordered")).toHaveText("1");
   await expect(page.locator(".version-entry").filter({ hasText: "Initial plan" })).toContainText(
     "3 places",
   );
+
+  await reorderedVersion.getByRole("button", { name: "View Version 2" }).click();
+  await expect(page.getByText("Kyoto · Friday, 13 November", { exact: true })).toBeVisible();
+  await expect(page.locator(".version-preview__timestamp")).toContainText("Version 2·Today,");
+  await expect(page.locator(".version-preview__metadata")).toContainText("3 places");
+  await expect(page.getByLabel("1 place reordered")).toHaveText("1");
+  await expect(page.getByRole("heading", { name: "Reordered 1" })).toBeVisible();
+  const summaryType = await page.locator(".version-preview__summary").evaluate((summary) => {
+    const version = summary.querySelector<HTMLElement>(".version-preview__timestamp");
+    const location = summary.querySelector<HTMLElement>(".version-preview__location");
+    if (version === null || location === null) {
+      throw new Error("Version and location summary must be present");
+    }
+
+    return {
+      locationSize: Number.parseFloat(getComputedStyle(location).fontSize),
+      versionSize: Number.parseFloat(getComputedStyle(version).fontSize),
+      versionWeight: Number.parseInt(getComputedStyle(version).fontWeight, 10),
+    };
+  });
+  expect(summaryType.versionSize).toBeGreaterThan(summaryType.locationSize);
+  expect(summaryType.versionWeight).toBeGreaterThanOrEqual(700);
+  await expect(page.getByText("Stop 1 → Stop 2", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-version-row-id]")).toHaveCount(1);
+  await expect(page.locator(".version-preview__filters")).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+  await expect(page.getByText("Review first. Confirm once to save.", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "All places" }).click();
+  await expect(page.locator("[data-version-row-id]")).toHaveCount(3);
+  await expect(page.locator(".version-place .manage-day__grip")).toHaveCount(0);
+  await expect(page.locator('[data-version-row-id="arabica"] .version-place__time')).toHaveText(
+    "11:00",
+  );
+  await expect(
+    page.locator('[data-version-row-id="arabica"] .manage-day__place > span'),
+  ).toHaveText("Coffee");
+  await page.getByRole("button", { name: "Back to Version history" }).click();
 
   const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
   await expect(initialVersion.getByRole("button", { name: "Restore Version 1" })).toHaveCount(0);
@@ -360,11 +401,11 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   const versionBack = page.getByRole("button", { name: "Back to Version history" });
   await expect(versionBack).toBeVisible();
   await expect(versionBack).toHaveCSS("color", "rgb(32, 33, 36)");
-  await expect(page.getByRole("heading", { name: "Reordered" })).toBeVisible();
-  await expect(page.getByText("Stop 1 → Stop 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("This is the first saved version.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reordered" })).toHaveCount(0);
   await expect(page.getByText("Order changed", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Changes only", pressed: true })).toBeVisible();
-  await expect(page.locator("[data-version-row-id]")).toHaveCount(1);
+  await expect(page.locator("[data-version-row-id]")).toHaveCount(0);
   await page.getByRole("button", { name: "All places" }).click();
   await expect(page.locator("[data-version-row-id]")).toHaveCount(3);
   await expect
@@ -445,9 +486,9 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
 
   async function swipeBack(): Promise<void> {
-    await page.mouse.move(30, 180);
+    await page.mouse.move(30, 100);
     await page.mouse.down();
-    await page.mouse.move(260, 180, { steps: 6 });
+    await page.mouse.move(260, 100, { steps: 6 });
     await page.mouse.up();
   }
 
@@ -675,38 +716,23 @@ test("history separates place counts and shows only applicable change indicators
         ((viewButtonBox?.x ?? 0) + (viewButtonBox?.width ?? 0)),
     ),
   ).toBeLessThanOrEqual(4);
-  await expect(combined.locator(".version-entry__change")).toHaveCount(2);
-  await expect(combined.locator(".version-entry__change--reorder")).toHaveAttribute(
-    "aria-label",
-    "Reordered places",
-  );
-  await expect(combined.locator(".version-entry__change--reorder")).toHaveText("");
-  const removedChange = combined
-    .locator(".version-entry__change")
-    .filter({ hasText: "places removed" });
-  await expect(removedChange).toHaveText("4 places removed");
-  await expect(combined.locator(".version-entry__change--reorder")).toHaveCSS(
-    "color",
-    "rgb(107, 114, 128)",
-  );
-  await expect(removedChange).toHaveCSS("color", "rgb(107, 114, 128)");
-  await expect(history.nth(1).locator(".version-entry__change")).toHaveCount(1);
-  await expect(history.nth(1).locator(".version-entry__change--reorder")).toHaveCount(0);
-  await expect(history.nth(2).locator(".version-entry__change")).toHaveCount(1);
-  await expect(history.nth(2).locator(".version-entry__change--reorder")).toBeVisible();
-  await expect(history.nth(3).locator(".version-entry__changes")).toHaveCount(0);
+  await expect(combined.locator(".version-preview__change-icons")).toHaveCount(0);
+  await expect(history.nth(1).locator(".version-preview__change-icons")).toHaveCount(0);
+  await expect(history.nth(2).locator(".version-preview__change-icons")).toHaveCount(0);
+  await expect(history.nth(3).locator(".version-preview__change-icons")).toHaveCount(0);
   await expect(history.nth(3).getByText("Initial plan", { exact: true })).toBeVisible();
-  await expect(history.nth(4).locator(".version-entry__changes")).toHaveCount(0);
+  await expect(history.nth(4).locator(".version-preview__change-icons")).toHaveCount(0);
   await expect(history.nth(4).getByText("Restored version from Yesterday, 09:00")).toBeVisible();
   await combined.getByRole("button", { name: "View Version 5" }).click();
-  const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .manage-day__place');
-  await expect(unscheduledPlace).toHaveText("Kiyomizu-dera");
-  await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
+  await expect(
+    page.getByText("No changes from the previous version.", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "All places", exact: true }).click();
-  await expect(unscheduledPlace).toHaveText("Kiyomizu-dera");
+  const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .manage-day__place');
+  await expect(unscheduledPlace).toContainText("Kiyomizu-dera");
   await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
   await expect(
-    page.locator('[data-version-row-id="arabica"] .manage-day__place > span'),
+    page.locator('[data-version-row-id="arabica"] .version-place__time'),
   ).toHaveText("11:00");
 });
 
