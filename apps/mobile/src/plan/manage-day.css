@@ -405,6 +405,10 @@
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.manage-day--version-preview {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .manage-day--versions .manage-day__app-bar {
   grid-template-columns: 1fr auto 1fr;
 }
@@ -500,6 +504,120 @@
 
 .manage-day__version-note {
   padding-top: 36px;
+}
+
+.version-preview__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 16px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.version-preview__summary > strong {
+  font-size: 1rem;
+}
+
+.version-preview__summary > span,
+.version-preview__summary > small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.version-preview__summary > small {
+  margin-top: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.version-preview__changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.version-preview__changes > span {
+  padding: 5px 8px;
+  color: var(--color-active);
+  border-radius: 999px;
+  background: #edf5ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.version-preview__list {
+  min-height: 0;
+  padding: 0 16px 24px;
+  overflow-y: auto;
+}
+
+.version-preview__row {
+  display: grid;
+  min-height: 76px;
+  grid-template-columns: 50px 34px minmax(0, 1fr) 48px;
+  gap: 6px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.version-preview__row img {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 11px;
+}
+
+.version-preview__restore-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 16px max(10px, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.version-preview__restore-bar button,
+.manage-day__version-missing button {
+  min-height: 50px;
+  color: var(--color-on-accent);
+  border: 0;
+  border-radius: 14px;
+  background: var(--color-active);
+  font-weight: 700;
+}
+
+.version-preview__restore-bar button:disabled {
+  color: var(--color-muted);
+  background: var(--color-surface-subtle, #f1f3f5);
+}
+
+.version-preview__restore-bar > span {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.manage-day__version-missing {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.manage-day__version-missing strong {
+  color: var(--color-text);
+}
+
+.manage-day__version-missing button {
+  margin-top: 12px;
+  padding: 0 18px;
 }
 
 .manage-day button:focus-visible {

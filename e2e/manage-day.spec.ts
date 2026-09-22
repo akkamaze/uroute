@@ -91,6 +91,31 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
   await expect(page.getByText("Reordered places · 3 places")).toBeVisible();
   await expect(page.getByText("Initial plan · 3 places")).toBeVisible();
+
+  const initialVersion = page.locator(".version-entry").filter({ hasText: "Initial plan" });
+  await initialVersion.getByRole("button", { name: /View version from/ }).click();
+  await expect(page.getByRole("heading", { name: "Version preview" })).toBeVisible();
+  await expect(page.getByText("Changes the order", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-version-row-id]")).toHaveCount(3);
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-version-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-version-row-id"))),
+    )
+    .toEqual(original);
+  expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
+
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  await expect(page.getByRole("heading", { name: "Manage day" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-manage-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+    )
+    .toEqual(original);
+  expect(await storedFridayIds(page)).toEqual(["arabica", "kiyomizu", "nishiki"]);
 });
 
 test("dragging reorders the draft without writing the saved Plan", async ({ page }) => {

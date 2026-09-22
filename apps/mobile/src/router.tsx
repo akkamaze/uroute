@@ -35,6 +35,7 @@ interface EditorSearch {
 interface ManageDaySearch {
   day?: KyotoDay;
   view?: "versions";
+  version?: string;
 }
 
 const rootRoute = createRootRoute({ component: AppRoot });
@@ -108,6 +109,11 @@ const manageDayRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): ManageDaySearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(search.view === "versions" ? { view: "versions" } : {}),
+    ...(search.view === "versions" &&
+    typeof search.version === "string" &&
+    search.version.length <= 120
+      ? { version: search.version }
+      : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/ManageDayPage"), "ManageDayPage"),
 });

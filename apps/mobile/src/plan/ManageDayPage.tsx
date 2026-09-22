@@ -134,6 +134,45 @@ function renderStopIcon(category: string): React.JSX.Element {
   return <Landmark aria-hidden="true" size={19} strokeWidth={1.8} />;
 }
 
+function describeVersionComparison(
+  current: readonly PlannedVisit[],
+  preview: readonly PlannedVisit[],
+): string[] {
+  const currentIds = new Set(current.map((visit) => visit.placeId));
+  const previewIds = new Set(preview.map((visit) => visit.placeId));
+  const added = preview.filter((visit) => !currentIds.has(visit.placeId)).length;
+  const removed = current.filter((visit) => !previewIds.has(visit.placeId)).length;
+  const sharedCurrent = current
+    .filter((visit) => previewIds.has(visit.placeId))
+    .map((visit) => visit.placeId);
+  const sharedPreview = preview
+    .filter((visit) => currentIds.has(visit.placeId))
+    .map((visit) => visit.placeId);
+  const reordered = sharedCurrent.some((id, index) => sharedPreview[index] !== id);
+  const detailsChanged = preview.filter((visit) => {
+    const existing = current.find((candidate) => candidate.placeId === visit.placeId);
+
+    return (
+      existing !== undefined && (existing.time !== visit.time || existing.notes !== visit.notes)
+    );
+  }).length;
+  const changes: string[] = [];
+  if (added > 0) {
+    changes.push(`Adds ${added} ${added === 1 ? "place" : "places"}`);
+  }
+  if (removed > 0) {
+    changes.push(`Removes ${removed} ${removed === 1 ? "place" : "places"}`);
+  }
+  if (reordered) {
+    changes.push("Changes the order");
+  }
+  if (detailsChanged > 0) {
+    changes.push(`Updates ${detailsChanged} ${detailsChanged === 1 ? "place" : "places"}`);
+  }
+
+  return changes.length > 0 ? changes : ["Matches the current draft"];
+}
+
 export function ManageDayPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/plan/manage" });
@@ -511,6 +550,109 @@ export function ManageDayPage(): React.JSX.Element {
     [],
   );
 
+  if (search.view === "versions" && search.version !== undefined) {
+    const previewVersion = versions.find((version) => version.id === search.version);
+    const matchesDraft =
+      previewVersion !== undefined &&
+      visitsSignature(previewVersion.visits) === visitsSignature(draft);
+
+    return (
+      <section className="manage-day manage-day--version-preview" data-swipe-back-ignore="true">
+        <header className="manage-day__app-bar">
+          <button
+            className="manage-day__back"
+            onClick={() =>
+              void navigate({
+                to: "/plan/manage",
+                search: { day, view: "versions" },
+                replace: true,
+              })
+            }
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
+            History
+          </button>
+          <h1>Version preview</h1>
+          <span />
+        </header>
+        {previewVersion === undefined ? (
+          <div className="manage-day__version-missing">
+            <strong>Version not available</strong>
+            <span>It may have been removed from this device.</span>
+            <button
+              onClick={() =>
+                void navigate({
+                  to: "/plan/manage",
+                  search: { day, view: "versions" },
+                  replace: true,
+                })
+              }
+              type="button"
+            >
+              Back to history
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="version-preview__summary">
+              <strong>{formatVersionTime(previewVersion.savedAt)}</strong>
+              <span>{previewVersion.summary}</span>
+              <small>Compared with current draft</small>
+              <div className="version-preview__changes">
+                {describeVersionComparison(draft, previewVersion.visits).map((change) => (
+                  <span key={change}>{change}</span>
+                ))}
+              </div>
+            </div>
+            <div
+              aria-label={`${formatVersionTime(previewVersion.savedAt)} places`}
+              className="version-preview__list"
+            >
+              {previewVersion.visits.map((visit) => {
+                const stop = stops.get(visit.placeId);
+                if (stop === undefined) {
+                  return null;
+                }
+
+                return (
+                  <article
+                    className="version-preview__row"
+                    data-version-row-id={visit.placeId}
+                    key={visit.placeId}
+                  >
+                    <span className="manage-day__time">{visit.time || "Anytime"}</span>
+                    <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
+                      {renderStopIcon(stop.category)}
+                    </span>
+                    <span className="manage-day__place">
+                      <strong>{stop.name}</strong>
+                      <span>{stop.type}</span>
+                    </span>
+                    <img alt="" src={stop.image} />
+                  </article>
+                );
+              })}
+            </div>
+            <div className="version-preview__restore-bar">
+              <button
+                disabled={matchesDraft}
+                onClick={() => {
+                  commitDraft(previewVersion.visits, "Version restored to draft");
+                  void navigate({ to: "/plan/manage", search: { day }, replace: true });
+                }}
+                type="button"
+              >
+                {matchesDraft ? "Already current draft" : "Restore this version"}
+              </button>
+              <span>Plan changes only after you Save.</span>
+            </div>
+          </>
+        )}
+      </section>
+    );
+  }
+
   if (search.view === "versions") {
     return (
       <section className="manage-day manage-day--versions" data-swipe-back-ignore="true">
@@ -564,13 +706,16 @@ export function ManageDayPage(): React.JSX.Element {
                   <small>Saved on this device</small>
                 </div>
                 <button
-                  onClick={() => {
-                    commitDraft(version.visits, "Version restored to draft");
-                    void navigate({ to: "/plan/manage", search: { day }, replace: true });
-                  }}
+                  aria-label={`View version from ${formatVersionTime(version.savedAt)}`}
+                  onClick={() =>
+                    void navigate({
+                      to: "/plan/manage",
+                      search: { day, view: "versions", version: version.id },
+                    })
+                  }
                   type="button"
                 >
-                  Restore
+                  View
                 </button>
               </article>
             ))
