@@ -1,4 +1,4 @@
-.manage-day {
+.edit-plan {
   display: grid;
   width: 100%;
   height: 100dvh;
@@ -6,21 +6,21 @@
   padding-top: env(safe-area-inset-top, 0px);
   color: var(--color-text);
   background: var(--color-surface);
-  transform: translate3d(var(--manage-swipe-x, 0px), 0, 0);
+  transform: translate3d(var(--edit-plan-swipe-x, 0px), 0, 0);
   touch-action: pan-y pinch-zoom;
 }
 
-.manage-day--swiping {
+.edit-plan--swiping {
   z-index: 2;
   box-shadow: -10px 0 28px rgb(32 33 36 / 16%);
   touch-action: pan-y;
 }
 
-.manage-day--swipe-settling {
+.edit-plan--swipe-settling {
   transition: transform 190ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.manage-day__app-bar {
+.edit-plan__app-bar {
   display: grid;
   min-height: 58px;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -30,14 +30,14 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.manage-day__app-bar h1 {
+.edit-plan__app-bar h1 {
   margin: 0;
   font-size: var(--type-title-size);
   line-height: 1.25;
   text-align: center;
 }
 
-.manage-day__app-bar button {
+.edit-plan__app-bar button {
   min-height: 44px;
   padding: 0;
   color: var(--color-active);
@@ -48,15 +48,15 @@
   text-align: left;
 }
 
-.manage-day__app-bar button:last-child {
+.edit-plan__app-bar button:last-child {
   text-align: right;
 }
 
-.manage-day__app-bar button:disabled {
+.edit-plan__app-bar button:disabled {
   color: #b8c0ca;
 }
 
-.manage-day__app-bar .manage-day__back {
+.edit-plan__app-bar .edit-plan__back {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -64,7 +64,7 @@
   white-space: nowrap;
 }
 
-.manage-day__context {
+.edit-plan__context {
   position: relative;
   display: flex;
   min-height: 84px;
@@ -74,19 +74,19 @@
   border-bottom: 1px solid var(--color-border);
 }
 
-.manage-day__context strong {
+.edit-plan__context strong {
   font-size: var(--type-title-lg-size);
   line-height: 1.4;
 }
 
-.manage-day__context > span {
+.edit-plan__context > span {
   margin-top: 3px;
   color: var(--color-muted);
   font-size: var(--type-label-size);
   line-height: 1.35;
 }
 
-.manage-day__draft-status button {
+.edit-plan__draft-status button {
   margin-left: 8px;
   padding: 0;
   color: #a33228;
@@ -96,7 +96,7 @@
   font-weight: 600;
 }
 
-.manage-day__history-actions {
+.edit-plan__history-actions {
   position: absolute;
   top: 50%;
   right: 10px;
@@ -104,7 +104,7 @@
   transform: translateY(-50%);
 }
 
-.manage-day__history-actions button {
+.edit-plan__history-actions button {
   display: grid;
   width: 44px;
   height: 44px;
@@ -116,11 +116,11 @@
   background: transparent;
 }
 
-.manage-day__history-actions button:disabled {
+.edit-plan__history-actions button:disabled {
   color: #c6cdd6;
 }
 
-.manage-day__section-heading {
+.edit-plan__section-heading {
   display: flex;
   min-height: 52px;
   align-items: center;
@@ -131,7 +131,7 @@
   font-size: var(--type-body-size);
 }
 
-.manage-day__section-heading button {
+.edit-plan__section-heading button {
   display: inline-flex;
   min-width: 44px;
   min-height: 44px;
@@ -144,16 +144,16 @@
   font-weight: 700;
 }
 
-.manage-day__section-actions {
+.edit-plan__section-actions {
   display: flex;
   align-items: center;
 }
 
-.manage-day__section-actions button + button {
+.edit-plan__section-actions button + button {
   margin-left: 6px;
 }
 
-.manage-day__list {
+.edit-plan__list {
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -164,12 +164,12 @@
   touch-action: pan-x pinch-zoom;
 }
 
-.manage-day__list--scrollable {
+.edit-plan__list--scrollable {
   overflow-y: auto;
   touch-action: pan-y pinch-zoom;
 }
 
-.manage-day__swipe-shell {
+.edit-plan__swipe-shell {
   flex-shrink: 0;
   position: relative;
   isolation: isolate;
@@ -180,12 +180,12 @@
   touch-action: pan-y pinch-zoom;
 }
 
-.manage-day__swipe-shell:has(.manage-day__row--dragging) {
+.edit-plan__swipe-shell:has(.edit-plan__row--dragging) {
   z-index: 7;
   overflow: visible;
 }
 
-.manage-day__row {
+.edit-plan__row {
   position: relative;
   display: grid;
   min-height: 76px;
@@ -201,10 +201,10 @@
     box-shadow 140ms ease,
     opacity 140ms ease,
     transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  transform: translate3d(var(--manage-row-swipe-x, 0px), var(--manage-drag-offset-y, 0px), 0);
+  transform: translate3d(var(--edit-plan-row-swipe-x, 0px), var(--edit-plan-drag-offset-y, 0px), 0);
 }
 
-.manage-day__row--swipe-open {
+.edit-plan__row--swipe-open {
   transition:
     background-color 140ms ease,
     box-shadow 140ms ease,
@@ -212,12 +212,12 @@
     transform 180ms ease-out;
 }
 
-.manage-day__row--swiping {
+.edit-plan__row--swiping {
   transition: none;
   will-change: transform;
 }
 
-.manage-day__row--dragging {
+.edit-plan__row--dragging {
   z-index: 7;
   pointer-events: none;
   background: var(--color-surface);
@@ -227,21 +227,21 @@
     box-shadow 140ms ease;
 }
 
-.manage-day__row--selected {
+.edit-plan__row--selected {
   background: #f5f7fa;
 }
 
-.manage-day__row--selected .manage-day__time,
-.manage-day__row--selected .manage-day__place,
-.manage-day__row--selected img {
+.edit-plan__row--selected .edit-plan__time,
+.edit-plan__row--selected .edit-plan__place,
+.edit-plan__row--selected img {
   opacity: 0.56;
 }
 
-.manage-day__row--selected img {
+.edit-plan__row--selected img {
   filter: saturate(0.35);
 }
 
-.manage-day__grip {
+.edit-plan__grip {
   display: grid;
   width: 36px;
   height: 100%;
@@ -255,7 +255,7 @@
   touch-action: none;
 }
 
-.manage-day__order {
+.edit-plan__order {
   width: 3ch;
   justify-self: end;
   color: var(--color-muted);
@@ -264,13 +264,13 @@
   text-align: right;
 }
 
-.manage-day__time {
+.edit-plan__time {
   color: var(--color-muted);
   font-size: var(--type-body-size);
   font-variant-numeric: tabular-nums;
 }
 
-.manage-day__icon {
+.edit-plan__icon {
   display: grid;
   width: 32px;
   height: 32px;
@@ -280,20 +280,20 @@
   background: #edf5ff;
 }
 
-.manage-day__icon--coffee,
-.manage-day__icon--food {
+.edit-plan__icon--coffee,
+.edit-plan__icon--food {
   color: #bc6b19;
   background: #fff3e4;
 }
 
-.manage-day__place {
+.edit-plan__place {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
 
-.manage-day__place strong {
+.edit-plan__place strong {
   overflow: hidden;
   font-size: var(--type-subtitle-size);
   line-height: 1.3;
@@ -301,19 +301,19 @@
   white-space: nowrap;
 }
 
-.manage-day__place span {
+.edit-plan__place span {
   color: var(--color-muted);
   font-size: var(--type-label-size);
 }
 
-.manage-day__row img {
+.edit-plan__row img {
   width: 48px;
   height: 48px;
   object-fit: cover;
   border-radius: 11px;
 }
 
-.manage-day__select-row {
+.edit-plan__select-row {
   display: grid;
   width: 100%;
   min-height: 0;
@@ -328,7 +328,7 @@
   text-align: left;
 }
 
-.manage-day__checkbox {
+.edit-plan__checkbox {
   display: grid;
   width: 22px;
   height: 22px;
@@ -340,12 +340,12 @@
   background: var(--color-surface);
 }
 
-.manage-day__checkbox--checked {
+.edit-plan__checkbox--checked {
   border-color: var(--color-active);
   background: var(--color-active);
 }
 
-.manage-day__empty {
+.edit-plan__empty {
   display: flex;
   min-height: 220px;
   flex-direction: column;
@@ -356,16 +356,16 @@
   text-align: center;
 }
 
-.manage-day__empty strong {
+.edit-plan__empty strong {
   color: var(--color-text);
   font-size: var(--type-title-size);
 }
 
-.manage-day__empty span {
+.edit-plan__empty span {
   font-size: var(--type-body-sm-size);
 }
 
-.manage-day__versions-link {
+.edit-plan__versions-link {
   display: grid;
   min-height: calc(58px + env(safe-area-inset-bottom, 0px));
   grid-template-columns: 28px 1fr auto;
@@ -379,22 +379,22 @@
   text-align: left;
 }
 
-.manage-day__versions-link > svg {
+.edit-plan__versions-link > svg {
   color: var(--color-muted);
 }
 
-.manage-day__versions-link > span {
+.edit-plan__versions-link > span {
   color: var(--color-muted);
   font-size: var(--type-display-size);
 }
 
-.manage-day__remove-bar {
+.edit-plan__remove-bar {
   padding: 10px 16px max(10px, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--color-border);
   background: var(--color-surface);
 }
 
-.manage-day__remove-bar button {
+.edit-plan__remove-bar button {
   display: flex;
   width: 100%;
   min-height: 52px;
@@ -408,7 +408,7 @@
   font-weight: 700;
 }
 
-.manage-day__notice {
+.edit-plan__notice {
   position: fixed;
   z-index: 8;
   right: max(16px, calc((100vw - 414px) / 2 + 16px));
@@ -426,14 +426,14 @@
   box-shadow: 0 6px 24px rgb(32 33 36 / 16%);
 }
 
-.manage-day__notice-copy {
+.edit-plan__notice-copy {
   display: grid;
   min-width: 0;
   flex: 1;
   gap: 2px;
 }
 
-.manage-day__notice-image {
+.edit-plan__notice-image {
   width: 46px;
   height: 46px;
   flex: none;
@@ -441,7 +441,7 @@
   border-radius: 11px;
 }
 
-.manage-day__notice-copy > strong {
+.edit-plan__notice-copy > strong {
   overflow: hidden;
   font-size: var(--type-body-size);
   line-height: 1.25;
@@ -449,19 +449,19 @@
   white-space: nowrap;
 }
 
-.manage-day__notice-copy > span {
+.edit-plan__notice-copy > span {
   color: var(--color-muted);
   font-size: var(--type-body-sm-size);
   line-height: 1.35;
 }
 
-.manage-day__notice-copy > small {
+.edit-plan__notice-copy > small {
   color: var(--color-muted);
   font-size: var(--type-label-size);
   line-height: 1.3;
 }
 
-.manage-day__notice button {
+.edit-plan__notice button {
   min-width: 44px;
   min-height: 44px;
   padding: 0 4px;
@@ -472,13 +472,13 @@
   font-weight: 700;
 }
 
-.manage-day__notice button:last-child {
+.edit-plan__notice button:last-child {
   display: grid;
   place-items: center;
   color: var(--color-muted);
 }
 
-.manage-day__cancel-move {
+.edit-plan__cancel-move {
   position: fixed;
   z-index: 9;
   bottom: calc(72px + env(safe-area-inset-bottom, 0px));
@@ -497,38 +497,38 @@
   transform: translateX(-50%);
 }
 
-.manage-day__cancel-move--active {
+.edit-plan__cancel-move--active {
   color: var(--color-active);
   border-color: var(--color-active);
   background: #edf5ff;
 }
 
-.remove-stops-dialog .manage-day__primary {
+.remove-stops-dialog .edit-plan__primary {
   color: var(--color-on-accent);
   border-color: var(--color-active);
   background: var(--color-active);
 }
 
-.manage-day--versions {
+.edit-plan--versions {
   grid-template-rows: auto minmax(0, 1fr);
 }
 
-.manage-day--version-preview {
+.edit-plan--version-preview {
   grid-template-rows: auto auto auto minmax(0, 1fr) auto;
 }
 
-.manage-day--versions .manage-day__app-bar {
+.edit-plan--versions .edit-plan__app-bar {
   grid-template-columns: 1fr auto 1fr;
 }
 
-.manage-day__versions-content {
+.edit-plan__versions-content {
   min-height: 0;
   padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
   background: var(--color-surface);
 }
 
-.manage-day__versions-content .manage-day__context {
+.edit-plan__versions-content .edit-plan__context {
   padding-right: 16px;
   background: var(--color-surface);
 }
@@ -739,7 +739,7 @@
   font-size: var(--type-caption-size);
 }
 
-.manage-day__versions-empty {
+.edit-plan__versions-empty {
   margin: 4px 24px 24px 60px;
   color: var(--color-muted);
   font-size: var(--type-label-size);
@@ -981,7 +981,7 @@
 }
 
 .version-preview__restore-bar button,
-.manage-day__version-missing button {
+.edit-plan__version-missing button {
   min-height: 50px;
   color: var(--color-on-accent);
   border: 0;
@@ -1010,14 +1010,14 @@
   text-align: center;
 }
 
-.manage-day__restore-warning {
+.edit-plan__restore-warning {
   padding: 10px 12px;
   color: #896833;
   border-radius: 8px;
   background: #fff9ed;
 }
 
-.manage-day__version-missing {
+.edit-plan__version-missing {
   display: flex;
   min-height: 260px;
   flex-direction: column;
@@ -1029,30 +1029,30 @@
   text-align: center;
 }
 
-.manage-day__version-missing strong {
+.edit-plan__version-missing strong {
   color: var(--color-text);
 }
 
-.manage-day__version-missing button {
+.edit-plan__version-missing button {
   margin-top: 12px;
   padding: 0 18px;
 }
 
-.manage-day button:focus-visible {
+.edit-plan button:focus-visible {
   outline: 2px solid var(--color-active);
   outline-offset: 2px;
 }
 
 @media (min-width: 600px) {
-  .manage-day {
+  .edit-plan {
     max-width: 414px;
     margin: 0 auto;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .manage-day__row,
-  .manage-day--swipe-settling {
+  .edit-plan__row,
+  .edit-plan--swipe-settling {
     transition-duration: 1ms;
   }
 }

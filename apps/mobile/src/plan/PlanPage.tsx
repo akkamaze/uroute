@@ -14,7 +14,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
-import { loadManageDayDraft, visitsSignature } from "./edit-plan-store";
+import { loadEditPlanDraft, visitsSignature } from "./edit-plan-store";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
@@ -99,7 +99,7 @@ export function PlanPage(): React.JSX.Element {
   const plan = useKyotoPlan();
   const draftDays = new Set<KyotoDay>(
     TRIP_DAYS.flatMap(({ date }) =>
-      loadManageDayDraft(date, visitsSignature(plan.days[date])) === null ? [] : [date],
+      loadEditPlanDraft(date, visitsSignature(plan.days[date])) === null ? [] : [date],
     ),
   );
   const hasDraft = draftDays.has(selectedDay);
@@ -436,7 +436,7 @@ export function PlanPage(): React.JSX.Element {
               <button
                 aria-label={`Edit plan for ${dayLabel}`}
                 className="day-plan__select-toggle"
-                onClick={() => void navigate({ to: "/plan/manage", search: { day: selectedDay } })}
+                onClick={() => void navigate({ to: "/plan/edit", search: { day: selectedDay } })}
                 type="button"
               >
                 <span className="day-plan__edit-icon">

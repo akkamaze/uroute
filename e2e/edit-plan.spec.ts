@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
 const PLAN_STORAGE_KEY = "uroute.mock.kyoto-plan.v1";
-const VERSIONS_STORAGE_KEY = "uroute.mock.manage-day-versions.v1";
+const VERSIONS_STORAGE_KEY = "uroute.mock.edit-plan-versions.v1";
 
 test.beforeEach(async ({ page }) => {
   await page.goto("/plan?day=13");
@@ -42,7 +42,7 @@ async function storedFridayIds(page: Page): Promise<string[]> {
 test("touch swipe tracks the finger, removes a draft place and supports back navigation", async ({
   page,
 }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const original = await storedFridayIds(page);
   const client = await page.context().newCDPSession(page);
   async function touch(type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0): Promise<void> {
@@ -51,7 +51,7 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
       touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
     });
   }
-  const row = page.locator('[data-manage-row-id="kiyomizu"]');
+  const row = page.locator('[data-edit-plan-row-id="kiyomizu"]');
   const box = await row.boundingBox();
   if (box === null) {
     throw new Error("Expected place row");
@@ -71,7 +71,7 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
   await expect
     .poll(() => row.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).m41))
     .toBe(0);
-  await expect(page.locator(".manage-day__swipe-remove")).toHaveCount(0);
+  await expect(page.locator(".edit-plan__swipe-remove")).toHaveCount(0);
   expect(await storedFridayIds(page)).toEqual(original);
   // Deliberate swipes commit in either direction without a reveal stage.
   for (const direction of [-1, 1]) {
@@ -85,14 +85,14 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
-    await expect(page.locator(".manage-day__notice img")).toHaveAttribute(
+    await expect(page.locator(".edit-plan__notice img")).toHaveAttribute(
       "src",
       "/images/temple.png",
     );
-    await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
-    await expect(page.locator(".manage-day__notice")).toContainText("Restore · #1");
-    await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
-    await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+    await expect(page.locator(".edit-plan__notice")).toContainText("Kiyomizu-dera");
+    await expect(page.locator(".edit-plan__notice")).toContainText("Restore · #1");
+    await expect(page.locator(".edit-plan__notice")).toContainText("0 undo steps remaining");
+    await expect(page.locator("#edit-plan-change-announcement")).toHaveText(
       "Undid removal · Kiyomizu-dera restored at #1 · 0 undo steps remaining",
     );
   }
@@ -107,12 +107,12 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
     await expect(row).toHaveCount(0);
     await page.getByRole("button", { name: "Undo", exact: true }).click();
     await expect(row).toBeVisible();
-    await expect(page.locator(".manage-day__notice")).toContainText("Restore · #1");
-    await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
+    await expect(page.locator(".edit-plan__notice")).toContainText("Restore · #1");
+    await expect(page.locator(".edit-plan__notice")).toContainText("0 undo steps remaining");
   }
   // A real touch drag must remain visible outside its original clipped row.
-  const grip = await row.locator(".manage-day__grip").boundingBox();
-  const target = await page.locator('[data-manage-row-id="nishiki"]').boundingBox();
+  const grip = await row.locator(".edit-plan__grip").boundingBox();
+  const target = await page.locator('[data-edit-plan-row-id="nishiki"]').boundingBox();
   if (!grip || !target) {
     throw new Error("Expected drag geometry");
   }
@@ -126,8 +126,8 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
   await expect(row.locator("..")).toHaveCSS("overflow", "visible");
   await expect(row.locator("..")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await touch("touchEnd");
-  await expect(page.locator("[data-manage-row-id]").last()).toHaveAttribute(
-    "data-manage-row-id",
+  await expect(page.locator("[data-edit-plan-row-id]").last()).toHaveAttribute(
+    "data-edit-plan-row-id",
     "kiyomizu",
   );
   await page.getByRole("button", { name: "Undo", exact: true }).click();
@@ -172,21 +172,21 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
-  await expect(page).toHaveURL(/\/plan\/manage\?day=13/);
+  await expect(page).toHaveURL(/\/plan\/edit\?day=13/);
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
   const editPlanBack = page.getByRole("button", { name: "Back to Plan" });
   await expect(editPlanBack).toBeVisible();
   await expect(editPlanBack).toHaveCSS("color", "rgb(32, 33, 36)");
   await expect(page.locator(".bottom-navigation")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reorder Kiyomizu-dera" })).toBeVisible();
-  await expect(page.locator(".manage-day__icon")).toHaveCount(3);
-  await expect(page.locator(".manage-day__order")).toHaveText(["1", "2", "3"]);
-  const manageCardGeometry = await page
-    .locator(".manage-day__row")
+  await expect(page.locator(".edit-plan__icon")).toHaveCount(3);
+  await expect(page.locator(".edit-plan__order")).toHaveText(["1", "2", "3"]);
+  const editPlanCardGeometry = await page
+    .locator(".edit-plan__row")
     .first()
     .evaluate((card) => {
       const photo = card.querySelector("img");
-      const grip = card.querySelector(".manage-day__grip");
+      const grip = card.querySelector(".edit-plan__grip");
       if (!(photo instanceof HTMLElement) || !(grip instanceof HTMLElement)) {
         throw new Error("Edit plan card photo and drag handle must be present");
       }
@@ -204,9 +204,9 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
         gripIsBeforePhoto: gripRect.right < photoRect.left,
       };
     });
-  expect(manageCardGeometry.geometry).toEqual(planCardGeometry);
-  expect(manageCardGeometry.photoRightInset).toBe(8);
-  expect(manageCardGeometry.gripIsBeforePhoto).toBe(true);
+  expect(editPlanCardGeometry.geometry).toEqual(planCardGeometry);
+  expect(editPlanCardGeometry.photoRightInset).toBe(8);
+  expect(editPlanCardGeometry.gripIsBeforePhoto).toBe(true);
 });
 
 test("unset times use an accessible dash and scroll surfaces avoid boundary overscroll", async ({
@@ -223,18 +223,18 @@ test("unset times use an accessible dash and scroll surfaces avoid boundary over
     window.localStorage.setItem(key, JSON.stringify(stored));
   }, PLAN_STORAGE_KEY);
 
-  await page.goto("/plan/manage?day=13");
-  const editTime = page.locator('[data-manage-row-id="kiyomizu"] .manage-day__time');
+  await page.goto("/plan/edit?day=13");
+  const editTime = page.locator('[data-edit-plan-row-id="kiyomizu"] .edit-plan__time');
   await expect(editTime).toHaveAttribute("aria-label", "No time set");
   await expect(editTime).toHaveClass(/visit-time--unset/);
   await expect(editTime.locator(".visit-time__unset-mark")).toHaveCSS("width", "8px");
   await expect(editTime.locator(".visit-time__unset-mark")).toHaveCSS("height", "1px");
-  const timeCenters = await page.locator(".manage-day__list").evaluate((list) => {
+  const timeCenters = await page.locator(".edit-plan__list").evaluate((list) => {
     const scheduled = list.querySelector<HTMLElement>(
-      '[data-manage-row-id="arabica"] .manage-day__time',
+      '[data-edit-plan-row-id="arabica"] .edit-plan__time',
     );
     const mark = list.querySelector<HTMLElement>(
-      '[data-manage-row-id="kiyomizu"] .visit-time__unset-mark',
+      '[data-edit-plan-row-id="kiyomizu"] .visit-time__unset-mark',
     );
     if (scheduled === null || mark === null) {
       throw new Error("Expected scheduled time and unset-time mark");
@@ -252,8 +252,8 @@ test("unset times use an accessible dash and scroll surfaces avoid boundary over
   expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(0.5);
   await expect(page.getByText("Anytime", { exact: true })).toHaveCount(0);
 
-  const editList = page.locator(".manage-day__list");
-  await expect(editList).not.toHaveClass(/manage-day__list--scrollable/);
+  const editList = page.locator(".edit-plan__list");
+  await expect(editList).not.toHaveClass(/edit-plan__list--scrollable/);
   await expect(editList).toHaveCSS("overflow-y", "hidden");
   await expect(editList).toHaveCSS("overscroll-behavior-y", "none");
   expect(
@@ -283,7 +283,7 @@ test("unset times use an accessible dash and scroll surfaces avoid boundary over
 test("reorder stays in an autosaved draft until Save and supports undo and redo", async ({
   page,
 }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const original = await storedFridayIds(page);
   expect(original).toEqual(["kiyomizu", "arabica", "nishiki"]);
 
@@ -294,45 +294,45 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(["arabica", "nishiki", "kiyomizu"]);
   expect(await storedFridayIds(page)).toEqual(original);
 
-  await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
-  await expect(page.locator(".manage-day__notice")).toContainText("Move · #3 → #2");
-  await expect(page.locator(".manage-day__notice")).toContainText("1 undo step remaining");
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+  await page.locator(".edit-plan__history-actions").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".edit-plan__notice")).toContainText("Kiyomizu-dera");
+  await expect(page.locator(".edit-plan__notice")).toContainText("Move · #3 → #2");
+  await expect(page.locator(".edit-plan__notice")).toContainText("1 undo step remaining");
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #3 → #2 · 1 undo step remaining",
   );
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
-  await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText("Move · #2 → #1");
-  await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+  await page.locator(".edit-plan__history-actions").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".edit-plan__notice")).toContainText("Move · #2 → #1");
+  await expect(page.locator(".edit-plan__notice")).toContainText("0 undo steps remaining");
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
   );
-  await expect(page.locator(".manage-day__notice")).toHaveCount(0, { timeout: 3_000 });
+  await expect(page.locator(".edit-plan__notice")).toHaveCount(0, { timeout: 3_000 });
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(original);
-  await page.locator(".manage-day__history-actions").getByRole("button", { name: "Redo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText("Kiyomizu-dera");
-  await expect(page.locator(".manage-day__notice")).toContainText("Move · #1 → #2");
-  await expect(page.locator(".manage-day__notice")).toContainText("1 redo step remaining");
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+  await page.locator(".edit-plan__history-actions").getByRole("button", { name: "Redo" }).click();
+  await expect(page.locator(".edit-plan__notice")).toContainText("Kiyomizu-dera");
+  await expect(page.locator(".edit-plan__notice")).toContainText("Move · #1 → #2");
+  await expect(page.locator(".edit-plan__notice")).toContainText("1 redo step remaining");
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText(
     "Redid move · Kiyomizu-dera #1 → #2 · 1 redo step remaining",
   );
   await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -385,12 +385,12 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   );
   await page.getByRole("button", { name: "All places" }).click();
   await expect(page.locator("[data-version-row-id]")).toHaveCount(3);
-  await expect(page.locator(".version-place .manage-day__grip")).toHaveCount(0);
+  await expect(page.locator(".version-place .edit-plan__grip")).toHaveCount(0);
   await expect(page.locator('[data-version-row-id="arabica"] .version-place__time')).toHaveText(
     "11:00",
   );
   await expect(
-    page.locator('[data-version-row-id="arabica"] .manage-day__place > span'),
+    page.locator('[data-version-row-id="arabica"] .edit-plan__place > span'),
   ).toHaveText("Coffee");
   await page.getByRole("button", { name: "Back to Version history" }).click();
 
@@ -482,7 +482,7 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
     },
     { key: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/manage?day=13&view=versions&version=swipe-version");
+  await page.goto("/plan/edit?day=13&view=versions&version=swipe-version");
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
 
   async function swipeBack(): Promise<void> {
@@ -505,7 +505,7 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
 });
 
 test("Version history puts unsaved work above the current saved version", async ({ page }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
   await grip.focus();
   await grip.press("Alt+ArrowDown");
@@ -561,7 +561,7 @@ test("Version history reveals older versions ten at a time", async ({ page }) =>
     },
     { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/manage?day=13&view=versions");
+  await page.goto("/plan/edit?day=13&view=versions");
 
   const history = page.locator('[data-version-id]');
   await expect(history).toHaveCount(10);
@@ -613,7 +613,7 @@ test("Version history shows place-count changes from the previous version", asyn
     },
     { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/manage?day=13&view=versions");
+  await page.goto("/plan/edit?day=13&view=versions");
 
   await expect(page.locator('[data-version-id="count-3"]')).toContainText("2 places (−1)");
   await expect(page.locator('[data-version-id="count-2"]')).toContainText("3 places (+1)");
@@ -658,7 +658,7 @@ test("Version history migrates legacy Before restore wording", async ({ page }) 
     },
     { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/manage?day=13&view=versions");
+  await page.goto("/plan/edit?day=13&view=versions");
 
   await expect(
     page.getByText("Auto-saved before restoring", { exact: true }),
@@ -700,7 +700,7 @@ test("history separates place counts and shows only applicable change indicators
     },
     { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/manage?day=13&view=versions");
+  await page.goto("/plan/edit?day=13&view=versions");
   const history = page.locator(".version-entry:not(.version-entry--current)");
   await expect(history).toHaveCount(5);
   const combined = history.nth(0);
@@ -728,7 +728,7 @@ test("history separates place counts and shows only applicable change indicators
     page.getByText("No changes from the previous version.", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "All places", exact: true }).click();
-  const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .manage-day__place');
+  const unscheduledPlace = page.locator('[data-version-row-id="kiyomizu"] .edit-plan__place');
   await expect(unscheduledPlace).toContainText("Kiyomizu-dera");
   await expect(unscheduledPlace.locator('[aria-label="No time set"]')).toHaveCount(0);
   await expect(
@@ -737,22 +737,22 @@ test("history separates place counts and shows only applicable change indicators
 });
 
 test("dragging reorders the draft without writing the saved Plan", async ({ page }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const original = await storedFridayIds(page);
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
   await grip.focus();
   await grip.press("Alt+ArrowDown");
-  await page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }).click();
-  await expect(page.locator(".manage-day__notice")).toContainText("Move · #2 → #1");
-  await expect(page.locator(".manage-day__notice")).toContainText("0 undo steps remaining");
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText(
+  await page.locator(".edit-plan__history-actions").getByRole("button", { name: "Undo" }).click();
+  await expect(page.locator(".edit-plan__notice")).toContainText("Move · #2 → #1");
+  await expect(page.locator(".edit-plan__notice")).toContainText("0 undo steps remaining");
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText(
     "Undid move · Kiyomizu-dera #2 → #1 · 0 undo steps remaining",
   );
-  const target = page.locator('[data-manage-row-id="nishiki"]');
+  const target = page.locator('[data-edit-plan-row-id="nishiki"]');
   const gripBox = await grip.boundingBox();
   const targetBox = await target.boundingBox();
   if (gripBox === null || targetBox === null) {
-    throw new Error("Manage day drag source and target must be visible");
+    throw new Error("Edit plan drag source and target must be visible");
   }
 
   await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
@@ -760,46 +760,46 @@ test("dragging reorders the draft without writing the saved Plan", async ({ page
   await page.mouse.move(gripBox.x + gripBox.width / 2, targetBox.y + targetBox.height * 0.75, {
     steps: 6,
   });
-  const draggingRow = page.locator(".manage-day__row--dragging");
+  const draggingRow = page.locator(".edit-plan__row--dragging");
   await expect(draggingRow).toBeVisible();
   await expect
     .poll(() =>
       draggingRow.evaluate((row) =>
-        getComputedStyle(row).getPropertyValue("--manage-drag-offset-y").trim(),
+        getComputedStyle(row).getPropertyValue("--edit-plan-drag-offset-y").trim(),
       ),
     )
     .not.toBe("0px");
-  await expect(page.locator(".manage-day__cancel-move")).toBeVisible();
-  await expect(page.locator(".manage-day__notice")).toHaveCount(0);
+  await expect(page.locator(".edit-plan__cancel-move")).toBeVisible();
+  await expect(page.locator(".edit-plan__notice")).toHaveCount(0);
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(["arabica", "nishiki", "kiyomizu"]);
   expect(await storedFridayIds(page)).toEqual(original);
 
   await page.mouse.up();
-  await expect(page.locator(".manage-day__notice")).toHaveCount(0);
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText("Kiyomizu-dera moved");
-  await expect(page.locator(".manage-day__order")).toHaveText(["1", "2", "3"]);
+  await expect(page.locator(".edit-plan__notice")).toHaveCount(0);
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText("Kiyomizu-dera moved");
+  await expect(page.locator(".edit-plan__order")).toHaveText(["1", "2", "3"]);
   await expect(
-    page.locator(".manage-day__history-actions").getByRole("button", { name: "Undo" }),
+    page.locator(".edit-plan__history-actions").getByRole("button", { name: "Undo" }),
   ).toBeEnabled();
   expect(await storedFridayIds(page)).toEqual(original);
 });
 
 test("Cancel move restores the original draft order without enabling Save", async ({ page }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   async function layout(): Promise<unknown> {
-    return page.locator(".manage-day").evaluate((surface) =>
+    return page.locator(".edit-plan").evaluate((surface) =>
       [
-        ".manage-day__app-bar",
-        ".manage-day__context",
-        ".manage-day__section-heading",
-        ".manage-day__list",
-        ".manage-day__versions-link",
+        ".edit-plan__app-bar",
+        ".edit-plan__context",
+        ".edit-plan__section-heading",
+        ".edit-plan__list",
+        ".edit-plan__versions-link",
       ].map((selector) => {
         const rect = surface.querySelector(selector)!.getBoundingClientRect();
 
@@ -808,24 +808,24 @@ test("Cancel move restores the original draft order without enabling Save", asyn
     );
   }
   const restingLayout = await layout();
-  const restingRows = await page.locator("[data-manage-row-id]").evaluateAll((rows) =>
+  const restingRows = await page.locator("[data-edit-plan-row-id]").evaluateAll((rows) =>
     rows
       .map((row) => ({
-        id: row.getAttribute("data-manage-row-id"),
+        id: row.getAttribute("data-edit-plan-row-id"),
         height: Math.round(row.getBoundingClientRect().height * 100) / 100,
       }))
       .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
   );
   const original = await storedFridayIds(page);
   const originalDraftOrder = await page
-    .locator("[data-manage-row-id]")
-    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id")));
+    .locator("[data-edit-plan-row-id]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id")));
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
-  const target = page.locator('[data-manage-row-id="nishiki"]');
+  const target = page.locator('[data-edit-plan-row-id="nishiki"]');
   const gripBox = await grip.boundingBox();
   const targetBox = await target.boundingBox();
   if (gripBox === null || targetBox === null) {
-    throw new Error("Manage day cancel drag source and target must be visible");
+    throw new Error("Edit plan cancel drag source and target must be visible");
   }
 
   await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
@@ -833,35 +833,35 @@ test("Cancel move restores the original draft order without enabling Save", asyn
   await page.mouse.move(gripBox.x + gripBox.width / 2, targetBox.y + targetBox.height * 0.75, {
     steps: 6,
   });
-  await expect(page.locator(".manage-day__cancel-move")).toBeVisible();
-  const cancelBox = await page.locator(".manage-day__cancel-move").boundingBox();
+  await expect(page.locator(".edit-plan__cancel-move")).toBeVisible();
+  const cancelBox = await page.locator(".edit-plan__cancel-move").boundingBox();
   if (cancelBox === null) {
     throw new Error("Cancel move target must be visible");
   }
   const previewOrder = await page
-    .locator("[data-manage-row-id]")
-    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id")));
+    .locator("[data-edit-plan-row-id]")
+    .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id")));
   await page.mouse.move(cancelBox.x + cancelBox.width / 2, cancelBox.y + cancelBox.height / 2, {
     steps: 4,
   });
-  await expect(page.locator(".manage-day__cancel-move--active")).toBeVisible();
+  await expect(page.locator(".edit-plan__cancel-move--active")).toBeVisible();
   expect(
     await page
-      .locator("[data-manage-row-id]")
-      .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+      .locator("[data-edit-plan-row-id]")
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
   ).toEqual(previewOrder);
   expect(await layout()).toEqual(restingLayout);
   expect(
-    await page.locator("[data-manage-row-id]").evaluateAll((rows) =>
+    await page.locator("[data-edit-plan-row-id]").evaluateAll((rows) =>
       rows
         .map((row) => ({
-          id: row.getAttribute("data-manage-row-id"),
+          id: row.getAttribute("data-edit-plan-row-id"),
           height: Math.round(row.getBoundingClientRect().height * 100) / 100,
         }))
         .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
     ),
   ).toEqual(restingRows);
-  const dragged = page.locator('[data-manage-row-id="kiyomizu"]');
+  const dragged = page.locator('[data-edit-plan-row-id="kiyomizu"]');
   const cancelX = cancelBox.x + cancelBox.width / 2;
   const cancelY = cancelBox.y + cancelBox.height / 2;
   async function expectUnderPointer(y: number): Promise<void> {
@@ -882,7 +882,7 @@ test("Cancel move restores the original draft order without enabling Save", asyn
   await page.mouse.move(gripBox.x + gripBox.width / 2, targetBox.y + targetBox.height * 0.75, {
     steps: 4,
   });
-  await expect(page.locator(".manage-day__cancel-move--active")).toHaveCount(0);
+  await expect(page.locator(".edit-plan__cancel-move--active")).toHaveCount(0);
   await expectUnderPointer(targetBox.y + targetBox.height * 0.75);
   await page.mouse.move(cancelX, cancelY, { steps: 4 });
   await expectUnderPointer(cancelY);
@@ -892,21 +892,21 @@ test("Cancel move restores the original draft order without enabling Save", asyn
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(originalDraftOrder);
-  await expect(page.locator(".manage-day__notice")).toHaveCount(0);
-  await expect(page.locator("#manage-day-change-announcement")).toHaveText("Move cancelled");
+  await expect(page.locator(".edit-plan__notice")).toHaveCount(0);
+  await expect(page.locator("#edit-plan-change-announcement")).toHaveText("Move cancelled");
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   expect(await storedFridayIds(page)).toEqual(original);
 });
 
 test("bulk removal changes only the draft and confirms once when saved", async ({ page }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const original = await storedFridayIds(page);
   const restingHeight = await page
-    .locator(".manage-day__row")
+    .locator(".edit-plan__row")
     .first()
     .evaluate((row) => row.getBoundingClientRect().height);
 
@@ -916,7 +916,7 @@ test("bulk removal changes only the draft and confirms once when saved", async (
   await expect(page.getByRole("button", { name: "Select all" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   const selectionHeight = await page
-    .locator(".manage-day__row")
+    .locator(".edit-plan__row")
     .first()
     .evaluate((row) => row.getBoundingClientRect().height);
   expect(selectionHeight).toBe(restingHeight);
@@ -924,7 +924,7 @@ test("bulk removal changes only the draft and confirms once when saved", async (
   await page.getByRole("checkbox", { name: "Mark Nishiki Market for removal" }).click();
   await page.getByRole("button", { name: "Remove 2 places", exact: true }).click();
 
-  await expect(page.locator("[data-manage-row-id]")).toHaveCount(1);
+  await expect(page.locator("[data-edit-plan-row-id]")).toHaveCount(1);
   expect(await storedFridayIds(page)).toEqual(original);
   await page.getByRole("button", { name: "Save", exact: true }).click();
 
@@ -938,7 +938,7 @@ test("bulk removal changes only the draft and confirms once when saved", async (
 });
 
 test("Back flushes the latest draft and explicit discard removes it", async ({ page }) => {
-  await page.goto("/plan/manage?day=13");
+  await page.goto("/plan/edit?day=13");
   const original = await storedFridayIds(page);
   const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
   await grip.focus();
@@ -958,8 +958,8 @@ test("Back flushes the latest draft and explicit discard removes it", async ({ p
   await expect
     .poll(() =>
       page
-        .locator("[data-manage-row-id]")
-        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-manage-row-id"))),
+        .locator("[data-edit-plan-row-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-edit-plan-row-id"))),
     )
     .toEqual(["arabica", "kiyomizu", "nishiki"]);
 

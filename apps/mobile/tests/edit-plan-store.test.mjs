@@ -1,12 +1,12 @@
 import { beforeEach, expect, test } from "bun:test";
 
 import {
-  addManageDayVersion,
-  clearManageDayDraft,
-  loadManageDayDraft,
-  loadManageDayVersions,
-  restoreAndSaveManageDayVersion,
-  saveManageDayDraft,
+  addEditPlanVersion,
+  clearEditPlanDraft,
+  loadEditPlanDraft,
+  loadEditPlanVersions,
+  restoreAndSaveEditPlanVersion,
+  saveEditPlanDraft,
   visitsSignature,
 } from "../src/plan/edit-plan-store.ts";
 import { KYOTO_PLAN_STORAGE_KEY } from "../src/plan/plan-store.ts";
@@ -54,13 +54,13 @@ test("restores the plan, records both sides of history and clears the draft toge
     KYOTO_PLAN_STORAGE_KEY,
     JSON.stringify({ days: { 12: [], 13: originalVisits, 14: [], 15: [], 16: [] } }),
   );
-  saveManageDayDraft(13, visitsSignature(originalVisits), restoredVisits);
-  const selected = addManageDayVersion(13, restoredVisits, "Earlier route", 500)[0];
+  saveEditPlanDraft(13, visitsSignature(originalVisits), restoredVisits);
+  const selected = addEditPlanVersion(13, restoredVisits, "Earlier route", 500)[0];
   if (selected === undefined) {
     throw new Error("Expected source version");
   }
 
-  const result = restoreAndSaveManageDayVersion(13, originalVisits, selected, 1_000);
+  const result = restoreAndSaveEditPlanVersion(13, originalVisits, selected, 1_000);
 
   expect(result.ok).toBe(true);
   expect(
@@ -78,7 +78,7 @@ test("restores the plan, records both sides of history and clears the draft toge
     sourceSequence: 1,
     sourceSummary: "Earlier route",
   });
-  expect(loadManageDayDraft(13, visitsSignature(originalVisits))).toBeNull();
+  expect(loadEditPlanDraft(13, visitsSignature(originalVisits))).toBeNull();
 });
 
 test("rolls back plan, history and draft when atomic restoration cannot finish", () => {
@@ -87,11 +87,11 @@ test("rolls back plan, history and draft when atomic restoration cannot finish",
     days: { 12: [], 13: originalVisits, 14: [], 15: [], 16: [] },
   });
   globalThis.window.localStorage.setItem(KYOTO_PLAN_STORAGE_KEY, originalPlan);
-  saveManageDayDraft(13, visitsSignature(originalVisits), restoredVisits);
-  const originalDrafts = globalThis.window.localStorage.getItem("uroute.mock.manage-day-drafts.v1");
-  memoryStorage.failKey = "uroute.mock.manage-day-versions.v1";
+  saveEditPlanDraft(13, visitsSignature(originalVisits), restoredVisits);
+  const originalDrafts = globalThis.window.localStorage.getItem("uroute.mock.edit-plan-drafts.v1");
+  memoryStorage.failKey = "uroute.mock.edit-plan-versions.v1";
 
-  const result = restoreAndSaveManageDayVersion(
+  const result = restoreAndSaveEditPlanVersion(
     13,
     originalVisits,
     {
@@ -106,30 +106,30 @@ test("rolls back plan, history and draft when atomic restoration cannot finish",
 
   expect(result.ok).toBe(false);
   expect(globalThis.window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY)).toBe(originalPlan);
-  expect(globalThis.window.localStorage.getItem("uroute.mock.manage-day-drafts.v1")).toBe(
+  expect(globalThis.window.localStorage.getItem("uroute.mock.edit-plan-drafts.v1")).toBe(
     originalDrafts,
   );
-  expect(loadManageDayVersions(13)).toEqual([]);
+  expect(loadEditPlanVersions(13)).toEqual([]);
 });
 
 test("loads an autosaved draft only for the plan revision it was based on", () => {
   const base = visitsSignature(originalVisits);
   const reordered = [originalVisits[1], originalVisits[0]];
 
-  expect(saveManageDayDraft(13, base, reordered)).toBe(true);
-  expect(loadManageDayDraft(13, base)?.visits).toEqual(reordered);
-  expect(loadManageDayDraft(13, "newer-plan")).toBeNull();
+  expect(saveEditPlanDraft(13, base, reordered)).toBe(true);
+  expect(loadEditPlanDraft(13, base)?.visits).toEqual(reordered);
+  expect(loadEditPlanDraft(13, "newer-plan")).toBeNull();
 
-  clearManageDayDraft(13);
-  expect(loadManageDayDraft(13, base)).toBeNull();
+  clearEditPlanDraft(13);
+  expect(loadEditPlanDraft(13, base)).toBeNull();
 });
 
 test("keeps every restorable version while assigning stable sequence numbers", () => {
   for (let index = 0; index < 12; index += 1) {
-    addManageDayVersion(13, originalVisits, `Version ${index}`, 1_000 + index);
+    addEditPlanVersion(13, originalVisits, `Version ${index}`, 1_000 + index);
   }
 
-  const versions = loadManageDayVersions(13);
+  const versions = loadEditPlanVersions(13);
   expect(versions).toHaveLength(12);
   expect(versions[0]?.summary).toBe("Version 11");
   expect(versions[0]?.sequence).toBe(12);
@@ -140,7 +140,7 @@ test("keeps every restorable version while assigning stable sequence numbers", (
 
 test("assigns stable sequence numbers when loading legacy version entries", () => {
   globalThis.window.localStorage.setItem(
-    "uroute.mock.manage-day-versions.v1",
+    "uroute.mock.edit-plan-versions.v1",
     JSON.stringify({
       13: [
         { id: "newer", savedAt: 200, summary: "Newer", visits: originalVisits },
@@ -149,13 +149,13 @@ test("assigns stable sequence numbers when loading legacy version entries", () =
     }),
   );
 
-  expect(loadManageDayVersions(13).map((version) => version.sequence)).toEqual([2, 1]);
+  expect(loadEditPlanVersions(13).map((version) => version.sequence)).toEqual([2, 1]);
 });
 
 test("labels legacy restore backups with the restored source version", () => {
   const restoredVisits = [originalVisits[1], originalVisits[0]];
   globalThis.window.localStorage.setItem(
-    "uroute.mock.manage-day-versions.v1",
+    "uroute.mock.edit-plan-versions.v1",
     JSON.stringify({
       13: [
         {
@@ -170,7 +170,7 @@ test("labels legacy restore backups with the restored source version", () => {
     }),
   );
 
-  const versions = loadManageDayVersions(13);
+  const versions = loadEditPlanVersions(13);
   expect(versions[0]?.summary).toBe("Restored from Version 1");
   expect(versions[1]?.summary).toBe("Auto-saved before restoring");
   expect(versions[1]?.restoreContext).toEqual({

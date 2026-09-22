@@ -22,14 +22,14 @@ import { isSwipeBackEdgeStart } from "../navigation/swipe-back";
 
 import { FRIDAY_STOPS } from "./plan-data";
 import {
-  addManageDayVersion,
-  clearManageDayDraft,
-  loadManageDayDraft,
-  loadManageDayVersions,
-  restoreAndSaveManageDayVersion,
-  saveManageDayDraft,
+  addEditPlanVersion,
+  clearEditPlanDraft,
+  loadEditPlanDraft,
+  loadEditPlanVersions,
+  restoreAndSaveEditPlanVersion,
+  saveEditPlanDraft,
   visitsSignature,
-  type ManageDayVersion,
+  type EditPlanVersion,
 } from "./edit-plan-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
 import { useEditPlanSwipeBack } from "./useEditPlanSwipeBack";
@@ -260,8 +260,8 @@ function VersionDiffIndicators({
 }
 
 function getVersionPlaceDelta(
-  version: ManageDayVersion,
-  versions: readonly ManageDayVersion[],
+  version: EditPlanVersion,
+  versions: readonly EditPlanVersion[],
   index: number,
 ): number | null {
   const previous = versions[index + 1];
@@ -280,7 +280,7 @@ function VersionHistoryMetadata({
   onRevealSource: (sourceId: string) => void;
   placeDelta: number | null;
   sourceAvailable: boolean;
-  version: ManageDayVersion;
+  version: EditPlanVersion;
 }): React.JSX.Element {
   if (version.restoreContext?.kind === "before") {
     return (
@@ -361,7 +361,7 @@ interface RestoreVersionDialogProps {
   hasDraft: boolean;
   onCancel: () => void;
   onConfirm: () => void;
-  version: ManageDayVersion | null;
+  version: EditPlanVersion | null;
 }
 
 function RestoreVersionDialog({
@@ -384,15 +384,15 @@ function RestoreVersionDialog({
 
   return (
     <dialog
-      aria-labelledby="manage-day-restore-title"
-      className="remove-stops-dialog manage-day__restore-dialog"
+      aria-labelledby="edit-plan-restore-title"
+      className="remove-stops-dialog edit-plan__restore-dialog"
       onCancel={(event) => {
         event.preventDefault();
         onCancel();
       }}
       ref={dialogRef}
     >
-      <h2 id="manage-day-restore-title">
+      <h2 id="edit-plan-restore-title">
         {version === null ? "Restore version?" : `Restore Version ${version.sequence}?`}
       </h2>
       <p>
@@ -401,7 +401,7 @@ function RestoreVersionDialog({
         saved plan will remain in Version history.
       </p>
       {hasDraft ? (
-        <p className="manage-day__restore-warning">
+        <p className="edit-plan__restore-warning">
           You have an unsaved draft. Restoring will replace it after the plan is saved.
         </p>
       ) : null}
@@ -409,7 +409,7 @@ function RestoreVersionDialog({
         <button onClick={onCancel} type="button">
           Cancel
         </button>
-        <button className="manage-day__primary" onClick={onConfirm} type="button">
+        <button className="edit-plan__primary" onClick={onConfirm} type="button">
           Restore &amp; save
         </button>
       </div>
@@ -419,18 +419,18 @@ function RestoreVersionDialog({
 
 export function EditPlanPage(): React.JSX.Element {
   const navigate = useNavigate();
-  const search = useSearch({ from: "/plan/manage" });
+  const search = useSearch({ from: "/plan/edit" });
   const day = search.day ?? 13;
   const plan = useKyotoPlan();
   const initialVisitsRef = useRef(cloneVisits(plan.days[day]));
   const baseSignatureRef = useRef(visitsSignature(initialVisitsRef.current));
-  const storedDraftRef = useRef(loadManageDayDraft(day, baseSignatureRef.current));
+  const storedDraftRef = useRef(loadEditPlanDraft(day, baseSignatureRef.current));
   const [draft, setDraft] = useState<PlannedVisit[]>(() =>
     cloneVisits(storedDraftRef.current?.visits ?? initialVisitsRef.current),
   );
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
-  const [versions, setVersions] = useState<ManageDayVersion[]>(() => loadManageDayVersions(day));
+  const [versions, setVersions] = useState<EditPlanVersion[]>(() => loadEditPlanVersions(day));
   const [listScrollable, setListScrollable] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -443,7 +443,7 @@ export function EditPlanPage(): React.JSX.Element {
   const [draftStorageFailed, setDraftStorageFailed] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
-  const [restoreCandidate, setRestoreCandidate] = useState<ManageDayVersion | null>(null);
+  const [restoreCandidate, setRestoreCandidate] = useState<EditPlanVersion | null>(null);
   const [restoreError, setRestoreError] = useState("");
   const [visibleVersionCount, setVisibleVersionCount] = useState(VERSION_PAGE_SIZE);
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
@@ -476,15 +476,15 @@ export function EditPlanPage(): React.JSX.Element {
     shouldBlockFn: ({ current, next }) =>
       !allowExitRef.current &&
       dirty &&
-      current.pathname === "/plan/manage" &&
-      next.pathname !== "/plan/manage",
+      current.pathname === "/plan/edit" &&
+      next.pathname !== "/plan/edit",
     withResolver: true,
   });
   const swipeBackRef = useEditPlanSwipeBack(() => {
     if (search.view === "versions" && search.version !== undefined) {
-      void navigate({ to: "/plan/manage", search: { day, view: "versions" }, replace: true });
+      void navigate({ to: "/plan/edit", search: { day, view: "versions" }, replace: true });
     } else if (search.view === "versions") {
-      void navigate({ to: "/plan/manage", search: { day }, replace: true });
+      void navigate({ to: "/plan/edit", search: { day }, replace: true });
     } else {
       leaveWithDraft();
     }
@@ -624,7 +624,7 @@ export function EditPlanPage(): React.JSX.Element {
     if (restoreCandidate === null) {
       return;
     }
-    const result = restoreAndSaveManageDayVersion(day, plan.days[day], restoreCandidate);
+    const result = restoreAndSaveEditPlanVersion(day, plan.days[day], restoreCandidate);
     if (!result.ok) {
       setRestoreCandidate(null);
       setRestoreError(
@@ -683,13 +683,13 @@ export function EditPlanPage(): React.JSX.Element {
   }
 
   function discardDraftAndExit(): void {
-    clearManageDayDraft(day);
+    clearEditPlanDraft(day);
     setConfirmDiscard(false);
     exitToPlan();
   }
 
   function leaveWithDraft(): void {
-    if (dirty && !saveManageDayDraft(day, baseSignature, draft)) {
+    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
       setDraftStorageFailed(true);
       showNotice("Could not save the latest draft. Stay here and try again.", true);
 
@@ -710,11 +710,11 @@ export function EditPlanPage(): React.JSX.Element {
     }
     let nextVersions = versions;
     if (nextVersions.length === 0) {
-      nextVersions = addManageDayVersion(day, initialVisitsRef.current, "Initial plan");
+      nextVersions = addEditPlanVersion(day, initialVisitsRef.current, "Initial plan");
     }
-    nextVersions = addManageDayVersion(day, draft, describeChange(initialVisitsRef.current, draft));
+    nextVersions = addEditPlanVersion(day, draft, describeChange(initialVisitsRef.current, draft));
     setVersions(nextVersions);
-    clearManageDayDraft(day);
+    clearEditPlanDraft(day);
     setSaving(false);
     exitToPlan();
   }
@@ -766,9 +766,9 @@ export function EditPlanPage(): React.JSX.Element {
   function closeRowSwipe(): void {
     window.clearTimeout(swipeRemovalTimerRef.current);
     swipeRemovalTimerRef.current = undefined;
-    listRef.current?.querySelectorAll<HTMLElement>(".manage-day__row").forEach((row) => {
-      row.classList.remove("manage-day__row--swiping");
-      row.style.setProperty("--manage-row-swipe-x", "0px");
+    listRef.current?.querySelectorAll<HTMLElement>(".edit-plan__row").forEach((row) => {
+      row.classList.remove("edit-plan__row--swiping");
+      row.style.setProperty("--edit-plan-row-swipe-x", "0px");
     });
     rowSwipeRef.current = null;
     setOpenSwipeId(null);
@@ -804,7 +804,7 @@ export function EditPlanPage(): React.JSX.Element {
       samples: [{ x: event.clientX, time: performance.now() }],
       backEdge: isSwipeBackEdgeStart(
         event.clientX,
-        event.currentTarget.closest(".manage-day")?.getBoundingClientRect().left ?? 0,
+        event.currentTarget.closest(".edit-plan")?.getBoundingClientRect().left ?? 0,
       ),
       currentOffset: openSwipeId === id ? swipeOffset : 0,
       direction: "pending",
@@ -835,7 +835,7 @@ export function EditPlanPage(): React.JSX.Element {
       if (Math.abs(deltaX) >= 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
         gesture.direction = "swipe";
         event.currentTarget.setPointerCapture(event.pointerId);
-        gesture.surface.classList.add("manage-day__row--swiping");
+        gesture.surface.classList.add("edit-plan__row--swiping");
       } else if (Math.abs(deltaY) >= 8 && Math.abs(deltaY) >= Math.abs(deltaX) / 1.2) {
         gesture.direction = "vertical";
       }
@@ -849,7 +849,7 @@ export function EditPlanPage(): React.JSX.Element {
         -gesture.width,
         Math.min(gesture.width, gesture.initialOffset + deltaX),
       );
-      gesture.surface.style.setProperty("--manage-row-swipe-x", `${gesture.currentOffset}px`);
+      gesture.surface.style.setProperty("--edit-plan-row-swipe-x", `${gesture.currentOffset}px`);
     }
   }
 
@@ -870,7 +870,7 @@ export function EditPlanPage(): React.JSX.Element {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    gesture.surface.classList.remove("manage-day__row--swiping");
+    gesture.surface.classList.remove("edit-plan__row--swiping");
     const direction = finalOffset < 0 ? -1 : 1;
     const now = performance.now();
     const sample = gesture.samples.find((point) => now - point.time <= 120);
@@ -881,10 +881,10 @@ export function EditPlanPage(): React.JSX.Element {
       direction * (event.clientX - gesture.startX) >= 48 &&
       direction * velocity >= 0.65;
     if (Math.abs(finalOffset) >= gesture.width * REMOVE_COMMIT_RATIO || flick) {
-      gesture.surface.style.setProperty("--manage-row-swipe-x", `${direction * gesture.width}px`);
+      gesture.surface.style.setProperty("--edit-plan-row-swipe-x", `${direction * gesture.width}px`);
       finishSwipeRemoval(gesture.id, direction * gesture.width);
     } else {
-      gesture.surface.style.setProperty("--manage-row-swipe-x", "0px");
+      gesture.surface.style.setProperty("--edit-plan-row-swipe-x", "0px");
       closeRowSwipe();
     }
   }
@@ -895,8 +895,8 @@ export function EditPlanPage(): React.JSX.Element {
       return;
     }
     rowSwipeRef.current = null;
-    gesture.surface.classList.remove("manage-day__row--swiping");
-    gesture.surface.style.setProperty("--manage-row-swipe-x", `${gesture.initialOffset}px`);
+    gesture.surface.classList.remove("edit-plan__row--swiping");
+    gesture.surface.style.setProperty("--edit-plan-row-swipe-x", `${gesture.initialOffset}px`);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -919,8 +919,8 @@ export function EditPlanPage(): React.JSX.Element {
 
   function captureRowRects(): Map<string, DOMRect> {
     const rects = new Map<string, DOMRect>();
-    listRef.current?.querySelectorAll<HTMLElement>("[data-manage-row-id]").forEach((row) => {
-      const id = row.dataset.manageRowId;
+    listRef.current?.querySelectorAll<HTMLElement>("[data-edit-plan-row-id]").forEach((row) => {
+      const id = row.dataset.editPlanRowId;
       if (id !== undefined) {
         rects.set(id, row.getBoundingClientRect());
       }
@@ -930,7 +930,7 @@ export function EditPlanPage(): React.JSX.Element {
   }
 
   function isOverCancelMove(clientX: number, clientY: number): boolean {
-    const target = document.querySelector<HTMLElement>(".manage-day__cancel-move");
+    const target = document.querySelector<HTMLElement>(".edit-plan__cancel-move");
     if (target === null) {
       return false;
     }
@@ -964,7 +964,7 @@ export function EditPlanPage(): React.JSX.Element {
       startScrollTop: listRef.current?.scrollTop ?? 0,
       startX: event.clientX,
       startY: event.clientY,
-      surface: event.currentTarget.closest<HTMLElement>("[data-manage-row-id]"),
+      surface: event.currentTarget.closest<HTMLElement>("[data-edit-plan-row-id]"),
     };
     drag.onMove = (pointerEvent) => {
       if (pointerEvent.pointerId !== drag.pointerId) {
@@ -979,7 +979,7 @@ export function EditPlanPage(): React.JSX.Element {
       setDraggedId(id);
       const scrollDelta = (listRef.current?.scrollTop ?? 0) - drag.startScrollTop;
       drag.surface?.style.setProperty(
-        "--manage-drag-offset-y",
+        "--edit-plan-drag-offset-y",
         `${pointerEvent.clientY - drag.startY + scrollDelta + drag.layoutOffsetY}px`,
       );
       drag.overCancel = isOverCancelMove(pointerEvent.clientX, pointerEvent.clientY);
@@ -989,8 +989,8 @@ export function EditPlanPage(): React.JSX.Element {
         return;
       }
       const otherRows = Array.from(
-        listRef.current?.querySelectorAll<HTMLElement>("[data-manage-row-id]") ?? [],
-      ).filter((row) => row.dataset.manageRowId !== id);
+        listRef.current?.querySelectorAll<HTMLElement>("[data-edit-plan-row-id]") ?? [],
+      ).filter((row) => row.dataset.editPlanRowId !== id);
       const insertionIndex = otherRows.findIndex((row) => {
         const shell = row.parentElement ?? row;
         const transform = getComputedStyle(shell).transform;
@@ -1041,7 +1041,7 @@ export function EditPlanPage(): React.JSX.Element {
         sourceId: id,
       };
       drag.surface?.style.setProperty("transition", "none");
-      drag.surface?.style.removeProperty("--manage-drag-offset-y");
+      drag.surface?.style.removeProperty("--edit-plan-drag-offset-y");
       dragRef.current = null;
       setDraggedId(null);
       setDragPreview(null);
@@ -1070,9 +1070,9 @@ export function EditPlanPage(): React.JSX.Element {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (dirty) {
-        setDraftStorageFailed(!saveManageDayDraft(day, baseSignature, draft));
+        setDraftStorageFailed(!saveEditPlanDraft(day, baseSignature, draft));
       } else {
-        clearManageDayDraft(day);
+        clearEditPlanDraft(day);
         setDraftStorageFailed(false);
       }
     }, 120);
@@ -1083,7 +1083,7 @@ export function EditPlanPage(): React.JSX.Element {
   useEffect(() => {
     const flushDraft = (): void => {
       if (dirty) {
-        saveManageDayDraft(day, baseSignature, draft);
+        saveEditPlanDraft(day, baseSignature, draft);
       }
     };
     window.addEventListener("pagehide", flushDraft);
@@ -1104,7 +1104,7 @@ export function EditPlanPage(): React.JSX.Element {
     if (navigationBlocker.status !== "blocked") {
       return;
     }
-    if (dirty && !saveManageDayDraft(day, baseSignature, draft)) {
+    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
       setDraftStorageFailed(true);
       setNotice({
         detail: undefined,
@@ -1164,13 +1164,13 @@ export function EditPlanPage(): React.JSX.Element {
       return;
     }
     previewAnimationRef.current = null;
-    const rows = listRef.current?.querySelectorAll<HTMLElement>("[data-manage-row-id]");
+    const rows = listRef.current?.querySelectorAll<HTMLElement>("[data-edit-plan-row-id]");
     if (rows === undefined) {
       return;
     }
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     rows.forEach((row) => {
-      const id = row.dataset.manageRowId;
+      const id = row.dataset.editPlanRowId;
       if (id === undefined) {
         return;
       }
@@ -1185,7 +1185,7 @@ export function EditPlanPage(): React.JSX.Element {
           drag.layoutOffsetY += pending.draggedTop - after.top;
           const scrollDelta = (listRef.current?.scrollTop ?? 0) - drag.startScrollTop;
           row.style.setProperty(
-            "--manage-drag-offset-y",
+            "--edit-plan-drag-offset-y",
             `${drag.latestY - drag.startY + scrollDelta + drag.layoutOffsetY}px`,
           );
         }
@@ -1275,10 +1275,10 @@ export function EditPlanPage(): React.JSX.Element {
           <span className="version-place__time">
             {placeDiff.visit.time === "" ? null : placeDiff.visit.time}
           </span>
-          <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
+          <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
             {renderStopIcon(stop.category)}
           </span>
-          <span className="manage-day__place">
+          <span className="edit-plan__place">
             <strong>{stop.name}</strong>
             <span>{stop.type}</span>
           </span>
@@ -1356,17 +1356,17 @@ export function EditPlanPage(): React.JSX.Element {
 
     return (
       <section
-        className="manage-day manage-day--version-preview"
+        className="edit-plan edit-plan--version-preview"
         data-swipe-back-ignore="true"
         ref={swipeBackRef}
       >
-        <header className="manage-day__app-bar">
+        <header className="edit-plan__app-bar">
           <button
             aria-label="Back to Version history"
-            className="manage-day__back"
+            className="edit-plan__back"
             onClick={() =>
               void navigate({
-                to: "/plan/manage",
+                to: "/plan/edit",
                 search: { day, view: "versions" },
                 replace: true,
               })
@@ -1379,13 +1379,13 @@ export function EditPlanPage(): React.JSX.Element {
           <span />
         </header>
         {previewVersion === undefined ? (
-          <div className="manage-day__version-missing">
+          <div className="edit-plan__version-missing">
             <strong>Version not available</strong>
             <span>It may have been removed from this device.</span>
             <button
               onClick={() =>
                 void navigate({
-                  to: "/plan/manage",
+                  to: "/plan/edit",
                   search: { day, view: "versions" },
                   replace: true,
                 })
@@ -1500,15 +1500,15 @@ export function EditPlanPage(): React.JSX.Element {
 
     return (
       <section
-        className="manage-day manage-day--versions"
+        className="edit-plan edit-plan--versions"
         data-swipe-back-ignore="true"
         ref={swipeBackRef}
       >
-        <header className="manage-day__app-bar">
+        <header className="edit-plan__app-bar">
           <button
             aria-label="Back to Edit plan"
-            className="manage-day__back"
-            onClick={() => void navigate({ to: "/plan/manage", search: { day }, replace: true })}
+            className="edit-plan__back"
+            onClick={() => void navigate({ to: "/plan/edit", search: { day }, replace: true })}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
@@ -1516,8 +1516,8 @@ export function EditPlanPage(): React.JSX.Element {
           <h1>Version history</h1>
           <span />
         </header>
-        <div className="manage-day__versions-content">
-          <div className="manage-day__context">
+        <div className="edit-plan__versions-content">
+          <div className="edit-plan__context">
             <strong>Kyoto · {dayLabel}</strong>
             <span>Open a version to compare it with your current saved plan.</span>
           </div>
@@ -1533,7 +1533,7 @@ export function EditPlanPage(): React.JSX.Element {
                 <div className="version-entry__actions">
                   <button
                     onClick={() =>
-                      void navigate({ to: "/plan/manage", search: { day }, replace: true })
+                      void navigate({ to: "/plan/edit", search: { day }, replace: true })
                     }
                     type="button"
                   >
@@ -1586,7 +1586,7 @@ export function EditPlanPage(): React.JSX.Element {
                       setVersionFilter("changes");
                       setRestoreError("");
                       void navigate({
-                        to: "/plan/manage",
+                        to: "/plan/edit",
                         search: { day, view: "versions", version: version.id },
                       });
                     }}
@@ -1615,7 +1615,7 @@ export function EditPlanPage(): React.JSX.Element {
             ) : null}
           </div>
           {versions.length === 0 ? (
-            <p className="manage-day__versions-empty">
+            <p className="edit-plan__versions-empty">
               Previous versions will appear here after you save changes.
             </p>
           ) : null}
@@ -1625,11 +1625,11 @@ export function EditPlanPage(): React.JSX.Element {
   }
 
   return (
-    <section className="manage-day" data-swipe-back-ignore="true" ref={swipeBackRef}>
-      <header className="manage-day__app-bar">
+    <section className="edit-plan" data-swipe-back-ignore="true" ref={swipeBackRef}>
+      <header className="edit-plan__app-bar">
         <button
           aria-label="Back to Plan"
-          className="manage-day__back"
+          className="edit-plan__back"
           onClick={leaveWithDraft}
           type="button"
         >
@@ -1645,9 +1645,9 @@ export function EditPlanPage(): React.JSX.Element {
         </button>
       </header>
 
-      <div className="manage-day__context">
+      <div className="edit-plan__context">
         <strong>Kyoto · {dayLabel}</strong>
-        <span className="manage-day__draft-status">
+        <span className="edit-plan__draft-status">
           <span>
             {externalChange
               ? "This day changed elsewhere. Reopen to use the latest plan."
@@ -1664,7 +1664,7 @@ export function EditPlanPage(): React.JSX.Element {
           ) : null}
         </span>
         {!selectionMode ? (
-          <div className="manage-day__history-actions">
+          <div className="edit-plan__history-actions">
             <button
               aria-label="Undo"
               disabled={undoStack.length === 0}
@@ -1685,12 +1685,12 @@ export function EditPlanPage(): React.JSX.Element {
         ) : null}
       </div>
 
-      <div className="manage-day__section-heading">
+      <div className="edit-plan__section-heading">
         <span>
           {draft.length} {draft.length === 1 ? "place" : "places"}
         </span>
         {selectionMode ? (
-          <span className="manage-day__section-actions">
+          <span className="edit-plan__section-actions">
             <button
               onClick={() =>
                 setSelectedIds(
@@ -1731,12 +1731,12 @@ export function EditPlanPage(): React.JSX.Element {
       <div
         aria-label={`${dayName} places`}
         className={
-          listScrollable ? "manage-day__list manage-day__list--scrollable" : "manage-day__list"
+          listScrollable ? "edit-plan__list edit-plan__list--scrollable" : "edit-plan__list"
         }
         ref={listRef}
       >
         {displayedVisits.length === 0 ? (
-          <div className="manage-day__empty">
+          <div className="edit-plan__empty">
             <strong>
               {dirty ? "All places removed from this draft" : "No places in this day"}
             </strong>
@@ -1756,13 +1756,13 @@ export function EditPlanPage(): React.JSX.Element {
 
             return (
               <div
-                className="manage-day__swipe-shell"
+                className="edit-plan__swipe-shell"
                 data-swipe-back-ignore="true"
                 key={visit.placeId}
               >
                 <article
-                  className={`manage-day__row${selected ? " manage-day__row--selected" : ""}${draggedId === visit.placeId ? " manage-day__row--dragging" : ""}${swipeOpen ? " manage-day__row--swipe-open" : ""}`}
-                  data-manage-row-id={visit.placeId}
+                  className={`edit-plan__row${selected ? " edit-plan__row--selected" : ""}${draggedId === visit.placeId ? " edit-plan__row--dragging" : ""}${swipeOpen ? " edit-plan__row--swipe-open" : ""}`}
+                  data-edit-plan-row-id={visit.placeId}
                   onLostPointerCapture={(event) => {
                     if (event.target === event.currentTarget) {
                       cancelRowSwipe(event);
@@ -1775,7 +1775,7 @@ export function EditPlanPage(): React.JSX.Element {
                   onPointerUp={endRowSwipe}
                   style={
                     {
-                      "--manage-row-swipe-x": `${swipeOpen ? swipeOffset : 0}px`,
+                      "--edit-plan-row-swipe-x": `${swipeOpen ? swipeOffset : 0}px`,
                     } as React.CSSProperties
                   }
                 >
@@ -1783,7 +1783,7 @@ export function EditPlanPage(): React.JSX.Element {
                     <button
                       aria-checked={selected}
                       aria-label={`Mark ${stop.name} for removal`}
-                      className="manage-day__select-row"
+                      className="edit-plan__select-row"
                       onClick={() => {
                         const next = new Set(selectedIds);
                         if (selected) {
@@ -1796,19 +1796,19 @@ export function EditPlanPage(): React.JSX.Element {
                       role="checkbox"
                       type="button"
                     >
-                      <span className="manage-day__order" aria-hidden="true">
+                      <span className="edit-plan__order" aria-hidden="true">
                         {index + 1}
                       </span>
                       <span
-                        className={`manage-day__checkbox${selected ? " manage-day__checkbox--checked" : ""}`}
+                        className={`edit-plan__checkbox${selected ? " edit-plan__checkbox--checked" : ""}`}
                       >
                         {selected ? <Check aria-hidden="true" size={15} strokeWidth={2.4} /> : null}
                       </span>
-                      <VisitTime className="manage-day__time" time={visit.time} />
-                      <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
+                      <VisitTime className="edit-plan__time" time={visit.time} />
+                      <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
                         {renderStopIcon(stop.category)}
                       </span>
-                      <span className="manage-day__place">
+                      <span className="edit-plan__place">
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
                       </span>
@@ -1816,13 +1816,13 @@ export function EditPlanPage(): React.JSX.Element {
                     </button>
                   ) : (
                     <>
-                      <span className="manage-day__order" aria-hidden="true">
+                      <span className="edit-plan__order" aria-hidden="true">
                         {index + 1}
                       </span>
                       <button
-                        aria-describedby="manage-reorder-help"
+                        aria-describedby="edit-plan-reorder-help"
                         aria-label={`Reorder ${stop.name}`}
-                        className="manage-day__grip"
+                        className="edit-plan__grip"
                         onKeyDown={(event) => {
                           if (
                             event.altKey &&
@@ -1840,11 +1840,11 @@ export function EditPlanPage(): React.JSX.Element {
                       >
                         <GripVertical aria-hidden="true" size={19} strokeWidth={1.8} />
                       </button>
-                      <VisitTime className="manage-day__time" time={visit.time} />
-                      <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
+                      <VisitTime className="edit-plan__time" time={visit.time} />
+                      <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
                         {renderStopIcon(stop.category)}
                       </span>
-                      <span className="manage-day__place">
+                      <span className="edit-plan__place">
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
                       </span>
@@ -1858,13 +1858,13 @@ export function EditPlanPage(): React.JSX.Element {
         )}
       </div>
 
-      <span className="sr-only" id="manage-reorder-help">
+      <span className="sr-only" id="edit-plan-reorder-help">
         Drag to reorder. With a keyboard, press Alt plus Arrow Up or Alt plus Arrow Down.
       </span>
 
       {selectionMode ? (
         selectionCount > 0 ? (
-          <div className="manage-day__remove-bar">
+          <div className="edit-plan__remove-bar">
             <button onClick={removeSelected} type="button">
               <Trash2 aria-hidden="true" size={20} strokeWidth={1.9} />
               Remove {selectionCount} {selectionCount === 1 ? "place" : "places"}
@@ -1873,8 +1873,8 @@ export function EditPlanPage(): React.JSX.Element {
         ) : null
       ) : (
         <button
-          className="manage-day__versions-link"
-          onClick={() => void navigate({ to: "/plan/manage", search: { day, view: "versions" } })}
+          className="edit-plan__versions-link"
+          onClick={() => void navigate({ to: "/plan/edit", search: { day, view: "versions" } })}
           type="button"
         >
           <History aria-hidden="true" size={20} strokeWidth={1.8} />
@@ -1885,14 +1885,14 @@ export function EditPlanPage(): React.JSX.Element {
 
       {draggedId === null ? null : (
         <div
-          className={`manage-day__cancel-move${cancelMoveActive ? " manage-day__cancel-move--active" : ""}`}
+          className={`edit-plan__cancel-move${cancelMoveActive ? " edit-plan__cancel-move--active" : ""}`}
         >
           <X aria-hidden="true" size={18} strokeWidth={2} />
           Cancel move
         </div>
       )}
 
-      <span aria-live="polite" className="sr-only" id="manage-day-change-announcement">
+      <span aria-live="polite" className="sr-only" id="edit-plan-change-announcement">
         {notice === null
           ? ""
           : `${notice.message}${notice.detail === undefined ? "" : ` · ${notice.detail}`}`}
@@ -1901,13 +1901,13 @@ export function EditPlanPage(): React.JSX.Element {
       {notice === null || (!notice.visible && !notice.persistent) || draggedId !== null ? null : (
         <div
           aria-hidden={notice.persistent ? undefined : true}
-          className="manage-day__notice"
+          className="edit-plan__notice"
           role={notice.persistent ? "alert" : undefined}
         >
           {notice.card === undefined ? null : (
-            <img alt="" className="manage-day__notice-image" src={notice.card.image} />
+            <img alt="" className="edit-plan__notice-image" src={notice.card.image} />
           )}
-          <span className="manage-day__notice-copy">
+          <span className="edit-plan__notice-copy">
             {notice.card === undefined ? (
               <span>{notice.message}</span>
             ) : (
@@ -1927,7 +1927,7 @@ export function EditPlanPage(): React.JSX.Element {
       )}
 
       <dialog
-        aria-labelledby="manage-day-discard-title"
+        aria-labelledby="edit-plan-discard-title"
         className="remove-stops-dialog"
         onCancel={(event) => {
           event.preventDefault();
@@ -1935,7 +1935,7 @@ export function EditPlanPage(): React.JSX.Element {
         }}
         ref={discardDialogRef}
       >
-        <h2 id="manage-day-discard-title">Discard draft?</h2>
+        <h2 id="edit-plan-discard-title">Discard draft?</h2>
         <p>This will remove all changes made since the plan was last saved.</p>
         <div>
           <button onClick={() => setConfirmDiscard(false)} type="button">
@@ -1952,11 +1952,11 @@ export function EditPlanPage(): React.JSX.Element {
       </dialog>
 
       <dialog
-        aria-labelledby="manage-day-save-title"
+        aria-labelledby="edit-plan-save-title"
         className="remove-stops-dialog"
         ref={saveDialogRef}
       >
-        <h2 id="manage-day-save-title">Save changes?</h2>
+        <h2 id="edit-plan-save-title">Save changes?</h2>
         <p>
           {removedCount} places will be removed from {dayLabel}. A restorable version will be
           created.

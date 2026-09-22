@@ -103,9 +103,9 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
-const manageDayRoute = createRoute({
+const editPlanRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/plan/manage",
+  path: "/plan/edit",
   validateSearch: (search: Record<string, unknown>): EditPlanSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(search.view === "versions" ? { view: "versions" } : {}),
@@ -206,7 +206,7 @@ const routeTree = rootRoute.addChildren([
   loadingRoute,
   welcomeRoute,
   loginRoute,
-  manageDayRoute,
+  editPlanRoute,
   placesRoute,
   mobileShellTree,
 ]);

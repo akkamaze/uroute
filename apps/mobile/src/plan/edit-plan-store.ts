@@ -7,17 +7,17 @@ import {
   type PlannedVisit,
 } from "./plan-store";
 
-const DRAFTS_KEY = "uroute.mock.manage-day-drafts.v1";
-const VERSIONS_KEY = "uroute.mock.manage-day-versions.v1";
+const DRAFTS_KEY = "uroute.mock.edit-plan-drafts.v1";
+const VERSIONS_KEY = "uroute.mock.edit-plan-versions.v1";
 const knownPlaceIds = new Set(FRIDAY_STOPS.map((place) => place.id));
 
-export interface ManageDayDraft {
+export interface EditPlanDraft {
   baseSignature: string;
   updatedAt: number;
   visits: PlannedVisit[];
 }
 
-export interface ManageDayVersion {
+export interface EditPlanVersion {
   id: string;
   restoreContext?: {
     kind: "before" | "restored";
@@ -32,8 +32,8 @@ export interface ManageDayVersion {
   visits: PlannedVisit[];
 }
 
-type DraftRecord = Partial<Record<KyotoDay, ManageDayDraft>>;
-type VersionRecord = Partial<Record<KyotoDay, ManageDayVersion[]>>;
+type DraftRecord = Partial<Record<KyotoDay, EditPlanDraft>>;
+type VersionRecord = Partial<Record<KyotoDay, EditPlanVersion[]>>;
 
 function cloneVisits(visits: readonly PlannedVisit[]): PlannedVisit[] {
   return visits.map((visit) => ({ ...visit }));
@@ -83,7 +83,7 @@ export function visitsSignature(visits: readonly PlannedVisit[]): string {
   return JSON.stringify(visits);
 }
 
-export function loadManageDayDraft(day: KyotoDay, baseSignature: string): ManageDayDraft | null {
+export function loadEditPlanDraft(day: KyotoDay, baseSignature: string): EditPlanDraft | null {
   const record = readRecord(DRAFTS_KEY);
   if (typeof record !== "object" || record === null) {
     return null;
@@ -92,7 +92,7 @@ export function loadManageDayDraft(day: KyotoDay, baseSignature: string): Manage
   if (typeof candidate !== "object" || candidate === null) {
     return null;
   }
-  const draft = candidate as Partial<ManageDayDraft>;
+  const draft = candidate as Partial<EditPlanDraft>;
   if (
     draft.baseSignature !== baseSignature ||
     typeof draft.updatedAt !== "number" ||
@@ -101,10 +101,10 @@ export function loadManageDayDraft(day: KyotoDay, baseSignature: string): Manage
     return null;
   }
 
-  return { ...draft, visits: cloneVisits(draft.visits) } as ManageDayDraft;
+  return { ...draft, visits: cloneVisits(draft.visits) } as EditPlanDraft;
 }
 
-export function saveManageDayDraft(
+export function saveEditPlanDraft(
   day: KyotoDay,
   baseSignature: string,
   visits: readonly PlannedVisit[],
@@ -127,7 +127,7 @@ export function saveManageDayDraft(
   }
 }
 
-export function clearManageDayDraft(day: KyotoDay): void {
+export function clearEditPlanDraft(day: KyotoDay): void {
   const stored = readRecord(DRAFTS_KEY);
   if (typeof stored !== "object" || stored === null) {
     return;
@@ -146,8 +146,8 @@ function createVersion(
   summary: string,
   savedAt: number,
   sequence: number,
-  restoreContext?: ManageDayVersion["restoreContext"],
-): ManageDayVersion {
+  restoreContext?: EditPlanVersion["restoreContext"],
+): EditPlanVersion {
   return {
     id: `${savedAt}-${Math.random().toString(36).slice(2, 8)}`,
     ...(restoreContext === undefined ? {} : { restoreContext }),
@@ -158,11 +158,11 @@ function createVersion(
   };
 }
 
-function isRestoreContext(value: unknown): value is NonNullable<ManageDayVersion["restoreContext"]> {
+function isRestoreContext(value: unknown): value is NonNullable<EditPlanVersion["restoreContext"]> {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const context = value as Partial<NonNullable<ManageDayVersion["restoreContext"]>>;
+  const context = value as Partial<NonNullable<EditPlanVersion["restoreContext"]>>;
 
   return (
     (context.kind === "before" || context.kind === "restored") &&
@@ -174,7 +174,7 @@ function isRestoreContext(value: unknown): value is NonNullable<ManageDayVersion
   );
 }
 
-function normalizeSequences(versions: ManageDayVersion[]): ManageDayVersion[] {
+function normalizeSequences(versions: EditPlanVersion[]): EditPlanVersion[] {
   const sequences = versions.map((version) => version.sequence);
   const validSequences =
     sequences.every((sequence) => Number.isInteger(sequence) && sequence > 0) &&
@@ -186,7 +186,7 @@ function normalizeSequences(versions: ManageDayVersion[]): ManageDayVersion[] {
   return versions.map((version, index) => ({ ...version, sequence: versions.length - index }));
 }
 
-function migrateLegacyRestoreContexts(versions: ManageDayVersion[]): ManageDayVersion[] {
+function migrateLegacyRestoreContexts(versions: EditPlanVersion[]): EditPlanVersion[] {
   const migrated = [...versions];
 
   for (let index = 1; index < migrated.length; index += 1) {
@@ -230,11 +230,11 @@ function migrateLegacyRestoreContexts(versions: ManageDayVersion[]): ManageDayVe
   return migrated;
 }
 
-function nextSequence(versions: readonly ManageDayVersion[]): number {
+function nextSequence(versions: readonly EditPlanVersion[]): number {
   return Math.max(0, ...versions.map((version) => version.sequence)) + 1;
 }
 
-export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
+export function loadEditPlanVersions(day: KyotoDay): EditPlanVersion[] {
   const record = readRecord(VERSIONS_KEY);
   if (typeof record !== "object" || record === null) {
     return [];
@@ -244,11 +244,11 @@ export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
     return [];
   }
 
-  const versions = entries.flatMap((entry): ManageDayVersion[] => {
+  const versions = entries.flatMap((entry): EditPlanVersion[] => {
     if (typeof entry !== "object" || entry === null) {
       return [];
     }
-    const version = entry as Partial<ManageDayVersion>;
+    const version = entry as Partial<EditPlanVersion>;
     if (
       typeof version.id !== "string" ||
       typeof version.savedAt !== "number" ||
@@ -280,24 +280,24 @@ export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
   return migrateLegacyRestoreContexts(normalizeSequences(versions));
 }
 
-export function addManageDayVersion(
+export function addEditPlanVersion(
   day: KyotoDay,
   visits: readonly PlannedVisit[],
   summary: string,
   savedAt = Date.now(),
-): ManageDayVersion[] {
+): EditPlanVersion[] {
   if (!validVisits(visits)) {
-    return loadManageDayVersions(day);
+    return loadEditPlanVersions(day);
   }
   const stored = readRecord(VERSIONS_KEY);
   const record: VersionRecord = typeof stored === "object" && stored !== null ? stored : {};
-  const existing = loadManageDayVersions(day);
+  const existing = loadEditPlanVersions(day);
   const version = createVersion(visits, summary, savedAt, nextSequence(existing));
   const versions = [version, ...existing];
   try {
     window.localStorage.setItem(VERSIONS_KEY, JSON.stringify({ ...record, [day]: versions }));
   } catch {
-    return loadManageDayVersions(day);
+    return loadEditPlanVersions(day);
   }
 
   return versions;
@@ -305,7 +305,7 @@ export function addManageDayVersion(
 
 interface RestoreVersionResult {
   ok: boolean;
-  versions: ManageDayVersion[];
+  versions: EditPlanVersion[];
 }
 
 function restoreStorageValue(key: string, value: string | null): void {
@@ -316,14 +316,14 @@ function restoreStorageValue(key: string, value: string | null): void {
   }
 }
 
-export function restoreAndSaveManageDayVersion(
+export function restoreAndSaveEditPlanVersion(
   day: KyotoDay,
   current: readonly PlannedVisit[],
-  selected: ManageDayVersion,
+  selected: EditPlanVersion,
   savedAt = Date.now(),
 ): RestoreVersionResult {
   if (!validVisits(current) || !validVisits(selected.visits)) {
-    return { ok: false, versions: loadManageDayVersions(day) };
+    return { ok: false, versions: loadEditPlanVersions(day) };
   }
 
   const originalPlan = window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY);
@@ -340,7 +340,7 @@ export function restoreAndSaveManageDayVersion(
   const storedVersions = readRecord(VERSIONS_KEY);
   const versionRecord: VersionRecord =
     typeof storedVersions === "object" && storedVersions !== null ? storedVersions : {};
-  const existing = loadManageDayVersions(day);
+  const existing = loadEditPlanVersions(day);
   const selectedSequence = selected.sequence > 0 ? selected.sequence : nextSequence(existing);
   const restoreContext = {
     sourceId: selected.id,
@@ -388,7 +388,7 @@ export function restoreAndSaveManageDayVersion(
       // Best-effort rollback preserves the last readable state when storage is degraded.
     }
 
-    return { ok: false, versions: loadManageDayVersions(day) };
+    return { ok: false, versions: loadEditPlanVersions(day) };
   }
 
   syncKyotoPlanFromStorage();

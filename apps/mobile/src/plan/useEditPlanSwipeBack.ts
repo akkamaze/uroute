@@ -37,13 +37,13 @@ export function useEditPlanSwipeBack(onBack: () => void): React.RefObject<HTMLEl
       window.clearTimeout(timer);
       timer = undefined;
       gesture = null;
-      boundSurface.classList.remove("manage-day--swiping", "manage-day--swipe-settling");
-      boundSurface.style.removeProperty("--manage-swipe-x");
+      boundSurface.classList.remove("edit-plan--swiping", "edit-plan--swipe-settling");
+      boundSurface.style.removeProperty("--edit-plan-swipe-x");
     }
 
     function settle(complete: boolean, width: number): void {
-      boundSurface.classList.add("manage-day--swipe-settling");
-      boundSurface.style.setProperty("--manage-swipe-x", `${complete ? width : 0}px`);
+      boundSurface.classList.add("edit-plan--swipe-settling");
+      boundSurface.style.setProperty("--edit-plan-swipe-x", `${complete ? width : 0}px`);
       const duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches
         ? 1
         : SETTLE_DURATION_MS;
@@ -100,12 +100,12 @@ export function useEditPlanSwipeBack(onBack: () => void): React.RefObject<HTMLEl
         }
         gesture.active = true;
         boundSurface.setPointerCapture(event.pointerId);
-        boundSurface.classList.add("manage-day--swiping");
+        boundSurface.classList.add("edit-plan--swiping");
       }
 
       event.preventDefault();
       gesture.x = Math.max(0, Math.min(deltaX, gesture.width));
-      boundSurface.style.setProperty("--manage-swipe-x", `${gesture.x}px`);
+      boundSurface.style.setProperty("--edit-plan-swipe-x", `${gesture.x}px`);
     }
 
     function finish(event: PointerEvent): void {
