@@ -113,6 +113,185 @@ test("swipe back reserves the system edge and accepts the adjacent app zone", as
   await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
 });
 
+test("the reorder grip drags the card and settles the new order", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  const storedPlanBeforeDrag = await page.evaluate(() =>
+    window.localStorage.getItem("uroute.mock.kyoto-plan.v1"),
+  );
+
+  const firstSurface = page.locator('[data-drop-stop-id="kiyomizu"] .timeline__surface');
+  const targetEntry = page.locator('[data-drop-stop-id="arabica"]');
+  const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
+  const gripBox = await grip.boundingBox();
+  const stopBox = await page.locator('[data-stop-id="kiyomizu"]').boundingBox();
+  const targetBox = await targetEntry.locator(".timeline__surface").boundingBox();
+  const initialBox = await firstSurface.boundingBox();
+  if (gripBox === null || stopBox === null || targetBox === null || initialBox === null) {
+    throw new Error("Reorder source and target must be visible");
+  }
+  expect(gripBox.x + gripBox.width).toBeLessThanOrEqual(stopBox.x);
+
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2 + 34, {
+    steps: 3,
+  });
+
+  const travelMarkerBox = await page
+    .locator('[data-drop-stop-id="kiyomizu"] .timeline__travel-marker')
+    .boundingBox();
+  if (travelMarkerBox === null) {
+    throw new Error("Travel marker must be visible below the dragged stop");
+  }
+  await expect
+    .poll(() =>
+      page.evaluate(
+        ({ x, y }) =>
+          document
+            .elementFromPoint(x, y)
+            ?.closest(".timeline__surface")
+            ?.classList.contains("timeline__surface--dragging") ?? false,
+        {
+          x: travelMarkerBox.x + travelMarkerBox.width / 2,
+          y: travelMarkerBox.y + travelMarkerBox.height / 2,
+        },
+      ),
+    )
+    .toBe(true);
+
+  await page.mouse.move(gripBox.x + gripBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 5,
+  });
+
+  await expect(firstSurface).toHaveClass(/timeline__surface--dragging/);
+  await expect(page.locator('[data-drop-stop-id="kiyomizu"]')).toHaveCSS("z-index", "auto");
+  await expect(firstSurface).toHaveCSS("z-index", "3");
+  await expect(targetEntry).toHaveClass(/timeline__entry--drop-after/);
+  await expect
+    .poll(() => targetEntry.evaluate((entry) => window.getComputedStyle(entry, "::before").content))
+    .toBe("none");
+  await expect
+    .poll(async () => {
+      const draggedBox = await firstSurface.boundingBox();
+      if (draggedBox === null) {
+        return [];
+      }
+
+      return page.evaluate(
+        ({ left, top, width, height }) =>
+          [0.1, 0.5, 0.9].map(
+            (ratio) =>
+              document
+                .elementFromPoint(left + width * ratio, top + height / 2)
+                ?.closest(".timeline__surface")
+                ?.classList.contains("timeline__surface--dragging") ?? false,
+          ),
+        {
+          left: draggedBox.x,
+          top: draggedBox.y,
+          width: draggedBox.width,
+          height: draggedBox.height,
+        },
+      );
+    })
+    .toEqual([true, true, true]);
+  await expect
+    .poll(async () => (await firstSurface.boundingBox())?.y ?? initialBox.y)
+    .toBeGreaterThan(initialBox.y + 24);
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("uroute.mock.kyoto-plan.v1")))
+    .toBe(storedPlanBeforeDrag);
+
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+  await expect
+    .poll(
+      () =>
+        page
+          .locator(".timeline__surface")
+          .evaluateAll((surfaces) =>
+            surfaces.reduce((count, surface) => count + surface.getAnimations().length, 0),
+          ),
+      { timeout: 1_000 },
+    )
+    .toBeGreaterThan(0);
+
+  await page.reload();
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+});
+
+test("dropping on the cancel overlay restores the original order", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  const storedPlanBeforeDrag = await page.evaluate(() =>
+    window.localStorage.getItem("uroute.mock.kyoto-plan.v1"),
+  );
+  const grip = page.getByRole("button", { name: "Reorder Kiyomizu-dera" });
+  const gripBox = await grip.boundingBox();
+  const targetBox = await page
+    .locator('[data-drop-stop-id="arabica"] .timeline__surface')
+    .boundingBox();
+  if (gripBox === null || targetBox === null) {
+    throw new Error("Reorder source and target must be visible");
+  }
+
+  await page.mouse.move(gripBox.x + gripBox.width / 2, gripBox.y + gripBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(gripBox.x + gripBox.width / 2, targetBox.y + targetBox.height / 2, {
+    steps: 5,
+  });
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["arabica", "kiyomizu", "nishiki"]);
+
+  const cancel = page.locator(".plan-reorder-cancel");
+  await expect(cancel).toBeVisible();
+  const cancelBox = await cancel.boundingBox();
+  if (cancelBox === null) {
+    throw new Error("Cancel drop zone must be visible while dragging");
+  }
+  await page.mouse.move(cancelBox.x + cancelBox.width / 2, cancelBox.y + cancelBox.height / 2, {
+    steps: 5,
+  });
+  await expect(cancel).toHaveClass(/plan-reorder-cancel--active/);
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-stop-id]")
+        .evaluateAll((stops) => stops.map((stop) => stop.getAttribute("data-stop-id"))),
+    )
+    .toEqual(["kiyomizu", "arabica", "nishiki"]);
+
+  await page.mouse.up();
+  await expect(cancel).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => window.localStorage.getItem("uroute.mock.kyoto-plan.v1")))
+    .toBe(storedPlanBeforeDrag);
+  await expect(page.getByText("Move cancelled.", { exact: true })).toBeAttached();
+});
+
 test("holding a row selects it while the grip owns keyboard reordering", async ({ page }) => {
   await page.goto("/plan?day=13");
 

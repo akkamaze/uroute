@@ -836,16 +836,9 @@ a {
   position: relative;
 }
 
-.timeline__entry--drop-target::before {
-  position: absolute;
-  z-index: 2;
-  top: -2px;
-  right: 0.5rem;
-  left: 0.5rem;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--color-active);
-  content: "";
+.timeline__entry--dragging .timeline__swipe-shell {
+  z-index: 3;
+  overflow: visible;
 }
 
 .timeline__stop {

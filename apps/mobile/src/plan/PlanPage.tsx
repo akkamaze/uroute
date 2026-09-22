@@ -13,7 +13,7 @@ import {
   Utensils,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
@@ -63,11 +63,33 @@ interface StopGesture {
 
 interface ReorderGesture {
   active: boolean;
+  cancelActive: boolean;
+  cancelBounds: { bottom: number; left: number; right: number; top: number } | null;
+  frame: number | null;
+  layoutOffsetY: number;
+  latestClientX: number;
+  latestClientY: number;
+  layout: { centerY: number; id: string }[];
+  onPointerEnd: (event: PointerEvent) => void;
+  onPointerMove: (event: PointerEvent) => void;
   pointerId: number;
+  scrollBounds: { bottom: number; top: number } | null;
+  scrollContainer: HTMLElement | null;
   sourceId: string;
+  startScrollTop: number;
   targetId: string;
+  surface: HTMLElement | null;
   startX: number;
   startY: number;
+}
+
+interface ReorderAnimation {
+  before: Map<string, DOMRect>;
+}
+
+interface ReorderPreviewAnimation extends ReorderAnimation {
+  draggedTop: number | null;
+  sourceId: string;
 }
 
 interface RemovalOperation {
@@ -130,9 +152,14 @@ export function PlanPage(): React.JSX.Element {
   const [removal, setRemoval] = useState<RemovalOperation | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<"after" | "before" | null>(null);
+  const [previewStopIds, setPreviewStopIds] = useState<string[] | null>(null);
+  const [cancelDropActive, setCancelDropActive] = useState(false);
   const [liveNotice, setLiveNotice] = useState("");
   const gestureRef = useRef<StopGesture | null>(null);
   const reorderRef = useRef<ReorderGesture | null>(null);
+  const reorderAnimationRef = useRef<ReorderAnimation | null>(null);
+  const reorderPreviewAnimationRef = useRef<ReorderPreviewAnimation | null>(null);
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const mapViewButtonRef = useRef<HTMLButtonElement>(null);
   const emptyHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -141,6 +168,7 @@ export function PlanPage(): React.JSX.Element {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const leaveSelectionDialogRef = useRef<HTMLDialogElement>(null);
   const keepSelectingRef = useRef<HTMLButtonElement>(null);
+  const cancelDropRef = useRef<HTMLDivElement>(null);
   const suppressClickRef = useRef(false);
   const mapOpenedHereRef = useRef(false);
   const wasMapExpandedRef = useRef(false);
@@ -154,6 +182,19 @@ export function PlanPage(): React.JSX.Element {
       }),
     [plan.days, selectedDay],
   );
+  const displayedStops = useMemo(() => {
+    if (previewStopIds === null) {
+      return stops;
+    }
+    const byId = new Map(stops.map((stop) => [stop.id, stop]));
+    const preview = previewStopIds.flatMap((id) => {
+      const stop = byId.get(id);
+
+      return stop === undefined ? [] : [stop];
+    });
+
+    return preview.length === stops.length ? preview : stops;
+  }, [previewStopIds, stops]);
   const orderPlaces = useMemo(() => createOrderedPlaces(stops.map(({ id }) => id)), [stops]);
   const places = useMemo(
     () => (stressEnabled && selectedDay === 13 ? createStressPlaces() : orderPlaces),
@@ -273,7 +314,90 @@ export function PlanPage(): React.JSX.Element {
     }
   }, [navigationBlocker.status]);
 
-  useEffect(() => () => clearGesture(), []);
+  useEffect(
+    () => () => {
+      clearGesture();
+      const drag = reorderRef.current;
+      if (drag?.frame !== null && drag?.frame !== undefined) {
+        window.cancelAnimationFrame(drag.frame);
+      }
+      if (drag !== null) {
+        window.removeEventListener("pointermove", drag.onPointerMove);
+        window.removeEventListener("pointerup", drag.onPointerEnd);
+        window.removeEventListener("pointercancel", drag.onPointerEnd);
+      }
+      drag?.surface?.style.removeProperty("--reorder-offset-y");
+      reorderRef.current = null;
+    },
+    [],
+  );
+
+  useLayoutEffect(() => {
+    const pending = reorderPreviewAnimationRef.current;
+    if (pending === null) {
+      return;
+    }
+    reorderPreviewAnimationRef.current = null;
+    const drag = reorderRef.current;
+    if (drag !== null && drag.sourceId === pending.sourceId && pending.draggedTop !== null) {
+      const currentTop = drag.surface?.getBoundingClientRect().top;
+      if (currentTop !== undefined) {
+        drag.layoutOffsetY += pending.draggedTop - currentTop;
+        const scrollDelta = (drag.scrollContainer?.scrollTop ?? 0) - drag.startScrollTop;
+        const offsetY = drag.latestClientY - drag.startY + scrollDelta + drag.layoutOffsetY;
+        drag.surface?.style.setProperty("--reorder-offset-y", `${offsetY}px`);
+      }
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    for (const [id, before] of pending.before) {
+      if (id === pending.sourceId) {
+        continue;
+      }
+      const surface = stopRefs.current[id]?.closest<HTMLElement>(".timeline__surface");
+      if (surface === null || surface === undefined) {
+        continue;
+      }
+      const after = surface.getBoundingClientRect();
+      const deltaY = before.top - after.top;
+      if (Math.abs(deltaY) < 0.5) {
+        continue;
+      }
+      surface.animate(
+        [{ transform: `translate3d(0, ${deltaY}px, 0)` }, { transform: "translate3d(0, 0, 0)" }],
+        { duration: 160, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+      );
+    }
+  }, [previewStopIds]);
+
+  useLayoutEffect(() => {
+    const pending = reorderAnimationRef.current;
+    if (pending === null) {
+      return;
+    }
+    reorderAnimationRef.current = null;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    for (const [id, before] of pending.before) {
+      const surface = stopRefs.current[id]?.closest<HTMLElement>(".timeline__surface");
+      if (surface === null || surface === undefined) {
+        continue;
+      }
+      const after = surface.getBoundingClientRect();
+      const deltaY = before.top - after.top;
+      if (Math.abs(deltaY) < 0.5) {
+        continue;
+      }
+      surface.animate(
+        [{ transform: `translate3d(0, ${deltaY}px, 0)` }, { transform: "translate3d(0, 0, 0)" }],
+        { duration: 180, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
+      );
+    }
+  }, [stops]);
 
   function toggleSelection(id: string): void {
     setSelectedStopIds((current) => {
@@ -426,12 +550,147 @@ export function PlanPage(): React.JSX.Element {
     }
   }
 
-  function finishReorder(sourceId: string, targetId: string): void {
+  function finishReorder(sourceId: string, targetId: string): boolean {
     const stop = stops.find(({ id }) => id === sourceId);
     const targetIndex = stops.findIndex(({ id }) => id === targetId);
     if (stop !== undefined && reorderKyotoDay(selectedDay, sourceId, targetId)) {
       setLiveNotice(`${stop.name} moved to position ${targetIndex + 1}.`);
+
+      return true;
     }
+
+    return false;
+  }
+
+  function captureReorderRects(): Map<string, DOMRect> {
+    const before = new Map<string, DOMRect>();
+    for (const stop of stops) {
+      const surface = stopRefs.current[stop.id]?.closest<HTMLElement>(".timeline__surface");
+      if (surface !== null && surface !== undefined) {
+        before.set(stop.id, surface.getBoundingClientRect());
+      }
+    }
+
+    return before;
+  }
+
+  function previewReorder(drag: ReorderGesture, targetId: string): void {
+    const ids = stops.map(({ id }) => id);
+    const sourceIndex = ids.indexOf(drag.sourceId);
+    const targetIndex = ids.indexOf(targetId);
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+    const before = captureReorderRects();
+    const draggedTop = drag.surface?.getBoundingClientRect().top ?? null;
+    for (const id of ids) {
+      if (id !== drag.sourceId) {
+        stopRefs.current[id]
+          ?.closest<HTMLElement>(".timeline__surface")
+          ?.getAnimations()
+          .forEach((animation) => animation.cancel());
+      }
+    }
+    const [source] = ids.splice(sourceIndex, 1);
+    if (source === undefined) {
+      return;
+    }
+    ids.splice(targetIndex, 0, source);
+    reorderPreviewAnimationRef.current = { before, draggedTop, sourceId: drag.sourceId };
+    setPreviewStopIds(targetId === drag.sourceId ? null : ids);
+  }
+
+  function queueReorderFrame(drag: ReorderGesture): void {
+    if (drag.frame !== null) {
+      return;
+    }
+    drag.frame = window.requestAnimationFrame(() => {
+      drag.frame = null;
+      if (reorderRef.current !== drag || !drag.active || drag.surface === null) {
+        return;
+      }
+
+      if (updateReorderPosition(drag, true)) {
+        queueReorderFrame(drag);
+      }
+    });
+  }
+
+  function updateReorderPosition(drag: ReorderGesture, allowAutoScroll: boolean): boolean {
+    const container = drag.scrollContainer;
+    const bounds = drag.scrollBounds;
+    if (drag.cancelBounds === null) {
+      const cancelBounds = cancelDropRef.current?.getBoundingClientRect();
+      drag.cancelBounds =
+        cancelBounds === undefined
+          ? null
+          : {
+              bottom: cancelBounds.bottom,
+              left: cancelBounds.left,
+              right: cancelBounds.right,
+              top: cancelBounds.top,
+            };
+    }
+    const overCancel =
+      drag.cancelBounds !== null &&
+      drag.latestClientX >= drag.cancelBounds.left &&
+      drag.latestClientX <= drag.cancelBounds.right &&
+      drag.latestClientY >= drag.cancelBounds.top &&
+      drag.latestClientY <= drag.cancelBounds.bottom;
+    if (overCancel !== drag.cancelActive) {
+      drag.cancelActive = overCancel;
+      setCancelDropActive(overCancel);
+    }
+    let didAutoScroll = false;
+    if (!overCancel && allowAutoScroll && container !== null && bounds !== null) {
+      const edge = 56;
+      let scrollBy = 0;
+      if (drag.latestClientY < bounds.top + edge) {
+        scrollBy = -12 * (1 - Math.max(0, drag.latestClientY - bounds.top) / edge);
+      } else if (drag.latestClientY > bounds.bottom - edge) {
+        scrollBy = 12 * (1 - Math.max(0, bounds.bottom - drag.latestClientY) / edge);
+      }
+      if (Math.abs(scrollBy) > 0.5) {
+        const previousScrollTop = container.scrollTop;
+        container.scrollTop += scrollBy;
+        didAutoScroll = container.scrollTop !== previousScrollTop;
+      }
+    }
+
+    const scrollDelta = (container?.scrollTop ?? 0) - drag.startScrollTop;
+    const offsetY = drag.latestClientY - drag.startY + scrollDelta + drag.layoutOffsetY;
+    drag.surface?.style.setProperty("--reorder-offset-y", `${offsetY}px`);
+
+    if (overCancel) {
+      if (drag.targetId !== drag.sourceId) {
+        drag.targetId = drag.sourceId;
+        previewReorder(drag, drag.sourceId);
+      }
+      setDropTargetId(null);
+      setDropPosition(null);
+
+      return false;
+    }
+
+    const pointerContentY = drag.latestClientY + scrollDelta;
+    const nearest = drag.layout.reduce<{ centerY: number; id: string } | null>(
+      (closest, candidate) =>
+        closest === null ||
+        Math.abs(candidate.centerY - pointerContentY) < Math.abs(closest.centerY - pointerContentY)
+          ? candidate
+          : closest,
+      null,
+    );
+    if (nearest !== null && nearest.id !== drag.targetId) {
+      drag.targetId = nearest.id;
+      previewReorder(drag, nearest.id);
+      setDropTargetId(nearest.id);
+      const sourceIndex = stops.findIndex(({ id }) => id === drag.sourceId);
+      const targetIndex = stops.findIndex(({ id }) => id === nearest.id);
+      setDropPosition(sourceIndex < targetIndex ? "after" : "before");
+    }
+
+    return didAutoScroll;
   }
 
   function startReorder(event: React.PointerEvent<HTMLButtonElement>, id: string): void {
@@ -439,18 +698,38 @@ export function PlanPage(): React.JSX.Element {
       return;
     }
     closeSwipe();
-    reorderRef.current = {
+    const drag: ReorderGesture = {
       active: false,
+      cancelActive: false,
+      cancelBounds: null,
+      frame: null,
+      layoutOffsetY: 0,
+      latestClientX: event.clientX,
+      latestClientY: event.clientY,
+      layout: [],
+      onPointerEnd: () => undefined,
+      onPointerMove: () => undefined,
       pointerId: event.pointerId,
+      scrollBounds: null,
+      scrollContainer: event.currentTarget.closest<HTMLElement>(".day-plan"),
       sourceId: id,
+      startScrollTop: 0,
       targetId: id,
+      surface: event.currentTarget.closest<HTMLElement>(".timeline__surface"),
       startX: event.clientX,
       startY: event.clientY,
     };
+    drag.onPointerMove = (pointerEvent) => moveReorder(pointerEvent);
+    drag.onPointerEnd = (pointerEvent) => endReorder(pointerEvent);
+    reorderRef.current = drag;
+    drag.startScrollTop = drag.scrollContainer?.scrollTop ?? 0;
+    window.addEventListener("pointermove", drag.onPointerMove, { passive: false });
+    window.addEventListener("pointerup", drag.onPointerEnd);
+    window.addEventListener("pointercancel", drag.onPointerEnd);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function moveReorder(event: React.PointerEvent<HTMLButtonElement>): void {
+  function moveReorder(event: PointerEvent): void {
     const drag = reorderRef.current;
     if (drag === null || drag.pointerId !== event.pointerId) {
       return;
@@ -460,31 +739,75 @@ export function PlanPage(): React.JSX.Element {
         return;
       }
       drag.active = true;
+      drag.layout = Array.from(
+        document.querySelectorAll<HTMLElement>("[data-drop-stop-id]"),
+      ).flatMap((entry) => {
+        const surface = entry.querySelector<HTMLElement>(".timeline__surface");
+        const id = entry.dataset.dropStopId;
+        if (surface === null || id === undefined) {
+          return [];
+        }
+        const bounds = surface.getBoundingClientRect();
+
+        return [{ centerY: bounds.top + bounds.height / 2, id }];
+      });
+      const scrollBounds = drag.scrollContainer?.getBoundingClientRect();
+      drag.scrollBounds =
+        scrollBounds === undefined ? null : { bottom: scrollBounds.bottom, top: scrollBounds.top };
+      drag.surface?.getAnimations().forEach((animation) => animation.cancel());
       setDraggedId(drag.sourceId);
       setDropTargetId(drag.sourceId);
+      setDropPosition(null);
     }
     event.preventDefault();
-    const targetId = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest<HTMLElement>("[data-drop-stop-id]")?.dataset.dropStopId;
-    if (targetId !== undefined) {
-      drag.targetId = targetId;
-      setDropTargetId(targetId);
-    }
+    drag.latestClientX = event.clientX;
+    drag.latestClientY = event.clientY;
+    queueReorderFrame(drag);
   }
 
-  function endReorder(event: React.PointerEvent<HTMLButtonElement>): void {
+  function endReorder(event: PointerEvent): void {
     const drag = reorderRef.current;
     if (drag === null || drag.pointerId !== event.pointerId) {
       return;
     }
+    if (drag.frame !== null) {
+      window.cancelAnimationFrame(drag.frame);
+      drag.frame = null;
+    }
+    window.removeEventListener("pointermove", drag.onPointerMove);
+    window.removeEventListener("pointerup", drag.onPointerEnd);
+    window.removeEventListener("pointercancel", drag.onPointerEnd);
     if (drag.active) {
-      finishReorder(drag.sourceId, drag.targetId);
+      drag.latestClientX = event.clientX;
+      drag.latestClientY = event.clientY;
+      updateReorderPosition(drag, false);
+    }
+    const cancelled = event.type === "pointercancel" || drag.cancelActive;
+    let moved = false;
+    if (drag.active && !cancelled && drag.sourceId !== drag.targetId) {
+      const before = captureReorderRects();
+      reorderAnimationRef.current = { before };
+      drag.surface?.style.removeProperty("--reorder-offset-y");
+      moved = finishReorder(drag.sourceId, drag.targetId);
+      if (!moved) {
+        reorderAnimationRef.current = null;
+      }
+    }
+    if (drag.active) {
       suppressClick();
+    }
+    if (drag.cancelActive) {
+      setLiveNotice("Move cancelled.");
     }
     reorderRef.current = null;
     setDraggedId(null);
     setDropTargetId(null);
+    setDropPosition(null);
+    setPreviewStopIds(null);
+    setCancelDropActive(false);
+    if (!moved) {
+      window.requestAnimationFrame(() => drag.surface?.style.removeProperty("--reorder-offset-y"));
+    }
   }
 
   function moveStopWithKeyboard(id: string, direction: -1 | 1): void {
@@ -684,8 +1007,8 @@ export function PlanPage(): React.JSX.Element {
               Drag this handle to reorder. With a keyboard, press Alt plus Arrow Up or Alt plus
               Arrow Down.
             </span>
-            {stops.map((stop, index) => {
-              const next = stops[index + 1];
+            {displayedStops.map((stop, index) => {
+              const next = displayedStops[index + 1];
               const travel =
                 next === undefined ? undefined : TRAVEL_BY_PAIR.get(`${stop.id}:${next.id}`);
               const checked = selectedStopIds.has(stop.id);
@@ -693,7 +1016,7 @@ export function PlanPage(): React.JSX.Element {
 
               return (
                 <div
-                  className={`timeline__entry${dropTargetId === stop.id && draggedId !== stop.id ? " timeline__entry--drop-target" : ""}`}
+                  className={`timeline__entry${draggedId === stop.id ? " timeline__entry--dragging" : ""}${dropTargetId === stop.id && draggedId !== stop.id ? ` timeline__entry--drop-target${dropPosition === "after" ? " timeline__entry--drop-after" : ""}` : ""}`}
                   data-drop-stop-id={stop.id}
                   key={stop.id}
                 >
@@ -722,6 +1045,30 @@ export function PlanPage(): React.JSX.Element {
                         } as React.CSSProperties
                       }
                     >
+                      {!selectionMode ? (
+                        <button
+                          aria-describedby="reorder-help"
+                          aria-label={`Reorder ${stop.name}`}
+                          className="timeline__grip"
+                          data-swipe-back-ignore="true"
+                          onKeyDown={(event) => {
+                            if (
+                              event.altKey &&
+                              (event.key === "ArrowUp" || event.key === "ArrowDown")
+                            ) {
+                              event.preventDefault();
+                              moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
+                            }
+                          }}
+                          onPointerDown={(event) => {
+                            event.stopPropagation();
+                            startReorder(event, stop.id);
+                          }}
+                          type="button"
+                        >
+                          <GripVertical aria-hidden="true" size={18} strokeWidth={1.8} />
+                        </button>
+                      ) : null}
                       <button
                         aria-checked={selectionMode ? checked : undefined}
                         aria-label={selectionMode ? `Select ${stop.name}` : undefined}
@@ -780,39 +1127,6 @@ export function PlanPage(): React.JSX.Element {
                         </span>
                         <img alt="" className="timeline__photo" src={stop.image} />
                       </button>
-                      {!selectionMode ? (
-                        <button
-                          aria-describedby="reorder-help"
-                          aria-label={`Reorder ${stop.name}`}
-                          className="timeline__grip"
-                          data-swipe-back-ignore="true"
-                          onKeyDown={(event) => {
-                            if (
-                              event.altKey &&
-                              (event.key === "ArrowUp" || event.key === "ArrowDown")
-                            ) {
-                              event.preventDefault();
-                              moveStopWithKeyboard(stop.id, event.key === "ArrowUp" ? -1 : 1);
-                            }
-                          }}
-                          onPointerCancel={endReorder}
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                            startReorder(event, stop.id);
-                          }}
-                          onPointerMove={(event) => {
-                            event.stopPropagation();
-                            moveReorder(event);
-                          }}
-                          onPointerUp={(event) => {
-                            event.stopPropagation();
-                            endReorder(event);
-                          }}
-                          type="button"
-                        >
-                          <GripVertical aria-hidden="true" size={18} strokeWidth={1.8} />
-                        </button>
-                      ) : null}
                     </div>
                   </div>
                   {travel === undefined ? null : (
@@ -837,7 +1151,7 @@ export function PlanPage(): React.JSX.Element {
             <p>Add your first place when you are ready.</p>
           </div>
         )}
-        {!selectionMode && removal === null && openSwipeId === null ? (
+        {!selectionMode && removal === null && openSwipeId === null && draggedId === null ? (
           <button
             aria-label={`Add a place to ${dayLabel}`}
             className="day-plan__add"
@@ -848,6 +1162,18 @@ export function PlanPage(): React.JSX.Element {
           </button>
         ) : null}
       </section>
+
+      {draggedId === null ? null : (
+        <div
+          aria-hidden="true"
+          className={`plan-reorder-cancel${cancelDropActive ? " plan-reorder-cancel--active" : ""}`}
+          data-swipe-back-ignore="true"
+          ref={cancelDropRef}
+        >
+          <X size={18} strokeWidth={2} />
+          <span>Cancel move</span>
+        </div>
+      )}
 
       {selectionMode && selectedCount > 0 ? (
         <div
