@@ -60,6 +60,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
+  color: var(--color-text);
   white-space: nowrap;
 }
 

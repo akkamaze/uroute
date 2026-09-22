@@ -171,7 +171,9 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await expect(page).toHaveURL(/\/plan\/manage\?day=13/);
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Back to Plan" })).toBeVisible();
+  const editPlanBack = page.getByRole("button", { name: "Back to Plan" });
+  await expect(editPlanBack).toBeVisible();
+  await expect(editPlanBack).toHaveCSS("color", "rgb(32, 33, 36)");
   await expect(page.locator(".bottom-navigation")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reorder Kiyomizu-dera" })).toBeVisible();
   await expect(page.locator(".manage-day__icon")).toHaveCount(3);
@@ -345,7 +347,9 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(initialVersion.getByRole("button", { name: /Restore version from/ })).toHaveCount(0);
   await initialVersion.getByRole("button", { name: /View version from/ }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Back to Version history" })).toBeVisible();
+  const versionBack = page.getByRole("button", { name: "Back to Version history" });
+  await expect(versionBack).toBeVisible();
+  await expect(versionBack).toHaveCSS("color", "rgb(32, 33, 36)");
   await expect(page.getByRole("heading", { name: "Reordered" })).toBeVisible();
   await expect(page.getByText("Stop 1 → Stop 2", { exact: true })).toBeVisible();
   await expect(page.getByText("Order changed", { exact: true })).toHaveCount(0);
