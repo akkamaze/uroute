@@ -148,8 +148,14 @@
   flex-direction: column;
   gap: 6px;
   padding: 6px 10px 96px;
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+  touch-action: pan-x pinch-zoom;
+}
+
+.manage-day__list--scrollable {
   overflow-y: auto;
-  overscroll-behavior-y: contain;
+  touch-action: pan-y pinch-zoom;
 }
 
 .manage-day__swipe-shell {

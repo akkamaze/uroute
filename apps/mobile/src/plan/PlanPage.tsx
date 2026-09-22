@@ -24,6 +24,7 @@ import {
   type RemovedVisit,
 } from "./plan-store";
 import { TripHeader } from "./TripHeader";
+import { VisitTime } from "./VisitTime";
 import "./stop-actions.css";
 
 const TRIP_DAYS = [
@@ -492,7 +493,7 @@ export function PlanPage(): React.JSX.Element {
                         }}
                         type="button"
                       >
-                        <span className="timeline__time">{stop.time || "Anytime"}</span>
+                        <VisitTime className="timeline__time" time={stop.time} />
                         <span className={`timeline__icon timeline__icon--${stop.category}`}>
                           {renderStopIcon(stop)}
                         </span>

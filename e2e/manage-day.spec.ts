@@ -203,6 +203,77 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   expect(manageCardGeometry.gripIsBeforePhoto).toBe(true);
 });
 
+test("unset times use an accessible dash and scroll surfaces avoid boundary overscroll", async ({
+  page,
+}) => {
+  await page.evaluate((key) => {
+    const stored = JSON.parse(window.localStorage.getItem(key) ?? "{}") as {
+      days?: Record<string, Array<{ placeId: string; time: string }>>;
+    };
+    const firstVisit = stored.days?.["13"]?.[0];
+    if (firstVisit !== undefined) {
+      firstVisit.time = "";
+    }
+    window.localStorage.setItem(key, JSON.stringify(stored));
+  }, PLAN_STORAGE_KEY);
+
+  await page.goto("/plan/manage?day=13");
+  const editTime = page.locator('[data-manage-row-id="kiyomizu"] .manage-day__time');
+  await expect(editTime).toHaveAttribute("aria-label", "No time set");
+  await expect(editTime).toHaveClass(/visit-time--unset/);
+  await expect(editTime.locator(".visit-time__unset-mark")).toHaveCSS("width", "8px");
+  await expect(editTime.locator(".visit-time__unset-mark")).toHaveCSS("height", "1px");
+  const timeCenters = await page.locator(".manage-day__list").evaluate((list) => {
+    const scheduled = list.querySelector<HTMLElement>(
+      '[data-manage-row-id="arabica"] .manage-day__time',
+    );
+    const mark = list.querySelector<HTMLElement>(
+      '[data-manage-row-id="kiyomizu"] .visit-time__unset-mark',
+    );
+    if (scheduled === null || mark === null) {
+      throw new Error("Expected scheduled time and unset-time mark");
+    }
+    const range = document.createRange();
+    range.selectNodeContents(scheduled);
+    const scheduledRect = range.getBoundingClientRect();
+    const markRect = mark.getBoundingClientRect();
+
+    return {
+      mark: markRect.left + markRect.width / 2,
+      scheduled: scheduledRect.left + scheduledRect.width / 2,
+    };
+  });
+  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(0.5);
+  await expect(page.getByText("Anytime", { exact: true })).toHaveCount(0);
+
+  const editList = page.locator(".manage-day__list");
+  await expect(editList).not.toHaveClass(/manage-day__list--scrollable/);
+  await expect(editList).toHaveCSS("overflow-y", "hidden");
+  await expect(editList).toHaveCSS("overscroll-behavior-y", "none");
+  expect(
+    await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY),
+  ).toBe("none");
+
+  await page.goto("/plan?day=13");
+  const planTime = page.locator('[data-plan-stop-id="kiyomizu"] .timeline__time');
+  await expect(planTime).toHaveAttribute("aria-label", "No time set");
+  await expect(planTime).toHaveClass(/visit-time--unset/);
+
+  await page.goto("/trips");
+  const tripsScroller = page.locator(".trips-page__scroll");
+  await expect(tripsScroller).toHaveCSS("overscroll-behavior-y", "none");
+  const tripsScrollState = await tripsScroller.evaluate((element) => ({
+    classAllowsScroll: element.classList.contains("trips-page__scroll--scrollable"),
+    contentOverflows: element.scrollHeight > element.clientHeight + 1,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+  expect(tripsScrollState.classAllowsScroll).toBe(tripsScrollState.contentOverflows);
+  expect(tripsScrollState.overflowY).toBe(tripsScrollState.contentOverflows ? "auto" : "hidden");
+  expect(
+    await page.evaluate(() => getComputedStyle(document.documentElement).overscrollBehaviorY),
+  ).toBe("none");
+});
+
 test("reorder stays in an autosaved draft until Save and supports undo and redo", async ({
   page,
 }) => {

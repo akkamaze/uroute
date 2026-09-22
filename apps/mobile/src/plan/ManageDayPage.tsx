@@ -29,6 +29,7 @@ import {
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
 import { useManageDaySwipeBack } from "./use-manage-day-swipe-back";
 import { createVersionDiff, type VersionPlaceDiff } from "./version-diff";
+import { VisitTime } from "./VisitTime";
 import "./manage-day.css";
 import "./stop-actions.css";
 
@@ -254,6 +255,7 @@ export function ManageDayPage(): React.JSX.Element {
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [versions, setVersions] = useState<ManageDayVersion[]>(() => loadManageDayVersions(day));
+  const [listScrollable, setListScrollable] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
@@ -836,6 +838,25 @@ export function ManageDayPage(): React.JSX.Element {
   }, [confirmSave]);
 
   useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list === null) {
+      return undefined;
+    }
+    const scrollElement = list;
+
+    function updateScrollable(): void {
+      setListScrollable(scrollElement.scrollHeight > scrollElement.clientHeight + 1);
+    }
+
+    updateScrollable();
+    const observer = new ResizeObserver(updateScrollable);
+    observer.observe(scrollElement);
+    Array.from(scrollElement.children).forEach((child) => observer.observe(child));
+
+    return () => observer.disconnect();
+  }, [displayedVisits.length]);
+
+  useLayoutEffect(() => {
     const pending = previewAnimationRef.current;
     if (pending === null) {
       return;
@@ -917,7 +938,7 @@ export function ManageDayPage(): React.JSX.Element {
           </span>
           <span className="manage-day__place">
             <strong>{stop.name}</strong>
-            <span>{placeDiff.visit.time || "Anytime"}</span>
+            <VisitTime time={placeDiff.visit.time} />
           </span>
           <img alt="" src={stop.image} />
         </div>
@@ -1281,7 +1302,13 @@ export function ManageDayPage(): React.JSX.Element {
         )}
       </div>
 
-      <div aria-label={`${dayName} places`} className="manage-day__list" ref={listRef}>
+      <div
+        aria-label={`${dayName} places`}
+        className={
+          listScrollable ? "manage-day__list manage-day__list--scrollable" : "manage-day__list"
+        }
+        ref={listRef}
+      >
         {displayedVisits.length === 0 ? (
           <div className="manage-day__empty">
             <strong>
@@ -1351,7 +1378,7 @@ export function ManageDayPage(): React.JSX.Element {
                       >
                         {selected ? <Check aria-hidden="true" size={15} strokeWidth={2.4} /> : null}
                       </span>
-                      <span className="manage-day__time">{visit.time || "Anytime"}</span>
+                      <VisitTime className="manage-day__time" time={visit.time} />
                       <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
                         {renderStopIcon(stop.category)}
                       </span>
@@ -1387,7 +1414,7 @@ export function ManageDayPage(): React.JSX.Element {
                       >
                         <GripVertical aria-hidden="true" size={19} strokeWidth={1.8} />
                       </button>
-                      <span className="manage-day__time">{visit.time || "Anytime"}</span>
+                      <VisitTime className="manage-day__time" time={visit.time} />
                       <span className={`manage-day__icon manage-day__icon--${stop.category}`}>
                         {renderStopIcon(stop.category)}
                       </span>
