@@ -8,7 +8,7 @@ import {
   restoreAndSaveManageDayVersion,
   saveManageDayDraft,
   visitsSignature,
-} from "../src/plan/manage-day-store.ts";
+} from "../src/plan/edit-plan-store.ts";
 import { KYOTO_PLAN_STORAGE_KEY } from "../src/plan/plan-store.ts";
 
 class MemoryStorage {

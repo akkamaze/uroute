@@ -28,12 +28,12 @@ import {
   saveManageDayDraft,
   visitsSignature,
   type ManageDayVersion,
-} from "./manage-day-store";
+} from "./edit-plan-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
-import { useManageDaySwipeBack } from "./use-manage-day-swipe-back";
+import { useEditPlanSwipeBack } from "./useEditPlanSwipeBack";
 import { createVersionDiff, type VersionChangeKind, type VersionPlaceDiff } from "./version-diff";
 import { VisitTime } from "./VisitTime";
-import "./manage-day.css";
+import "./edit-plan.css";
 import "./stop-actions.css";
 
 const DAY_NAMES = new Map([
@@ -338,7 +338,7 @@ function RestoreVersionDialog({
   );
 }
 
-export function ManageDayPage(): React.JSX.Element {
+export function EditPlanPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/plan/manage" });
   const day = search.day ?? 13;
@@ -401,7 +401,7 @@ export function ManageDayPage(): React.JSX.Element {
       next.pathname !== "/plan/manage",
     withResolver: true,
   });
-  const swipeBackRef = useManageDaySwipeBack(() => {
+  const swipeBackRef = useEditPlanSwipeBack(() => {
     if (search.view === "versions" && search.version !== undefined) {
       void navigate({ to: "/plan/manage", search: { day, view: "versions" }, replace: true });
     } else if (search.view === "versions") {

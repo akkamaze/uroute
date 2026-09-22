@@ -32,7 +32,7 @@ interface EditorSearch {
   editor?: "open";
 }
 
-interface ManageDaySearch {
+interface EditPlanSearch {
   day?: KyotoDay;
   view?: "versions";
   version?: string;
@@ -106,7 +106,7 @@ const planRoute = createRoute({
 const manageDayRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan/manage",
-  validateSearch: (search: Record<string, unknown>): ManageDaySearch => ({
+  validateSearch: (search: Record<string, unknown>): EditPlanSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(search.view === "versions" ? { view: "versions" } : {}),
     ...(search.view === "versions" &&
@@ -115,7 +115,7 @@ const manageDayRoute = createRoute({
       ? { version: search.version }
       : {}),
   }),
-  component: lazyRouteComponent(() => import("./plan/ManageDayPage"), "ManageDayPage"),
+  component: lazyRouteComponent(() => import("./plan/EditPlanPage"), "EditPlanPage"),
 });
 
 const bookingsRoute = createRoute({

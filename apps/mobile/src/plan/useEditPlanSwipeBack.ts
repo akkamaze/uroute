@@ -15,7 +15,7 @@ interface Gesture {
   x: number;
 }
 
-export function useManageDaySwipeBack(onBack: () => void): React.RefObject<HTMLElement | null> {
+export function useEditPlanSwipeBack(onBack: () => void): React.RefObject<HTMLElement | null> {
   const surfaceRef = useRef<HTMLElement>(null);
   const onBackRef = useRef(onBack);
 
