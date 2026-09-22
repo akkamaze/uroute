@@ -32,13 +32,13 @@
 }
 .expense-editor h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--type-heading-lg-size);
   line-height: 1.4;
 }
 .expense-editor header p {
   margin: 4px 0 0;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
 }
 .expense-editor__close {
   display: grid;
@@ -57,7 +57,7 @@
 .expense-editor__field {
   display: grid;
   gap: 8px;
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   font-weight: 600;
 }
 .expense-editor__field > input,
@@ -73,7 +73,7 @@
   padding: 12px;
   color: var(--color-text);
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--type-title-size);
   font-weight: 400;
 }
 .expense-editor__field > input:focus-visible,
@@ -94,7 +94,7 @@
 }
 .expense-editor__amount > span {
   color: var(--color-muted);
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   font-weight: 400;
 }
 .expense-editor__categories {
@@ -106,7 +106,7 @@
 .expense-editor__categories legend {
   margin-bottom: 8px;
   padding: 0;
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   font-weight: 600;
 }
 .expense-editor__categories > div {
@@ -125,7 +125,7 @@
   border: 1px solid var(--color-border);
   border-radius: 10px;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
   cursor: pointer;
 }
 .expense-category input {
@@ -146,7 +146,7 @@
 .expense-editor__error {
   margin: 0;
   color: #b42318;
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
   line-height: 1.4;
 }
 .expense-editor .expense-add {

@@ -16,7 +16,7 @@
 .pwa-prompt p {
   margin: 0;
   color: var(--color-text);
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   line-height: 1.4;
 }
 

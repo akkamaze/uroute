@@ -34,13 +34,13 @@
 }
 .packing-dialog h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--type-heading-lg-size);
   line-height: 1.4;
 }
 .packing-dialog header p {
   margin: 4px 0 0;
   color: var(--color-muted);
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   line-height: 1.4;
 }
 .packing-dialog__close {
@@ -70,7 +70,7 @@
   align-items: center;
   padding: 12px 0;
   border-bottom: 1px solid var(--color-border);
-  font-size: 0.9375rem;
+  font-size: var(--type-subtitle-size);
   line-height: 1.4;
   cursor: pointer;
 }
@@ -115,7 +115,7 @@
   outline: 0;
   background: transparent;
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--type-title-size);
 }
 .packing-add button {
   display: grid;
@@ -138,7 +138,7 @@
 .packing-dialog__message {
   margin: 10px 0 0;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
   line-height: 1.4;
 }
 @media (min-width: 600px) {

@@ -25,14 +25,14 @@
 }
 .trip-members h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--type-heading-lg-size);
   line-height: 1.4;
 }
 .trip-members header p,
 .trip-members__dates {
   margin: 4px 0 0;
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
   line-height: 1.5;
 }
 .trip-members header button {
@@ -76,11 +76,11 @@
   gap: 4px;
 }
 .trip-members li strong {
-  font-size: 0.9375rem;
+  font-size: var(--type-subtitle-size);
 }
 .trip-members li span {
   color: var(--color-muted);
-  font-size: 0.8125rem;
+  font-size: var(--type-body-sm-size);
 }
 .trip-members button:focus-visible {
   outline: 2px solid var(--color-active);

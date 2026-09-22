@@ -63,7 +63,7 @@
 
 .entry-brand__wordmark {
   color: var(--color-text);
-  font-size: 2rem;
+  font-size: var(--type-hero-size);
   font-weight: 700;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -76,7 +76,7 @@
 .loading-preview__status {
   margin: var(--space-6) 0 0;
   color: var(--color-muted);
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   line-height: 1.4;
 }
 
@@ -89,7 +89,7 @@
   border: 0;
   border-radius: 11px;
   background: transparent;
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   font-weight: 700;
   cursor: pointer;
 }
@@ -143,7 +143,7 @@
 
 .welcome-wordmark {
   color: var(--color-text);
-  font-size: 1.75rem;
+  font-size: var(--type-display-lg-size);
   font-weight: 700;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -183,7 +183,7 @@
 .welcome-content h1 {
   margin: 0;
   color: var(--color-text);
-  font-size: 2rem;
+  font-size: var(--type-hero-size);
   line-height: 1.25;
 }
 
@@ -195,7 +195,7 @@
 .welcome-content p {
   margin: var(--space-3) 0 0;
   color: var(--color-muted);
-  font-size: 1rem;
+  font-size: var(--type-title-size);
   line-height: 1.55;
 }
 
@@ -211,7 +211,7 @@
   color: #ffffff;
   border-radius: 11px;
   background: var(--color-active);
-  font-size: 1rem;
+  font-size: var(--type-title-size);
   font-weight: 400;
   text-decoration: none;
 }
@@ -280,7 +280,7 @@
 
 .login-wordmark {
   color: var(--color-text);
-  font-size: 2rem;
+  font-size: var(--type-hero-size);
   font-weight: 700;
   letter-spacing: -0.05em;
   line-height: 1;
@@ -309,7 +309,7 @@
 .login-introduction p {
   margin: var(--space-3) 0 0;
   color: var(--color-muted);
-  font-size: 1rem;
+  font-size: var(--type-title-size);
   line-height: 1.5;
 }
 
@@ -345,7 +345,7 @@
   max-width: 320px;
   margin: var(--space-3) auto 0;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: var(--type-label-size);
   line-height: 1.45;
 }
 
@@ -371,14 +371,14 @@
 
 .profile-dialog h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--type-heading-lg-size);
   line-height: 1.25;
 }
 
 .profile-dialog p {
   margin: var(--space-2) 0 0;
   color: var(--color-muted);
-  font-size: 0.875rem;
+  font-size: var(--type-body-size);
   line-height: 1.45;
 }
 
@@ -416,13 +416,13 @@
 }
 
 .profile-choice strong {
-  font-size: 0.9375rem;
+  font-size: var(--type-subtitle-size);
 }
 
 .profile-choice small {
   margin-top: 0.125rem;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: var(--type-label-size);
 }
 
 .profile-dialog__cancel {
