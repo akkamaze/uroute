@@ -151,3 +151,33 @@ test("assigns stable sequence numbers when loading legacy version entries", () =
 
   expect(loadManageDayVersions(13).map((version) => version.sequence)).toEqual([2, 1]);
 });
+
+test("labels legacy restore backups with the restored source version", () => {
+  const restoredVisits = [originalVisits[1], originalVisits[0]];
+  globalThis.window.localStorage.setItem(
+    "uroute.mock.manage-day-versions.v1",
+    JSON.stringify({
+      13: [
+        {
+          id: "legacy-restored",
+          savedAt: 302,
+          summary: "Restored version from Today, 09:00 AM",
+          visits: restoredVisits,
+        },
+        { id: "legacy-before", savedAt: 301, summary: "Before restore", visits: originalVisits },
+        { id: "source", savedAt: 100, summary: "Initial plan", visits: restoredVisits },
+      ],
+    }),
+  );
+
+  const versions = loadManageDayVersions(13);
+  expect(versions[0]?.summary).toBe("Restored from Version 1");
+  expect(versions[1]?.summary).toBe("Automatically saved before restoring Version 1");
+  expect(versions[1]?.restoreContext).toEqual({
+    kind: "before",
+    sourceId: "source",
+    sourceSavedAt: 100,
+    sourceSequence: 1,
+    sourceSummary: "Initial plan",
+  });
+});

@@ -525,6 +525,51 @@ test("Version history reveals older versions ten at a time", async ({ page }) =>
   await expect(older).toHaveCount(0);
 });
 
+test("Version history migrates legacy Before restore wording", async ({ page }) => {
+  await page.evaluate(
+    ({ planKey, versionsKey }) => {
+      const stored = JSON.parse(window.localStorage.getItem(planKey) ?? "{}") as {
+        days: Record<string, Array<{ placeId: string; time: string; notes: string }>>;
+      };
+      const current = stored.days[13] ?? [];
+      const restored = [current[1], current[0], ...current.slice(2)];
+      window.localStorage.setItem(
+        versionsKey,
+        JSON.stringify({
+          13: [
+            {
+              id: "legacy-restored",
+              savedAt: Date.now() - 1_000,
+              summary: "Restored version from Today, 09:00 AM",
+              visits: restored,
+            },
+            {
+              id: "legacy-before",
+              savedAt: Date.now() - 1_001,
+              summary: "Before restore",
+              visits: current,
+            },
+            {
+              id: "legacy-source",
+              savedAt: Date.now() - 60_000,
+              summary: "Initial plan",
+              visits: restored,
+            },
+          ],
+        }),
+      );
+    },
+    { planKey: PLAN_STORAGE_KEY, versionsKey: VERSIONS_STORAGE_KEY },
+  );
+  await page.goto("/plan/manage?day=13&view=versions");
+
+  await expect(
+    page.getByText("Automatically saved before restoring Version 1", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Before restore", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Restored from Version 1" })).toBeVisible();
+});
+
 test("history separates place counts and shows only applicable change indicators", async ({
   page,
 }) => {
@@ -563,6 +608,17 @@ test("history separates place counts and shows only applicable change indicators
   await expect(history).toHaveCount(5);
   const combined = history.nth(0);
   await expect(combined.getByText("3 places", { exact: true })).toBeVisible();
+  const versionNumberBox = await combined.getByText("Version 5", { exact: true }).boundingBox();
+  const viewButtonBox = await combined.getByRole("button", { name: "View Version 5" }).boundingBox();
+  expect(versionNumberBox).not.toBeNull();
+  expect(viewButtonBox).not.toBeNull();
+  expect(
+    Math.abs(
+      (versionNumberBox?.x ?? 0) +
+        (versionNumberBox?.width ?? 0) -
+        ((viewButtonBox?.x ?? 0) + (viewButtonBox?.width ?? 0)),
+    ),
+  ).toBeLessThanOrEqual(1);
   await expect(combined.locator(".version-entry__change")).toHaveCount(2);
   await expect(combined.locator(".version-entry__change--reorder")).toHaveText("Reordered");
   const removedChange = combined

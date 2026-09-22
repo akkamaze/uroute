@@ -689,6 +689,8 @@
 
 .version-entry__actions button {
   align-items: flex-end;
+  justify-content: flex-end;
+  padding-right: 0;
 }
 
 .version-entry__continue {

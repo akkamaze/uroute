@@ -186,6 +186,50 @@ function normalizeSequences(versions: ManageDayVersion[]): ManageDayVersion[] {
   return versions.map((version, index) => ({ ...version, sequence: versions.length - index }));
 }
 
+function migrateLegacyRestoreContexts(versions: ManageDayVersion[]): ManageDayVersion[] {
+  const migrated = [...versions];
+
+  for (let index = 1; index < migrated.length; index += 1) {
+    const beforeRestore = migrated[index];
+    const restored = migrated[index - 1];
+    if (
+      beforeRestore?.summary !== "Before restore" ||
+      beforeRestore.restoreContext !== undefined ||
+      restored === undefined ||
+      !restored.summary.startsWith("Restored version from ")
+    ) {
+      continue;
+    }
+
+    const restoredSignature = visitsSignature(restored.visits);
+    const source = migrated
+      .slice(index + 1)
+      .find((candidate) => visitsSignature(candidate.visits) === restoredSignature);
+    if (source === undefined) {
+      continue;
+    }
+
+    const restoreContext = {
+      sourceId: source.id,
+      sourceSavedAt: source.savedAt,
+      sourceSequence: source.sequence,
+      sourceSummary: source.summary,
+    };
+    migrated[index] = {
+      ...beforeRestore,
+      restoreContext: { kind: "before", ...restoreContext },
+      summary: `Automatically saved before restoring Version ${source.sequence}`,
+    };
+    migrated[index - 1] = {
+      ...restored,
+      restoreContext: { kind: "restored", ...restoreContext },
+      summary: `Restored from Version ${source.sequence}`,
+    };
+  }
+
+  return migrated;
+}
+
 function nextSequence(versions: readonly ManageDayVersion[]): number {
   return Math.max(0, ...versions.map((version) => version.sequence)) + 1;
 }
@@ -233,7 +277,7 @@ export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
     ];
   });
 
-  return normalizeSequences(versions);
+  return migrateLegacyRestoreContexts(normalizeSequences(versions));
 }
 
 export function addManageDayVersion(
