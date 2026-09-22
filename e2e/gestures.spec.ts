@@ -128,7 +128,6 @@ test("holding a row selects it while the grip owns keyboard reordering", async (
   await page.mouse.up();
 
   await expect(page).toHaveURL(/\/plan\?day=13$/);
-  await expect(page.getByText("1 selected")).toBeVisible();
   await expect(firstStop).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
 

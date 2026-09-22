@@ -1,23 +1,12 @@
 .timeline__toolbar {
-  display: grid;
+  display: flex;
   min-height: 44px;
-  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  padding: 0 2px 6px 8px;
+  justify-content: space-between;
+  padding: 0 2px 6px;
   color: var(--color-muted);
   font-size: 0.75rem;
-}
-
-.timeline__toolbar:has(strong) {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  padding-left: 2px;
-}
-
-.timeline__toolbar strong {
-  color: var(--color-text);
-  font-size: 0.875rem;
-  text-align: center;
 }
 
 .timeline__toolbar button {
@@ -84,11 +73,26 @@
   transform: translateX(var(--swipe-offset, 0));
   transition:
     transform 180ms ease-out,
-    background-color 140ms ease-out;
+    background-color 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+
+.timeline__surface--selection-mode {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .timeline__surface--selected {
-  background: #edf5ff;
+  background: #f5f7fa;
+}
+
+.timeline__surface--selected .timeline__time,
+.timeline__surface--selected .timeline__info,
+.timeline__surface--selected .timeline__photo {
+  opacity: 0.56;
+}
+
+.timeline__surface--selected .timeline__photo {
+  filter: saturate(0.35);
 }
 
 .timeline__surface--dragging {
@@ -103,8 +107,29 @@
   background: transparent;
 }
 
-.timeline__grip,
-.timeline__check {
+.timeline__surface--selection-mode .timeline__stop {
+  grid-template-columns: 32px 44px minmax(0, 1fr) 48px;
+  border-radius: 14px;
+}
+
+.timeline__selection-checkbox {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  margin: 0 auto;
+  color: var(--color-on-accent);
+  border: 1.5px solid #c7ced8;
+  border-radius: 6px;
+  background: var(--color-surface);
+}
+
+.timeline__selection-checkbox--checked {
+  border-color: var(--color-active);
+  background: var(--color-active);
+}
+
+.timeline__grip {
   display: grid;
   width: 44px;
   min-width: 44px;
@@ -127,28 +152,6 @@
   cursor: grabbing;
 }
 
-.timeline__check::before {
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border: 2px solid #8b95a5;
-  border-radius: 6px;
-  content: "";
-}
-
-.timeline__check--selected {
-  color: #ffffff;
-}
-
-.timeline__check--selected::before {
-  border-color: var(--color-active);
-  background: var(--color-active);
-}
-
-.timeline__check svg {
-  z-index: 1;
-}
-
 .timeline__toolbar button:focus-visible,
 .timeline__remove:focus-visible,
 .timeline__grip:focus-visible {
@@ -159,34 +162,63 @@
 .plan-bulk-remove {
   position: fixed;
   z-index: 8;
-  right: 16px;
+  right: max(1rem, calc((100vw - 414px) / 2 + 1rem));
   bottom: calc(84px + env(safe-area-inset-bottom, 0px));
-  left: 16px;
-  width: calc(100% - 32px);
-  max-width: 390px;
-  margin: 0 auto;
+  animation: reveal-bulk-action 180ms ease-out both;
 }
 
 .plan-bulk-remove > button {
-  display: flex;
-  width: 100%;
-  min-height: 48px;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  padding: 0;
   color: #ffffff;
   border: 0;
-  border-radius: 12px;
+  border-radius: 50%;
   background: #a33228;
-  box-shadow: 0 6px 24px rgb(32 33 36 / 18%);
-  font-weight: 700;
+  box-shadow: 0 6px 16px rgb(163 50 40 / 24%);
+  transition:
+    transform 140ms ease-out,
+    box-shadow 140ms ease-out;
 }
 
-.plan-bulk-remove > button:disabled {
-  color: #8a8f98;
-  background: #e8eaed;
-  box-shadow: none;
-  cursor: default;
+.plan-bulk-remove > button > span {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 5px;
+  color: #a33228;
+  border: 1px solid #e2b7b3;
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 2px 6px rgb(32 33 36 / 12%);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.plan-bulk-remove > button:active {
+  box-shadow: 0 3px 10px rgb(117 38 31 / 20%);
+  transform: translateY(1px) scale(0.98);
+}
+
+@keyframes reveal-bulk-action {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .remove-stops-dialog {
@@ -237,6 +269,12 @@
   color: #ffffff;
   border-color: #a33228;
   background: #a33228;
+}
+
+.remove-stops-dialog .selection-leave-dialog__confirm {
+  color: var(--color-on-accent);
+  border-color: var(--color-active);
+  background: var(--color-active);
 }
 
 .remove-stops-dialog button:focus-visible,
@@ -298,7 +336,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .timeline__surface {
+  .timeline__surface,
+  .plan-bulk-remove {
+    animation-duration: 1ms;
     transition-duration: 1ms;
   }
 }

@@ -307,13 +307,57 @@ test("multi-select confirms once and undo restores order and visit data", async 
   }, PLAN_STORAGE_KEY);
   await page.reload();
 
-  await page.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(
+    page.getByText("Swipe left to remove · Hold to select", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Drag the handle to reorder", { exact: true })).toHaveCount(0);
+  const mapView = page.getByRole("button", { name: "Map view", exact: true });
+  const selectPlaces = page.getByRole("button", { name: "Select places", exact: true });
+  await expect(mapView).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(selectPlaces).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await selectPlaces.click();
+  await expect(page.getByRole("button", { name: "Exit selection mode" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const selectionToolbar = page.getByRole("button", { name: "Cancel", exact: true });
+  const firstPlanRow = page.locator('[data-drop-stop-id="kiyomizu"]');
+  const toolbarBox = await selectionToolbar.boundingBox();
+  const firstPlanRowBox = await firstPlanRow.boundingBox();
+  if (toolbarBox === null || firstPlanRowBox === null) {
+    throw new Error("Selection toolbar and first plan row must both be visible");
+  }
+  expect(firstPlanRowBox.y - (toolbarBox.y + toolbarBox.height)).toBeLessThanOrEqual(16);
+  await page.locator(".day-plan").evaluate((plan) => {
+    plan.scrollTop = plan.scrollHeight;
+  });
+  await expect(selectionToolbar).toBeInViewport();
   await expect(page.getByRole("checkbox")).toHaveCount(3);
   await expect(page.getByRole("checkbox", { name: "Select Kiyomizu-dera" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Remove \d+ places?/ })).toHaveCount(0);
+  const firstRow = page.locator('[data-stop-id="kiyomizu"]');
+  const checkboxBox = await firstRow.locator(".timeline__selection-checkbox").boundingBox();
+  const timeBox = await firstRow.locator(".timeline__time").boundingBox();
+  if (checkboxBox === null || timeBox === null) {
+    throw new Error("Selection checkbox and time must both be visible");
+  }
+  expect(checkboxBox.x).toBeLessThan(timeBox.x);
   await page.locator('[data-stop-id="kiyomizu"]').click();
+  const selectedSurface = page
+    .locator('[data-drop-stop-id="kiyomizu"]')
+    .locator(".timeline__surface");
+  await expect(selectedSurface).toHaveCSS("background-color", "rgb(245, 247, 250)");
+  await expect(selectedSurface).toHaveCSS("box-shadow", "none");
+  await expect(selectedSurface.locator(".timeline__info")).toHaveCSS("opacity", "0.56");
+  await expect(selectedSurface.locator(".timeline__selection-checkbox--checked")).toHaveCount(1);
+  await expect(selectedSurface.locator(".timeline__selection-checkbox")).toHaveCSS("opacity", "1");
   await page.locator('[data-stop-id="nishiki"]').click();
-  await expect(page.getByText("2 selected")).toBeVisible();
-  await page.getByRole("button", { name: "Remove 2 places", exact: true }).click();
+  await expect(page.locator(".timeline__selection-checkbox--checked")).toHaveCount(2);
+  const bulkRemove = page.getByRole("button", { name: "Remove 2 places", exact: true });
+  await expect(bulkRemove).toBeVisible();
+  await expect.poll(async () => (await bulkRemove.boundingBox())?.width).toBe(56);
+  await expect.poll(async () => (await bulkRemove.boundingBox())?.height).toBe(56);
+  await bulkRemove.click();
 
   const dialog = page.getByRole("dialog", { name: "Remove 2 places?" });
   await expect(dialog).toBeVisible();
@@ -329,4 +373,59 @@ test("multi-select confirms once and undo restores order and visit data", async 
     { placeId: "arabica", time: "10:15", notes: "coffee" },
     { placeId: "nishiki", time: "12:30", notes: "lunch" },
   ]);
+});
+
+test("selection uses the full row hit area", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Select places", exact: true }).click();
+
+  const row = page.locator('[data-drop-stop-id="kiyomizu"]');
+  const surface = row.locator(".timeline__surface");
+  const box = await surface.boundingBox();
+  if (box === null) {
+    throw new Error("Kiyomizu selection row is not visible");
+  }
+
+  await page.mouse.click(box.x + box.width - 8, box.y + box.height / 2);
+  await expect(page.getByRole("checkbox", { name: "Select Kiyomizu-dera" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
+
+test("leaving the plan with selected places asks for confirmation", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Select places", exact: true }).click();
+  await page.locator('[data-stop-id="kiyomizu"]').click();
+
+  await page.getByRole("link", { name: "Bookings", exact: true }).click();
+  const leaveDialog = page.getByRole("dialog", { name: "Leave selection mode?" });
+  await expect(leaveDialog).toBeVisible();
+  await expect(leaveDialog.getByRole("button", { name: "Keep selecting" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/\/plan\?day=13$/);
+  await expect(leaveDialog).toBeHidden();
+  await expect(page.getByRole("checkbox", { name: "Select Kiyomizu-dera" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+
+  await page.getByRole("link", { name: "Bookings", exact: true }).click();
+  await leaveDialog.getByRole("button", { name: "Leave page" }).click();
+  await expect(page).toHaveURL(/\/bookings$/);
+});
+
+test("changing days with selected places asks for confirmation", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Select places", exact: true }).click();
+  await page.locator('[data-stop-id="kiyomizu"]').click();
+
+  await page.getByRole("button", { name: "Sat 14", exact: true }).click();
+  const changeDayDialog = page.getByRole("dialog", { name: "Change day?" });
+  await expect(changeDayDialog).toBeVisible();
+  await expect(page).toHaveURL(/\/plan\?day=13$/);
+  await changeDayDialog.getByRole("button", { name: "Change day", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/plan\?day=14$/);
+  await expect(page.getByRole("button", { name: "Select places", exact: true })).toBeVisible();
 });

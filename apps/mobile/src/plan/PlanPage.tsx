@@ -1,4 +1,4 @@
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Check,
   CloudSun,
@@ -6,6 +6,7 @@ import {
   Footprints,
   GripVertical,
   Landmark,
+  ListChecks,
   Map as MapIcon,
   Plus,
   Trash2,
@@ -103,6 +104,15 @@ function isStressFixtureEnabled(stress: "1200" | undefined): boolean {
   );
 }
 
+function getPlanDay(search: unknown): KyotoDay {
+  if (typeof search !== "object" || search === null || !("day" in search)) {
+    return 13;
+  }
+  const day = search.day;
+
+  return TRIP_DAYS.some((candidate) => candidate.date === day) ? (day as KyotoDay) : 13;
+}
+
 export function PlanPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/plan" });
@@ -120,7 +130,6 @@ export function PlanPage(): React.JSX.Element {
   const [removal, setRemoval] = useState<RemovalOperation | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  const [showReorderHint, setShowReorderHint] = useState(true);
   const [liveNotice, setLiveNotice] = useState("");
   const gestureRef = useRef<StopGesture | null>(null);
   const reorderRef = useRef<ReorderGesture | null>(null);
@@ -130,6 +139,8 @@ export function PlanPage(): React.JSX.Element {
   const bulkButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const leaveSelectionDialogRef = useRef<HTMLDialogElement>(null);
+  const keepSelectingRef = useRef<HTMLButtonElement>(null);
   const suppressClickRef = useRef(false);
   const mapOpenedHereRef = useRef(false);
   const wasMapExpandedRef = useRef(false);
@@ -151,6 +162,21 @@ export function PlanPage(): React.JSX.Element {
   const weekday = TRIP_DAYS.find(({ date }) => date === selectedDay)?.fullWeekday ?? "Selected day";
   const dayLabel = `${weekday}, ${selectedDay} November`;
   const selectedCount = selectedStopIds.size;
+  const navigationBlocker = useBlocker({
+    enableBeforeUnload: selectionMode && selectedCount > 0,
+    shouldBlockFn: ({ current, next }) => {
+      if (!selectionMode || selectedCount === 0 || current.pathname !== "/plan") {
+        return false;
+      }
+
+      return next.pathname !== "/plan" || getPlanDay(next.search) !== selectedDay;
+    },
+    withResolver: true,
+  });
+  const changingDay =
+    navigationBlocker.status === "blocked" &&
+    navigationBlocker.current.pathname === "/plan" &&
+    navigationBlocker.next.pathname === "/plan";
 
   function clearGesture(): void {
     if (gestureRef.current?.timer !== null && gestureRef.current?.timer !== undefined) {
@@ -190,6 +216,7 @@ export function PlanPage(): React.JSX.Element {
   useEffect(() => {
     closeSwipe();
     exitSelection();
+    setSelectedId(stressEnabled ? null : (plan.days[selectedDay][0]?.placeId ?? null));
     // State reset is intentionally keyed only to the active day.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay]);
@@ -218,7 +245,13 @@ export function PlanPage(): React.JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && selectionMode && !confirming) {
+      if (event.key !== "Escape" || confirming) {
+        return;
+      }
+      if (leaveSelectionDialogRef.current?.open) {
+        return;
+      }
+      if (selectionMode) {
         exitSelection();
       }
     };
@@ -226,6 +259,19 @@ export function PlanPage(): React.JSX.Element {
 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [confirming, selectionMode]);
+
+  useEffect(() => {
+    const dialog = leaveSelectionDialogRef.current;
+    if (dialog === null) {
+      return;
+    }
+    if (navigationBlocker.status === "blocked" && !dialog.open) {
+      dialog.showModal();
+      window.requestAnimationFrame(() => keepSelectingRef.current?.focus());
+    } else if (navigationBlocker.status === "idle" && dialog.open) {
+      dialog.close();
+    }
+  }, [navigationBlocker.status]);
 
   useEffect(() => () => clearGesture(), []);
 
@@ -384,7 +430,6 @@ export function PlanPage(): React.JSX.Element {
     const stop = stops.find(({ id }) => id === sourceId);
     const targetIndex = stops.findIndex(({ id }) => id === targetId);
     if (stop !== undefined && reorderKyotoDay(selectedDay, sourceId, targetId)) {
-      setShowReorderHint(false);
       setLiveNotice(`${stop.name} moved to position ${targetIndex + 1}.`);
     }
   }
@@ -452,9 +497,7 @@ export function PlanPage(): React.JSX.Element {
 
   function selectDay(day: KyotoDay): void {
     closeSwipe();
-    exitSelection();
     void navigate({ to: "/plan", search: { ...search, day }, replace: true, resetScroll: false });
-    setSelectedId(stressEnabled ? null : (plan.days[day][0]?.placeId ?? null));
   }
 
   function addPlace(): void {
@@ -573,7 +616,11 @@ export function PlanPage(): React.JSX.Element {
       ) : null}
 
       <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
-        <header className="day-plan__header">
+        <header
+          className={
+            selectionMode ? "day-plan__header day-plan__header--selection" : "day-plan__header"
+          }
+        >
           <span className="day-plan__heading">
             <h2>{dayLabel}</h2>
             <span className="day-plan__weather">
@@ -581,18 +628,49 @@ export function PlanPage(): React.JSX.Element {
               18°
             </span>
           </span>
-          <button
-            aria-controls="plan-map"
-            aria-label="Map view"
-            aria-pressed={mapVisible}
-            className="day-plan__view-toggle"
-            ref={mapViewButtonRef}
-            onClick={() => setShowMap((current) => !current)}
-            type="button"
-          >
-            <MapIcon aria-hidden="true" size={18} strokeWidth={1.8} />
-            Map
-          </button>
+          <span className="day-plan__header-actions">
+            <button
+              aria-controls="plan-map"
+              aria-label="Map view"
+              aria-pressed={mapVisible}
+              className="day-plan__view-toggle"
+              ref={mapViewButtonRef}
+              onClick={() => setShowMap((current) => !current)}
+              type="button"
+            >
+              <MapIcon aria-hidden="true" size={22} strokeWidth={1.8} />
+            </button>
+            <span className="day-plan__select-wrap">
+              <button
+                aria-label={selectionMode ? "Exit selection mode" : "Select places"}
+                aria-pressed={selectionMode}
+                className="day-plan__select-toggle"
+                onClick={() => (selectionMode ? exitSelection() : enterSelection())}
+                type="button"
+              >
+                <ListChecks aria-hidden="true" size={22} strokeWidth={1.8} />
+              </button>
+            </span>
+          </span>
+          {selectionMode ? (
+            <div className="timeline__toolbar">
+              <button onClick={exitSelection} type="button">
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const allSelected = selectedCount === stops.length;
+                  setSelectedStopIds(allSelected ? new Set() : new Set(stops.map(({ id }) => id)));
+                  setLiveNotice(
+                    allSelected ? "No places selected." : `${stops.length} places selected.`,
+                  );
+                }}
+                type="button"
+              >
+                {selectedCount === stops.length ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+          ) : null}
         </header>
         {plan.persistenceFailed ? (
           <p role="status" className="day-plan__storage-notice">
@@ -602,43 +680,6 @@ export function PlanPage(): React.JSX.Element {
 
         {stops.length > 0 ? (
           <div aria-label={`${weekday} itinerary`} className="timeline">
-            <div className="timeline__toolbar">
-              {selectionMode ? (
-                <>
-                  <button onClick={exitSelection} type="button">
-                    Cancel
-                  </button>
-                  <strong>{selectedCount} selected</strong>
-                  <button
-                    onClick={() => {
-                      const allSelected = selectedCount === stops.length;
-                      setSelectedStopIds(
-                        allSelected ? new Set() : new Set(stops.map(({ id }) => id)),
-                      );
-                      setLiveNotice(
-                        allSelected ? "No places selected." : `${stops.length} places selected.`,
-                      );
-                    }}
-                    type="button"
-                  >
-                    {selectedCount === stops.length ? "Deselect all" : "Select all"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span>Swipe left to remove · Hold to select</span>
-                  <button onClick={() => enterSelection()} type="button">
-                    Select
-                  </button>
-                </>
-              )}
-            </div>
-            {showReorderHint && !selectionMode ? (
-              <p className="timeline__reorder-hint">
-                <GripVertical aria-hidden="true" size={17} strokeWidth={1.8} />
-                Drag the handle to reorder
-              </p>
-            ) : null}
             <span className="sr-only" id="reorder-help">
               Drag this handle to reorder. With a keyboard, press Alt plus Arrow Up or Alt plus
               Arrow Down.
@@ -669,7 +710,7 @@ export function PlanPage(): React.JSX.Element {
                       <span>Remove</span>
                     </button>
                     <div
-                      className={`timeline__surface${swipeOpen ? " timeline__surface--swipe-open" : ""}${checked ? " timeline__surface--selected" : ""}${draggedId === stop.id ? " timeline__surface--dragging" : ""}`}
+                      className={`timeline__surface${selectionMode ? " timeline__surface--selection-mode" : ""}${swipeOpen ? " timeline__surface--swipe-open" : ""}${checked ? " timeline__surface--selected" : ""}${draggedId === stop.id ? " timeline__surface--dragging" : ""}`}
                       onLostPointerCapture={clearGesture}
                       onPointerCancel={clearGesture}
                       onPointerDown={(event) => startStopGesture(event, stop.id)}
@@ -714,10 +755,23 @@ export function PlanPage(): React.JSX.Element {
                         role={selectionMode ? "checkbox" : undefined}
                         type="button"
                       >
-                        <span className="timeline__time">{stop.time || "Anytime"}</span>
-                        <span className={`timeline__icon timeline__icon--${stop.category}`}>
-                          {renderStopIcon(stop)}
-                        </span>
+                        {selectionMode ? (
+                          <span
+                            aria-hidden="true"
+                            className={`timeline__selection-checkbox${checked ? " timeline__selection-checkbox--checked" : ""}`}
+                          >
+                            {checked ? <Check size={15} strokeWidth={2.4} /> : null}
+                          </span>
+                        ) : (
+                          <span className="timeline__time">{stop.time || "Anytime"}</span>
+                        )}
+                        {selectionMode ? (
+                          <span className="timeline__time">{stop.time || "Anytime"}</span>
+                        ) : (
+                          <span className={`timeline__icon timeline__icon--${stop.category}`}>
+                            {renderStopIcon(stop)}
+                          </span>
+                        )}
                         <span className="timeline__info">
                           <strong>{stop.name}</strong>
                           <span>
@@ -726,16 +780,7 @@ export function PlanPage(): React.JSX.Element {
                         </span>
                         <img alt="" className="timeline__photo" src={stop.image} />
                       </button>
-                      {selectionMode ? (
-                        <span
-                          aria-hidden="true"
-                          className={`timeline__check${checked ? " timeline__check--selected" : ""}`}
-                        >
-                          {checked ? (
-                            <Check aria-hidden="true" size={16} strokeWidth={2.4} />
-                          ) : null}
-                        </span>
-                      ) : (
+                      {!selectionMode ? (
                         <button
                           aria-describedby="reorder-help"
                           aria-label={`Reorder ${stop.name}`}
@@ -767,7 +812,7 @@ export function PlanPage(): React.JSX.Element {
                         >
                           <GripVertical aria-hidden="true" size={18} strokeWidth={1.8} />
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   {travel === undefined ? null : (
@@ -804,7 +849,7 @@ export function PlanPage(): React.JSX.Element {
         ) : null}
       </section>
 
-      {selectionMode ? (
+      {selectionMode && selectedCount > 0 ? (
         <div
           aria-hidden={mapExpanded}
           className="plan-bulk-remove"
@@ -812,15 +857,13 @@ export function PlanPage(): React.JSX.Element {
           inert={mapExpanded}
         >
           <button
-            disabled={selectedCount === 0}
+            aria-label={`Remove ${selectedCount} ${selectedCount === 1 ? "place" : "places"}`}
             onClick={requestSelectedRemoval}
             ref={bulkButtonRef}
             type="button"
           >
             <Trash2 aria-hidden="true" size={20} strokeWidth={1.9} />
-            {selectedCount === 0
-              ? "Select places to remove"
-              : `Remove ${selectedCount} ${selectedCount === 1 ? "place" : "places"}`}
+            <span aria-hidden="true">{selectedCount}</span>
           </button>
         </div>
       ) : null}
@@ -880,6 +923,47 @@ export function PlanPage(): React.JSX.Element {
             type="button"
           >
             Remove {selectedCount} places
+          </button>
+        </div>
+      </dialog>
+      <dialog
+        aria-labelledby="leave-selection-title"
+        className="remove-stops-dialog selection-leave-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (navigationBlocker.status === "blocked") {
+            navigationBlocker.reset();
+          }
+        }}
+        ref={leaveSelectionDialogRef}
+      >
+        <h2 id="leave-selection-title">{changingDay ? "Change day?" : "Leave selection mode?"}</h2>
+        <p>
+          Your {selectedCount} selected {selectedCount === 1 ? "place" : "places"} will be cleared.
+        </p>
+        <div>
+          <button
+            onClick={() => {
+              if (navigationBlocker.status === "blocked") {
+                navigationBlocker.reset();
+              }
+            }}
+            ref={keepSelectingRef}
+            type="button"
+          >
+            Keep selecting
+          </button>
+          <button
+            className="selection-leave-dialog__confirm"
+            onClick={() => {
+              if (navigationBlocker.status === "blocked") {
+                exitSelection();
+                navigationBlocker.proceed();
+              }
+            }}
+            type="button"
+          >
+            {changingDay ? "Change day" : "Leave page"}
           </button>
         </div>
       </dialog>
