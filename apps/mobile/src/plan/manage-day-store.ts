@@ -1,5 +1,11 @@
 import { FRIDAY_STOPS } from "./plan-data";
-import type { KyotoDay, PlannedVisit } from "./plan-store";
+import {
+  getKyotoPlan,
+  KYOTO_PLAN_STORAGE_KEY,
+  syncKyotoPlanFromStorage,
+  type KyotoDay,
+  type PlannedVisit,
+} from "./plan-store";
 
 const DRAFTS_KEY = "uroute.mock.manage-day-drafts.v1";
 const VERSIONS_KEY = "uroute.mock.manage-day-versions.v1";
@@ -128,6 +134,19 @@ export function clearManageDayDraft(day: KyotoDay): void {
   }
 }
 
+function createVersion(
+  visits: readonly PlannedVisit[],
+  summary: string,
+  savedAt: number,
+): ManageDayVersion {
+  return {
+    id: `${savedAt}-${Math.random().toString(36).slice(2, 8)}`,
+    savedAt,
+    summary,
+    visits: cloneVisits(visits),
+  };
+}
+
 export function loadManageDayVersions(day: KyotoDay): ManageDayVersion[] {
   const record = readRecord(VERSIONS_KEY);
   if (typeof record !== "object" || record === null) {
@@ -167,12 +186,7 @@ export function addManageDayVersion(
   }
   const stored = readRecord(VERSIONS_KEY);
   const record: VersionRecord = typeof stored === "object" && stored !== null ? stored : {};
-  const version: ManageDayVersion = {
-    id: `${savedAt}-${Math.random().toString(36).slice(2, 8)}`,
-    savedAt,
-    summary,
-    visits: cloneVisits(visits),
-  };
+  const version = createVersion(visits, summary, savedAt);
   const versions = [version, ...loadManageDayVersions(day)].slice(0, MAX_VERSIONS);
   try {
     window.localStorage.setItem(VERSIONS_KEY, JSON.stringify({ ...record, [day]: versions }));
@@ -181,4 +195,84 @@ export function addManageDayVersion(
   }
 
   return versions;
+}
+
+interface RestoreVersionResult {
+  ok: boolean;
+  versions: ManageDayVersion[];
+}
+
+function restoreStorageValue(key: string, value: string | null): void {
+  if (value === null) {
+    window.localStorage.removeItem(key);
+  } else {
+    window.localStorage.setItem(key, value);
+  }
+}
+
+export function restoreAndSaveManageDayVersion(
+  day: KyotoDay,
+  current: readonly PlannedVisit[],
+  selected: ManageDayVersion,
+  restoredFrom: string,
+  savedAt = Date.now(),
+): RestoreVersionResult {
+  if (!validVisits(current) || !validVisits(selected.visits)) {
+    return { ok: false, versions: loadManageDayVersions(day) };
+  }
+
+  const originalPlan = window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY);
+  const originalVersions = window.localStorage.getItem(VERSIONS_KEY);
+  const originalDrafts = window.localStorage.getItem(DRAFTS_KEY);
+  const storedPlan = readRecord(KYOTO_PLAN_STORAGE_KEY);
+  const storedDays =
+    typeof storedPlan === "object" && storedPlan !== null && "days" in storedPlan
+      ? Reflect.get(storedPlan, "days")
+      : null;
+  const planDays =
+    typeof storedDays === "object" && storedDays !== null ? storedDays : getKyotoPlan().days;
+
+  const storedVersions = readRecord(VERSIONS_KEY);
+  const versionRecord: VersionRecord =
+    typeof storedVersions === "object" && storedVersions !== null ? storedVersions : {};
+  const previousVersion = createVersion(current, "Before restore", savedAt);
+  const restoredVersion = createVersion(
+    selected.visits,
+    `Restored version from ${restoredFrom}`,
+    savedAt + 1,
+  );
+  const versions = [restoredVersion, previousVersion, ...loadManageDayVersions(day)].slice(
+    0,
+    MAX_VERSIONS,
+  );
+  const storedDrafts = readRecord(DRAFTS_KEY);
+  const draftRecord: DraftRecord =
+    typeof storedDrafts === "object" && storedDrafts !== null ? { ...storedDrafts } : {};
+  delete draftRecord[day];
+
+  try {
+    window.localStorage.setItem(
+      KYOTO_PLAN_STORAGE_KEY,
+      JSON.stringify({ days: { ...planDays, [day]: cloneVisits(selected.visits) } }),
+    );
+    window.localStorage.setItem(
+      VERSIONS_KEY,
+      JSON.stringify({ ...versionRecord, [day]: versions }),
+    );
+    window.localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftRecord));
+  } catch {
+    try {
+      restoreStorageValue(KYOTO_PLAN_STORAGE_KEY, originalPlan);
+      restoreStorageValue(VERSIONS_KEY, originalVersions);
+      restoreStorageValue(DRAFTS_KEY, originalDrafts);
+    } catch {
+      // Best-effort rollback preserves the last readable state when storage is degraded.
+    }
+
+    return { ok: false, versions: loadManageDayVersions(day) };
+  }
+
+  syncKyotoPlanFromStorage();
+
+  return { ok: true, versions };
 }

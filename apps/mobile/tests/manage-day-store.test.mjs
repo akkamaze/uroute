@@ -5,12 +5,15 @@ import {
   clearManageDayDraft,
   loadManageDayDraft,
   loadManageDayVersions,
+  restoreAndSaveManageDayVersion,
   saveManageDayDraft,
   visitsSignature,
 } from "../src/plan/manage-day-store.ts";
+import { KYOTO_PLAN_STORAGE_KEY } from "../src/plan/plan-store.ts";
 
 class MemoryStorage {
   #values = new Map();
+  failKey = null;
 
   clear() {
     this.#values.clear();
@@ -21,9 +24,19 @@ class MemoryStorage {
   }
 
   setItem(key, value) {
+    if (this.failKey === key) {
+      this.failKey = null;
+      throw new Error("Storage unavailable");
+    }
     this.#values.set(key, String(value));
   }
+
+  removeItem(key) {
+    this.#values.delete(key);
+  }
 }
+
+let memoryStorage;
 
 const originalVisits = [
   { placeId: "kiyomizu", time: "09:00", notes: "" },
@@ -31,7 +44,61 @@ const originalVisits = [
 ];
 
 beforeEach(() => {
-  globalThis.window = { localStorage: new MemoryStorage() };
+  memoryStorage = new MemoryStorage();
+  globalThis.window = { localStorage: memoryStorage };
+});
+
+test("restores the plan, records both sides of history and clears the draft together", () => {
+  const restoredVisits = [originalVisits[1], originalVisits[0]];
+  globalThis.window.localStorage.setItem(
+    KYOTO_PLAN_STORAGE_KEY,
+    JSON.stringify({ days: { 12: [], 13: originalVisits, 14: [], 15: [], 16: [] } }),
+  );
+  saveManageDayDraft(13, visitsSignature(originalVisits), restoredVisits);
+
+  const result = restoreAndSaveManageDayVersion(
+    13,
+    originalVisits,
+    { id: "target", savedAt: 500, summary: "Earlier route", visits: restoredVisits },
+    "Yesterday, 09:00",
+    1_000,
+  );
+
+  expect(result.ok).toBe(true);
+  expect(
+    JSON.parse(globalThis.window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY)).days[13],
+  ).toEqual(restoredVisits);
+  expect(result.versions.slice(0, 2).map((version) => version.summary)).toEqual([
+    "Restored version from Yesterday, 09:00",
+    "Before restore",
+  ]);
+  expect(loadManageDayDraft(13, visitsSignature(originalVisits))).toBeNull();
+});
+
+test("rolls back plan, history and draft when atomic restoration cannot finish", () => {
+  const restoredVisits = [originalVisits[1], originalVisits[0]];
+  const originalPlan = JSON.stringify({
+    days: { 12: [], 13: originalVisits, 14: [], 15: [], 16: [] },
+  });
+  globalThis.window.localStorage.setItem(KYOTO_PLAN_STORAGE_KEY, originalPlan);
+  saveManageDayDraft(13, visitsSignature(originalVisits), restoredVisits);
+  const originalDrafts = globalThis.window.localStorage.getItem("uroute.mock.manage-day-drafts.v1");
+  memoryStorage.failKey = "uroute.mock.manage-day-versions.v1";
+
+  const result = restoreAndSaveManageDayVersion(
+    13,
+    originalVisits,
+    { id: "target", savedAt: 500, summary: "Earlier route", visits: restoredVisits },
+    "Yesterday, 09:00",
+    1_000,
+  );
+
+  expect(result.ok).toBe(false);
+  expect(globalThis.window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY)).toBe(originalPlan);
+  expect(globalThis.window.localStorage.getItem("uroute.mock.manage-day-drafts.v1")).toBe(
+    originalDrafts,
+  );
+  expect(loadManageDayVersions(13)).toEqual([]);
 });
 
 test("loads an autosaved draft only for the plan revision it was based on", () => {

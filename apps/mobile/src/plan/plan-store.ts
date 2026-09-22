@@ -13,7 +13,7 @@ interface PlanSnapshot {
   days: Record<KyotoDay, readonly PlannedVisit[]>;
   persistenceFailed: boolean;
 }
-const STORAGE_KEY = "uroute.mock.kyoto-plan.v1";
+export const KYOTO_PLAN_STORAGE_KEY = "uroute.mock.kyoto-plan.v1";
 const placeIds = new Set(FRIDAY_STOPS.map((place) => place.id));
 const listeners = new Set<() => void>();
 
@@ -50,7 +50,9 @@ function isVisit(value: unknown): value is PlannedVisit {
 function loadPlan(): PlanSnapshot {
   const days = defaultDays();
   try {
-    const stored: unknown = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    const stored: unknown = JSON.parse(
+      window.localStorage.getItem(KYOTO_PLAN_STORAGE_KEY) ?? "null",
+    );
     if (typeof stored !== "object" || stored === null || !("days" in stored)) {
       return { days, persistenceFailed: false };
     }
@@ -85,7 +87,7 @@ let snapshot = loadPlan();
 function publish(days: PlanSnapshot["days"]): void {
   let persistenceFailed = false;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ days }));
+    window.localStorage.setItem(KYOTO_PLAN_STORAGE_KEY, JSON.stringify({ days }));
   } catch {
     persistenceFailed = true;
   }
@@ -118,6 +120,11 @@ export function getKyotoPlan(): PlanSnapshot {
 
 export function useKyotoPlan(): PlanSnapshot {
   return useSyncExternalStore(subscribe, getKyotoPlan, getKyotoPlan);
+}
+
+export function syncKyotoPlanFromStorage(): void {
+  snapshot = loadPlan();
+  listeners.forEach((listener) => listener());
 }
 
 export function addPlaceToKyotoDay(
@@ -163,7 +170,7 @@ export function saveKyotoDay(day: KyotoDay, visits: readonly PlannedVisit[]): bo
   };
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ days: nextDays }));
+    window.localStorage.setItem(KYOTO_PLAN_STORAGE_KEY, JSON.stringify({ days: nextDays }));
   } catch {
     return false;
   }
