@@ -367,6 +367,9 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(page.locator(".version-preview__metadata")).toContainText("3 places");
   await expect(page.getByLabel("1 place reordered")).toHaveText("1");
   await expect(page.getByRole("heading", { name: "Reordered 1" })).toBeVisible();
+  const changedContentHeight = await page
+    .locator(".version-preview__list")
+    .evaluate((element) => element.getBoundingClientRect().height);
   const summaryType = await page.locator(".version-preview__summary").evaluate((summary) => {
     const version = summary.querySelector<HTMLElement>(".version-preview__timestamp");
     const location = summary.querySelector<HTMLElement>(".version-preview__location");
@@ -403,6 +406,10 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(page.getByRole("button", { name: "No next version" })).toBeDisabled();
   await page.getByRole("button", { name: "Previous version, Version 1" }).press("Enter");
   await expect(page.locator(".version-preview__timestamp")).toContainText("Version 1·Today,");
+  const unchangedContentHeight = await page
+    .locator(".version-preview__list")
+    .evaluate((element) => element.getBoundingClientRect().height);
+  expect(changedContentHeight).toBeCloseTo(unchangedContentHeight, 0);
   await expect(page.getByRole("button", { name: "No previous version" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "All places", pressed: true })).toBeVisible();
   await page.getByRole("button", { name: "Next version, Version 2" }).click();
@@ -547,6 +554,10 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
   await swipeBack("Current saved version");
   await expect(page).toHaveURL(/view=versions(?!.*version=)/);
   await expect(page.getByRole("button", { name: "Back to Edit plan" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/view=versions(?!.*version=)/);
   await swipeBack("Edit plan");
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
   await swipeBack("Kyoto");

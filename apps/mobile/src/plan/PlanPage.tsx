@@ -438,7 +438,11 @@ export function PlanPage(): React.JSX.Element {
                 className="day-plan__select-toggle"
                 onClick={() => {
                   captureNavigationSnapshot("/plan/edit");
-                  void navigate({ to: "/plan/edit", search: { day: selectedDay } });
+                  void navigate({
+                    to: "/plan/edit",
+                    search: { day: selectedDay },
+                    state: (current) => ({ ...current, editPlanEntry: true }),
+                  });
                 }}
                 type="button"
               >

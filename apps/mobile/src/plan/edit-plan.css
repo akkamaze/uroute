@@ -785,10 +785,11 @@
 
 .version-preview__metadata {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 14px;
   align-items: center;
   margin-top: 3px;
+  line-height: 20px;
 }
 
 .version-preview__change-icons {

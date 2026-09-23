@@ -1,4 +1,10 @@
-import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
+import {
+  useBlocker,
+  useNavigate,
+  useRouter,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -420,7 +426,9 @@ function RestoreVersionDialog({
 
 export function EditPlanPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const router = useRouter();
   const search = useSearch({ from: "/plan/edit" });
+  const routeState = useRouterState({ select: (state) => state.location.state });
   const day = search.day ?? 13;
   const plan = useKyotoPlan();
   const initialVisitsRef = useRef(cloneVisits(plan.days[day]));
@@ -483,13 +491,58 @@ export function EditPlanPage(): React.JSX.Element {
   });
   const swipeBackRef = useEditPlanSwipeBack(() => {
     if (search.view === "versions" && search.version !== undefined) {
-      void navigate({ to: "/plan/edit", search: { day, view: "versions" }, replace: true });
+      backToVersionHistory();
     } else if (search.view === "versions") {
-      void navigate({ to: "/plan/edit", search: { day }, replace: true });
+      backToEditPlan();
     } else {
-      leaveWithDraft();
+      backToPlan();
     }
   });
+
+  function hasNavigationEntry(
+    key: "editPlanEntry" | "editPlanHistoryEntry" | "editPlanVersionEntry",
+  ): boolean {
+    if (key === "editPlanEntry") {
+      return "editPlanEntry" in routeState && routeState.editPlanEntry === true;
+    }
+    if (key === "editPlanHistoryEntry") {
+      return "editPlanHistoryEntry" in routeState && routeState.editPlanHistoryEntry === true;
+    }
+
+    return "editPlanVersionEntry" in routeState && routeState.editPlanVersionEntry === true;
+  }
+
+  function backToVersionHistory(): void {
+    if (hasNavigationEntry("editPlanVersionEntry")) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/plan/edit", search: { day, view: "versions" }, replace: true });
+    }
+  }
+
+  function backToEditPlan(): void {
+    if (hasNavigationEntry("editPlanHistoryEntry")) {
+      router.history.back();
+    } else {
+      void navigate({ to: "/plan/edit", search: { day }, replace: true });
+    }
+  }
+
+  function backToPlan(): void {
+    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
+      setDraftStorageFailed(true);
+      showNotice("Could not save the latest draft. Stay here and try again.", true);
+
+      return;
+    }
+    setDraftStorageFailed(false);
+    if (hasNavigationEntry("editPlanEntry")) {
+      allowExitRef.current = true;
+      router.history.back();
+    } else {
+      exitToPlan();
+    }
+  }
 
   function commitDraft(
     next: readonly PlannedVisit[],
@@ -686,17 +739,6 @@ export function EditPlanPage(): React.JSX.Element {
   function discardDraftAndExit(): void {
     clearEditPlanDraft(day);
     setConfirmDiscard(false);
-    exitToPlan();
-  }
-
-  function leaveWithDraft(): void {
-    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
-      setDraftStorageFailed(true);
-      showNotice("Could not save the latest draft. Stay here and try again.", true);
-
-      return;
-    }
-    setDraftStorageFailed(false);
     exitToPlan();
   }
 
@@ -1334,6 +1376,7 @@ export function EditPlanPage(): React.JSX.Element {
         to: "/plan/edit",
         search: { day, view: "versions", version: version.id },
         replace: true,
+        state: (current) => current,
       });
     };
     const versionDiff =
@@ -1376,13 +1419,7 @@ export function EditPlanPage(): React.JSX.Element {
           <button
             aria-label="Back to Version history"
             className="edit-plan__back"
-            onClick={() =>
-              void navigate({
-                to: "/plan/edit",
-                search: { day, view: "versions" },
-                replace: true,
-              })
-            }
+            onClick={backToVersionHistory}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
@@ -1394,16 +1431,7 @@ export function EditPlanPage(): React.JSX.Element {
           <div className="edit-plan__version-missing">
             <strong>Version not available</strong>
             <span>It may have been removed from this device.</span>
-            <button
-              onClick={() =>
-                void navigate({
-                  to: "/plan/edit",
-                  search: { day, view: "versions" },
-                  replace: true,
-                })
-              }
-              type="button"
-            >
+            <button onClick={backToVersionHistory} type="button">
               Back to history
             </button>
           </div>
@@ -1549,7 +1577,7 @@ export function EditPlanPage(): React.JSX.Element {
           <button
             aria-label="Back to Edit plan"
             className="edit-plan__back"
-            onClick={() => void navigate({ to: "/plan/edit", search: { day }, replace: true })}
+            onClick={backToEditPlan}
             type="button"
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
@@ -1572,12 +1600,7 @@ export function EditPlanPage(): React.JSX.Element {
                   <span>{draft.length} places</span>
                 </div>
                 <div className="version-entry__actions">
-                  <button
-                    onClick={() =>
-                      void navigate({ to: "/plan/edit", search: { day }, replace: true })
-                    }
-                    type="button"
-                  >
+                  <button onClick={backToEditPlan} type="button">
                     Edit plan
                     <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
                   </button>
@@ -1629,6 +1652,7 @@ export function EditPlanPage(): React.JSX.Element {
                       void navigate({
                         to: "/plan/edit",
                         search: { day, view: "versions", version: version.id },
+                        state: (current) => ({ ...current, editPlanVersionEntry: true }),
                       });
                     }}
                     type="button"
@@ -1671,7 +1695,7 @@ export function EditPlanPage(): React.JSX.Element {
         <button
           aria-label="Back to Plan"
           className="edit-plan__back"
-          onClick={leaveWithDraft}
+          onClick={backToPlan}
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={20} strokeWidth={1.9} />
@@ -1915,7 +1939,13 @@ export function EditPlanPage(): React.JSX.Element {
       ) : (
         <button
           className="edit-plan__versions-link"
-          onClick={() => void navigate({ to: "/plan/edit", search: { day, view: "versions" } })}
+          onClick={() =>
+            void navigate({
+              to: "/plan/edit",
+              search: { day, view: "versions" },
+              state: (current) => ({ ...current, editPlanHistoryEntry: true }),
+            })
+          }
           type="button"
         >
           <History aria-hidden="true" size={20} strokeWidth={1.8} />
