@@ -436,7 +436,10 @@ export function PlanPage(): React.JSX.Element {
               <button
                 aria-label={`Edit plan for ${dayLabel}`}
                 className="day-plan__select-toggle"
-                onClick={() => void navigate({ to: "/plan/edit", search: { day: selectedDay } })}
+                onClick={() => {
+                  captureNavigationSnapshot("/plan/edit");
+                  void navigate({ to: "/plan/edit", search: { day: selectedDay } });
+                }}
                 type="button"
               >
                 <span className="day-plan__edit-icon">

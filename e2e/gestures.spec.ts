@@ -1,5 +1,25 @@
 import { expect, test } from "./fixtures";
 
+test("login supports touch swipe back to welcome", async ({ page }) => {
+  await page.goto("/welcome");
+  await page.locator('a[href="/login"]').click();
+  await expect(page).toHaveURL(/\/login$/);
+  const client = await page.context().newCDPSession(page);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: 40, y: 250, id: 1 }],
+  });
+  for (const x of [55, 85, 125, 190, 260]) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: 250, id: 1 }],
+    });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.locator(".app-navigation")).toHaveAttribute("data-swipe-phase", "idle");
+});
+
 test("touch swipe reveals the compact remove action without exposing it at rest", async ({
   page,
 }) => {

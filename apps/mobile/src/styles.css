@@ -156,6 +156,7 @@ body {
 
 /* Keep vertical scrolling native without applying a pan constraint to map ancestors. */
 .plan-header,
+.entry-shell,
 .trip-sections,
 .day-strip,
 .day-plan,

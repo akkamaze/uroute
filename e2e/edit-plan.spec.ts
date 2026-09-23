@@ -473,6 +473,16 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(sourceEntry).toBeFocused();
 });
 
+test("a short fast swipe returns from Edit plan", async ({ page }) => {
+  await page.goto("/plan/edit?day=13");
+  await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
+  await page.mouse.move(30, 100);
+  await page.mouse.down();
+  await page.mouse.move(65, 100);
+  await page.mouse.up();
+  await expect(page).toHaveURL(/\/plan\?day=13/);
+});
+
 test("edge swipe returns through Version details, History, Edit plan and Plan", async ({
   page,
 }) => {
@@ -498,22 +508,48 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
     },
     { key: VERSIONS_STORAGE_KEY },
   );
-  await page.goto("/plan/edit?day=13&view=versions&version=swipe-version");
+  await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
+  await page.getByRole("button", { name: "Version history", exact: true }).click();
+  await page.getByRole("button", { name: "View Version 1", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Version history" })).toBeVisible();
 
-  async function swipeBack(): Promise<void> {
-    await page.mouse.move(30, 100);
-    await page.mouse.down();
-    await page.mouse.move(260, 100, { steps: 6 });
-    await page.mouse.up();
+  const client = await page.context().newCDPSession(page);
+  async function swipeBack(previousPage: string, cancel = false): Promise<void> {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: 40, y: 300, id: 1 }],
+    });
+    for (const x of [55, 85, 125, 190, 260]) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x, y: 300, id: 1 }],
+      });
+    }
+    await expect(page.locator(".edit-plan--swiping")).toHaveCount(1);
+    await expect(page.locator(".edit-plan-swipe-underlay")).toContainText(previousPage);
+    await expect(page.locator(".edit-plan-swipe-underlay")).toBeVisible();
+    expect(await page.locator(".edit-plan--swiping").evaluate(
+      (element) => element.getBoundingClientRect().left,
+    )).toBeGreaterThan(200);
+    if (cancel) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [{ x: 50, y: 300, id: 1 }],
+      });
+      await page.waitForTimeout(150);
+    }
+    await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect(page.locator(".edit-plan-swipe-underlay")).toHaveCount(0);
   }
 
-  await swipeBack();
+  await swipeBack("Current saved version", true);
+  await expect(page).toHaveURL(/version=swipe-version/);
+  await swipeBack("Current saved version");
   await expect(page).toHaveURL(/view=versions(?!.*version=)/);
   await expect(page.getByRole("button", { name: "Back to Edit plan" })).toBeVisible();
-  await swipeBack();
+  await swipeBack("Edit plan");
   await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
-  await swipeBack();
+  await swipeBack("Kyoto");
   await expect(page).toHaveURL(/\/plan\?day=13/);
   await expect(
     page.getByRole("button", { name: "Edit plan for Friday, 13 November" }),

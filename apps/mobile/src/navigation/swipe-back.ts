@@ -50,6 +50,13 @@ function getVisiblePage(): HTMLElement | null {
 }
 
 export function shouldCaptureForwardNavigation(fromPath: string, toPath: string): boolean {
+  if (fromPath === "/plan" && toPath === "/plan/edit") {
+    return true;
+  }
+  if (fromPath === "/welcome" && toPath === "/login") {
+    return true;
+  }
+
   if (fromPath === "/trips") {
     return ["/plan", "/bookings", "/expenses"].includes(toPath);
   }
@@ -65,6 +72,15 @@ export function captureNavigationSnapshot(toPath: string): void {
     return;
   }
 
+  snapshots.push(createNavigationSnapshot(source, fromPath, toPath));
+  notify();
+}
+
+export function createNavigationSnapshot(
+  source: HTMLElement,
+  fromPath: string,
+  toPath: string,
+): NavigationSnapshot {
   const node = source.cloneNode(true) as HTMLElement;
   const sourceElements = [source, ...source.querySelectorAll<HTMLElement>("*")];
   const scrollOffsets = sourceElements.flatMap((element, index) =>
@@ -82,8 +98,7 @@ export function captureNavigationSnapshot(toPath: string): void {
   node.setAttribute("aria-hidden", "true");
   node.setAttribute("inert", "");
 
-  snapshots.push({ fromPath, node, scrollOffsets, toPath });
-  notify();
+  return { fromPath, node, scrollOffsets, toPath };
 }
 
 export function getNavigationSnapshot(pathname: string): NavigationSnapshot | undefined {
