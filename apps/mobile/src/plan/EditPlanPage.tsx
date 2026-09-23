@@ -1423,6 +1423,24 @@ export function EditPlanPage(): React.JSX.Element {
                 />
                 <VersionDiffIndicators counts={previewChangeCounts} />
               </div>
+            </div>
+            <div className="version-preview__toolbar">
+              <div className="version-preview__filters" role="group" aria-label="Filter places">
+                <button
+                  aria-pressed={versionFilter === "changes"}
+                  onClick={() => setVersionFilter("changes")}
+                  type="button"
+                >
+                  Changes only
+                </button>
+                <button
+                  aria-pressed={versionFilter === "all"}
+                  onClick={() => setVersionFilter("all")}
+                  type="button"
+                >
+                  All places
+                </button>
+              </div>
               <nav aria-label="Browse versions" className="version-preview__navigation">
                 <button
                   aria-label={
@@ -1434,15 +1452,7 @@ export function EditPlanPage(): React.JSX.Element {
                   onClick={() => openAdjacentVersion(previousVersion)}
                   type="button"
                 >
-                  <ChevronLeft aria-hidden="true" size={18} strokeWidth={1.8} />
-                  <span>
-                    <strong>Previous</strong>
-                    <small>
-                      {previousVersion === undefined
-                        ? "First version"
-                        : `Version ${previousVersion.sequence}`}
-                    </small>
-                  </span>
+                  <ChevronLeft aria-hidden="true" size={19} strokeWidth={1.9} />
                 </button>
                 <button
                   aria-label={
@@ -1454,33 +1464,9 @@ export function EditPlanPage(): React.JSX.Element {
                   onClick={() => openAdjacentVersion(nextVersion)}
                   type="button"
                 >
-                  <span>
-                    <strong>Next</strong>
-                    <small>
-                      {nextVersion === undefined
-                        ? "Latest version"
-                        : `Version ${nextVersion.sequence}`}
-                    </small>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
+                  <ChevronRight aria-hidden="true" size={19} strokeWidth={1.9} />
                 </button>
               </nav>
-            </div>
-            <div className="version-preview__filters" role="group" aria-label="Filter places">
-              <button
-                aria-pressed={versionFilter === "changes"}
-                onClick={() => setVersionFilter("changes")}
-                type="button"
-              >
-                Changes only
-              </button>
-              <button
-                aria-pressed={versionFilter === "all"}
-                onClick={() => setVersionFilter("all")}
-                type="button"
-              >
-                All places
-              </button>
             </div>
             <div
               aria-label={`${formatVersionTime(previewVersion.savedAt)} places`}
