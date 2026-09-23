@@ -142,6 +142,8 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
   await expect(page).not.toHaveURL(/map=full/);
   await expect(page.locator("html")).toHaveAttribute("data-orientation-policy", "portrait");
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  await page.setViewportSize({ width: 1_024, height: 768 });
+  await expect(page.locator(".orientation-guard")).toBeVisible();
 });
 
 test("keeps the selected place and its photo visible after zooming out into clusters", async ({

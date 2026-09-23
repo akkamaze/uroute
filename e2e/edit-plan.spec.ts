@@ -167,6 +167,14 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   await expect(
     page.getByRole("button", { name: "Edit plan for Friday, 13 November" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit plan for Friday, 13 November" })).toHaveCSS(
+    "user-select",
+    "none",
+  );
+  await expect(page.getByRole("heading", { name: "Friday, 13 November" })).toHaveCSS(
+    "user-select",
+    "auto",
+  );
   await expect(page.locator(".day-plan__select-toggle .lucide-pencil")).toBeVisible();
   await expect(page.locator(".day-plan__draft-indicator")).toHaveCount(0);
   await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(0);

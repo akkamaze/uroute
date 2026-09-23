@@ -128,7 +128,7 @@ body {
   display: none;
 }
 
-@media (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 600px) {
+@media (orientation: landscape) and (hover: none) and (pointer: coarse) {
   html[data-orientation-policy="portrait"] .orientation-guard {
     position: fixed;
     z-index: 100;
@@ -179,8 +179,13 @@ body {
 }
 
 button,
-a {
+a,
+[role="button"],
+[role="checkbox"],
+[role="tab"] {
   font: inherit;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .mobile-shell {
