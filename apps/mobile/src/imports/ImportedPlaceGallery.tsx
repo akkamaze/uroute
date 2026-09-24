@@ -113,13 +113,22 @@ export function ImportedPlaceGallery({
           }}
         >
           {activeUrl !== null && !failed.has(activeUrl) ? (
-            <img
-              alt={`${name}, photo ${(activeIndex ?? 0) + 1}`}
-              onError={() => setFailed((current) => new Set(current).add(activeUrl))}
-              src={displayImportedImageUrl(activeUrl)}
-            />
+            <>
+              <img
+                alt=""
+                aria-hidden="true"
+                className="imported-gallery__backdrop"
+                src={displayImportedImageUrl(activeUrl)}
+              />
+              <img
+                alt={`${name}, photo ${(activeIndex ?? 0) + 1}`}
+                className="imported-gallery__photo"
+                onError={() => setFailed((current) => new Set(current).add(activeUrl))}
+                src={displayImportedImageUrl(activeUrl)}
+              />
+            </>
           ) : (
-            <p>Image unavailable. You can open the source below.</p>
+            <p>Image unavailable.</p>
           )}
           {images.length > 1 ? (
             <>
@@ -142,11 +151,6 @@ export function ImportedPlaceGallery({
             </>
           ) : null}
         </div>
-        {activeUrl !== null ? (
-          <a href={activeUrl} rel="noopener noreferrer" target="_blank">
-            Open original photo ↗
-          </a>
-        ) : null}
       </dialog>
     </section>
   );

@@ -106,7 +106,9 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
     .toBe(1);
   await page.getByRole("button", { name: "Photo Stop Unfiled" }).click();
   const gallery = page.getByRole("region", { name: "Photo Stop photos" });
-  await expect(gallery.getByRole("button", { name: "View photo 1 of 5" })).toBeVisible();
+  const firstPhoto = gallery.getByRole("button", { name: "View photo 1 of 5" });
+  await expect(firstPhoto).toBeVisible();
+  await expect(firstPhoto).toHaveCSS("background-color", "rgb(237, 242, 247)");
   await expect
     .poll(() =>
       gallery
@@ -120,12 +122,13 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
   await gallery.getByRole("button", { name: "See all 5 photos" }).click();
   const viewer = page.getByRole("dialog", { name: "Photo Stop photos" });
   await expect(viewer).toContainText("5 / 5");
+  expect(
+    await viewer.evaluate((dialog) => Math.abs(dialog.getBoundingClientRect().width - innerWidth)),
+  ).toBeLessThan(1);
   await viewer.getByRole("button", { name: "Previous photo" }).click();
   await expect(viewer).toContainText("4 / 5");
-  await expect(viewer.getByRole("link", { name: "Open original photo" })).toHaveAttribute(
-    "href",
-    photos[3]!,
-  );
+  await expect(viewer.getByRole("link", { name: "Open original photo" })).toHaveCount(0);
+  await expect(viewer.locator(".imported-gallery__backdrop")).toHaveCount(1);
   await viewer.getByRole("button", { name: "Close photos" }).click();
   await expect(viewer).not.toBeVisible();
   expect(osmRequests).toBe(0);
