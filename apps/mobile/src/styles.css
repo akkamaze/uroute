@@ -623,6 +623,14 @@ a {
   height: 100%;
 }
 
+.trip-map__external-photo {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
 .trip-map__controls {
   position: absolute;
   z-index: 2;

@@ -3,6 +3,15 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  server: {
+    proxy: {
+      "/_kml_images/": {
+        target: "https://mymaps.usercontent.google.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/_kml_images\//, "/hostedimage/"),
+      },
+    },
+  },
   build: {
     chunkSizeWarningLimit: 1_100,
     rollupOptions: {

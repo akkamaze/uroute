@@ -1,5 +1,6 @@
 import type { PlannedStop } from "../plan/plan-data";
 import type { ImportedPoint } from "./parse-place-file";
+import { displayImportedImageUrl, importedPlaceImages } from "./import-media";
 
 export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedStop {
   return {
@@ -9,7 +10,7 @@ export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedSto
     duration: "",
     hours: "",
     id: point.id,
-    image: "",
+    image: displayImportedImageUrl(importedPlaceImages(point)[0]) ?? "",
     name: point.name,
     rating: "",
     reviews: "",

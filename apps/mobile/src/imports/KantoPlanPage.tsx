@@ -27,6 +27,7 @@ import {
   type ImportedVisit,
 } from "./place-library";
 import { loadCreatedTrips, tripDays } from "../trips/trip-store";
+import { displayImportedImageUrl, importedPlaceImages } from "./import-media";
 import type { ImportedPoint } from "./parse-place-file";
 import "./kanto-plan.css";
 
@@ -41,6 +42,7 @@ function mappedPlaces(points: readonly ImportedPoint[]): PlaceCollection {
         id: point.id,
         name: point.name,
         category: "Imported place",
+        image: displayImportedImageUrl(importedPlaceImages(point)[0]),
         marker: `place-${index + 1}`,
         synthetic: false,
       },
@@ -117,7 +119,9 @@ export function KantoPlanPage(): React.JSX.Element {
     );
 
   async function restoreLegacy(): Promise<void> {
-    if (trip === undefined) {return;}
+    if (trip === undefined) {
+      return;
+    }
     try {
       const count = await copyLegacyKantoVisits(trip.id);
       setVisits(await loadImportedVisits());

@@ -95,17 +95,20 @@ function plainDescription(value: string): string {
 
 function mediaReferences(placemark: Element): string[] {
   const extendedData = directChild(placemark, "ExtendedData");
-  if (extendedData === undefined) {
-    return [];
-  }
-  const media = Array.from(extendedData.getElementsByTagNameNS("*", "Data")).find(
+  const media = Array.from(extendedData?.getElementsByTagNameNS("*", "Data") ?? []).find(
     (entry) => entry.getAttribute("name") === "gx_media_links",
   );
-
-  return childText(media ?? extendedData, "value")
+  const linked = childText(media ?? extendedData ?? placemark, "value")
     .split(/\s+/)
-    .filter((value) => /^https:\/\//i.test(value) && value.length <= 2_048)
-    .slice(0, 20);
+    .filter((value) => /^https:\/\//i.test(value) && value.length <= 2_048);
+  const description = childText(placemark, "description");
+  const images = Array.from(
+    description.matchAll(/<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi),
+  )
+    .map((match) => (match[1] ?? match[2] ?? match[3] ?? "").replace(/&amp;/gi, "&").trim())
+    .filter((value) => /^https:\/\//i.test(value) && value.length <= 2_048);
+
+  return [...new Set([...images, ...linked])].slice(0, 20);
 }
 
 function readKmlBytes(fileName: string, bytes: Uint8Array): Uint8Array {

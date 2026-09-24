@@ -248,7 +248,13 @@ export async function createPlaceHead(
   number: string | undefined,
   selected: boolean,
 ): Promise<ImageData> {
-  const photo = imageUrl === undefined || number !== undefined ? null : await loadPhoto(imageUrl);
+  // My Maps images lack CORS headers; TripMap displays them as DOM photo overlays instead.
+  const photo =
+    imageUrl === undefined ||
+    number !== undefined ||
+    imageUrl.startsWith("https://mymaps.usercontent.google.com/hostedimage/")
+      ? null
+      : await loadPhoto(imageUrl);
   const canvas = document.createElement("canvas");
   canvas.width = 80;
   canvas.height = 80;

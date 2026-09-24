@@ -19,6 +19,8 @@ import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
+import { ImportedPlaceGallery } from "./ImportedPlaceGallery";
+import { displayImportedImageUrl, importedPlaceImages, isImageMediaUrl } from "./import-media";
 import {
   availableDestinations,
   destinationDays,
@@ -68,6 +70,7 @@ function toMapPlaces(points: readonly ImportedPoint[], numbered = false): PlaceC
         id: point.id,
         name: point.name,
         category: "Imported place",
+        image: displayImportedImageUrl(importedPlaceImages(point)[0]),
         ...(numbered ? { marker: `place-${index + 1}` } : {}),
         synthetic: false,
       },
@@ -379,6 +382,10 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
+  const selectedImages = selectedPlace === undefined ? [] : importedPlaceImages(selectedPlace);
+  const selectedSourceLinks = (selectedPlace?.mediaReferences ?? []).filter(
+    (url) => !isImageMediaUrl(url),
+  );
   const sheetOpen = globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined);
 
   useEffect(() => {
@@ -1120,6 +1127,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 ) : null}
                 <span>{selectedPlace.folder}</span>
                 <h2>{selectedPlace.name}</h2>
+                <ImportedPlaceGallery
+                  images={selectedImages}
+                  key={selectedPlace.id}
+                  name={selectedPlace.name}
+                />
                 {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
                   <p className="imported-page__selected-hidden">
                     Hidden on map. You can still use this place in your plan. Open Map layers to
@@ -1127,11 +1139,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
                   </p>
                 ) : null}
                 {selectedPlace.description !== "" ? <p>{selectedPlace.description}</p> : null}
-                {selectedPlace.mediaReferences.length > 0 ? (
+                {selectedSourceLinks.length > 0 ? (
                   <details>
-                    <summary>{selectedPlace.mediaReferences.length} source media links</summary>
+                    <summary>{selectedSourceLinks.length} source media links</summary>
                     <ul>
-                      {selectedPlace.mediaReferences.map((url, index) => (
+                      {selectedSourceLinks.map((url, index) => (
                         <li key={`${url}-${index}`}>
                           <a href={url} rel="noopener noreferrer" target="_blank">
                             Open source media {index + 1}

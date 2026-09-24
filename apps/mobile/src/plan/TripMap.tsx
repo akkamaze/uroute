@@ -2,6 +2,7 @@ import { LocateFixed, Maximize2, Minimize2 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
+  Marker,
   setWorkerUrl,
   type FilterSpecification,
   type GeoJSONSource,
@@ -407,6 +408,8 @@ export function TripMap({
     };
     let disposed = false;
     let failed = false;
+    const externalPhotoMarkers = new Map<string, Marker>();
+    const failedExternalPhotos = new Set<string>();
     const tileTimer: { id: number | undefined } = { id: undefined };
 
     function showError(message: string): void {
@@ -664,6 +667,58 @@ export function TripMap({
 
     function handleMouseLeave(): void {
       activeMap.getCanvas().style.cursor = "";
+    }
+
+    function syncExternalPhotoMarkers(): void {
+      if (
+        !layersReady ||
+        activeMap.getLayer(SYMBOL_LAYER_ID) === undefined ||
+        activeMap.getLayer(SELECTED_LAYER_ID) === undefined
+      ) {
+        return;
+      }
+      const visibleIds = new Set<string>();
+      const features =
+        markerMode === "places"
+          ? activeMap.queryRenderedFeatures({ layers: [SYMBOL_LAYER_ID, SELECTED_LAYER_ID] })
+          : [];
+      for (const feature of features) {
+        const id: unknown = feature.properties.id;
+        const image: unknown = feature.properties.image;
+        if (
+          typeof id !== "string" ||
+          typeof image !== "string" ||
+          !image.startsWith("https://mymaps.usercontent.google.com/hostedimage/") ||
+          failedExternalPhotos.has(image) ||
+          feature.geometry.type !== "Point"
+        ) {
+          continue;
+        }
+        visibleIds.add(id);
+        if (externalPhotoMarkers.has(id)) {
+          continue;
+        }
+        const photo = document.createElement("img");
+        photo.className = "trip-map__external-photo";
+        photo.src = image;
+        photo.alt = "";
+        photo.draggable = false;
+        photo.onerror = () => {
+          failedExternalPhotos.add(image);
+          externalPhotoMarkers.get(id)?.remove();
+          externalPhotoMarkers.delete(id);
+        };
+        const marker = new Marker({ element: photo, anchor: "center" })
+          .setLngLat(feature.geometry.coordinates as [number, number])
+          .addTo(activeMap);
+        externalPhotoMarkers.set(id, marker);
+      }
+      for (const [id, marker] of externalPhotoMarkers) {
+        if (!visibleIds.has(id)) {
+          marker.remove();
+          externalPhotoMarkers.delete(id);
+        }
+      }
     }
 
     function applySelection(): void {
@@ -1020,6 +1075,7 @@ export function TripMap({
     };
     activeMap.on("moveend", reportViewport);
     activeMap.on("idle", scheduleLabelPlacement);
+    activeMap.on("idle", syncExternalPhotoMarkers);
     activeMap.once("idle", finishReady);
     tileTimer.id = window.setTimeout(() => {
       showError("Map tiles took too long to load. Try again when the connection is stable.");
@@ -1045,7 +1101,11 @@ export function TripMap({
       activeMap.off("moveend", scheduleLabelPlacement);
       activeMap.off("moveend", reportViewport);
       activeMap.off("idle", scheduleLabelPlacement);
+      activeMap.off("idle", syncExternalPhotoMarkers);
       activeMap.off("idle", finishReady);
+      for (const marker of externalPhotoMarkers.values()) {
+        marker.remove();
+      }
       if (labelPlacementFrame !== undefined) {
         window.cancelAnimationFrame(labelPlacementFrame);
       }

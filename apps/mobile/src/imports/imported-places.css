@@ -974,6 +974,143 @@
   color: #4c5e70 !important;
 }
 
+.imported-gallery {
+  margin: 12px 0 14px;
+}
+
+.imported-gallery__track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0 0 3px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.imported-gallery__track::-webkit-scrollbar {
+  display: none;
+}
+
+.imported-gallery__thumb,
+.imported-gallery__more {
+  display: grid;
+  width: 148px;
+  height: 108px;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #edf2f7;
+  color: #5c6e80;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.imported-gallery__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.imported-gallery__more {
+  gap: 4px;
+  align-content: center;
+  color: #1769da;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.imported-gallery__dialog {
+  width: min(100%, 560px);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: auto;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  border: 0;
+  background: #101820;
+  color: #fff;
+}
+
+.imported-gallery__dialog::backdrop {
+  background: rgb(4 10 18 / 86%);
+}
+
+.imported-gallery__dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.imported-gallery__dialog header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  font-size: 14px;
+}
+
+.imported-gallery__dialog header button,
+.imported-gallery__full button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 14%);
+  color: #fff;
+  cursor: pointer;
+}
+
+.imported-gallery__full {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: center;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.imported-gallery__full > img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.imported-gallery__full p {
+  padding: 24px;
+  color: #c8d4df;
+  text-align: center;
+}
+
+.imported-gallery__full button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.imported-gallery__previous {
+  left: 12px;
+}
+
+.imported-gallery__next {
+  right: 12px;
+}
+
+.imported-gallery__dialog > a {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+}
+
 .imported-page--maps button:focus-visible,
 .imported-page--maps select:focus-visible,
 .imported-page--maps input:focus-visible {
