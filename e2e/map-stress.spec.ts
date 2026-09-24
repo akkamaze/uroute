@@ -305,3 +305,52 @@ test("shows every available place photo across normal and selected layers", asyn
   expect(lines).toHaveLength(2);
   expect(lines[1]).toMatch(/…$/);
 });
+
+test("keeps selected fallback heads the same visual size as photo heads", async ({ page }) => {
+  await page.goto("/places?place=nishiki&day=13");
+  const gaps = await page.evaluate(async () => {
+    const moduleUrl = "/src/plan/map-markers.ts";
+    const markerModule = (await import(/* @vite-ignore */ moduleUrl)) as {
+      createPlaceHead: (
+        category: string,
+        imageUrl: string | undefined,
+        number: string | undefined,
+        selected: boolean,
+      ) => Promise<ImageData>;
+    };
+    const photoCanvas = document.createElement("canvas");
+    photoCanvas.width = 8;
+    photoCanvas.height = 8;
+    const photoContext = photoCanvas.getContext("2d");
+    if (photoContext === null) {
+      throw new Error("Canvas is unavailable");
+    }
+    photoContext.fillStyle = "#d97706";
+    photoContext.fillRect(0, 0, 8, 8);
+
+    function ringGap(sprite: ImageData): number {
+      const y = sprite.height / 2;
+      const alphaAt = (x: number): number => sprite.data[(y * sprite.width + x) * 4 + 3] ?? 0;
+      let x = sprite.width / 2;
+      while (x < sprite.width && alphaAt(x) > 32) {
+        x += 1;
+      }
+      let gap = 0;
+      while (x < sprite.width && alphaAt(x) <= 32) {
+        gap += 1;
+        x += 1;
+      }
+
+      return gap;
+    }
+
+    const [fallback, photo] = await Promise.all([
+      markerModule.createPlaceHead("coffee", undefined, undefined, true),
+      markerModule.createPlaceHead("coffee", photoCanvas.toDataURL(), undefined, true),
+    ]);
+
+    return { fallback: ringGap(fallback), photo: ringGap(photo) };
+  });
+
+  expect(gaps.fallback).toBeLessThanOrEqual(gaps.photo + 1);
+});
