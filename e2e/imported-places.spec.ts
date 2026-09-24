@@ -20,8 +20,8 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("2 points · 1 line · 0 areas");
   await expect(review).toContainText("Tokyo: 2");
-  await review.getByRole("button", { name: "Import 2 new places" }).click();
-  await expect(page.getByRole("status")).toContainText("2 places imported");
+  await review.getByRole("button", { name: "Import 2 places and 1 line" }).click();
+  await expect(page.getByRole("status")).toContainText("2 places and 1 line imported");
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Market to this day" }).click();
@@ -36,7 +36,8 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await page.getByRole("button", { name: "Places 2" }).click();
   await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
   await expect(review).toContainText("2 points already on this device");
-  await review.getByRole("button", { name: "Import 0 new places" }).click();
+  await expect(review).toContainText("1 line already on this device");
+  await review.getByRole("button", { name: "Import 0 places and 0 lines" }).click();
   await expect(page.getByRole("button", { name: "Places 2" })).toBeVisible();
 });
 
@@ -78,7 +79,7 @@ test("searches imported places by name and folder", async ({ page }) => {
     mimeType: "application/vnd.google-earth.kml+xml",
     buffer: Buffer.from(sample),
   });
-  await page.getByRole("button", { name: "Import 2 new places" }).click();
+  await page.getByRole("button", { name: "Import 2 places and 1 line" }).click();
   await page.getByLabel("Search imported places").fill("Bridge");
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toHaveCount(0);
@@ -106,7 +107,7 @@ test("reviews a 1,200-point Unicode file and reports invalid coordinates", async
   await expect(review).toContainText("1200 points · 0 lines · 0 areas");
   await expect(review).toContainText("1 point needing correction");
   await expect(review).toContainText("日本: 1200");
-  await review.getByRole("button", { name: "Import 1200 new places" }).click();
+  await review.getByRole("button", { name: "Import 1200 places and 0 lines" }).click();
   await expect(page.getByRole("button", { name: "Places 1200" })).toBeVisible();
   await expect(page.getByRole("button", { name: "東京 1 日本" })).toBeVisible();
 });
@@ -125,17 +126,21 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("463 points · 9 lines · 1 area");
   await expect(review).toContainText("CENTRAL TOKYO: 101");
-  await review.getByRole("button", { name: "Import 463 new places" }).click();
+  await review.getByRole("button", { name: "Import 463 places and 9 lines" }).click();
   await expect(page.getByRole("button", { name: "Places 463" })).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(() =>
         (
           window as Window & {
-            __urouteMapDiagnostics?: () => { status: string; featureCount: number | null };
+            __urouteMapDiagnostics?: () => {
+              status: string;
+              featureCount: number | null;
+              geometryFeatureCount: number | null;
+            };
           }
         ).__urouteMapDiagnostics?.(),
       ),
     )
-    .toMatchObject({ status: "ready", featureCount: 463 });
+    .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 9 });
 });

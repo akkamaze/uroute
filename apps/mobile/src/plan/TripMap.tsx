@@ -12,7 +12,7 @@ import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
-import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
+import { KYOTO_CENTER, type MapGeometryCollection, type PlaceCollection } from "./map-data";
 import {
   MAP_LABEL_GAP,
   placeMapLabels,
@@ -28,6 +28,8 @@ import {
 } from "./map-markers";
 
 const POINT_SOURCE_ID = "trip-places";
+const GEOMETRY_SOURCE_ID = "trip-map-geometry";
+const LINE_LAYER_ID = "trip-map-lines";
 const CLUSTER_LAYER_ID = "place-clusters";
 const SYMBOL_LAYER_ID = "place-symbols";
 const SELECTED_SOURCE_ID = "selected-place";
@@ -56,11 +58,17 @@ const BASEMAP_STYLE = {
   layers: [{ id: "open-street-map", type: "raster" as const, source: "openStreetMap" }],
 };
 
+const EMPTY_MAP_GEOMETRY: MapGeometryCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
 interface TripMapProps {
   bottomInset?: number;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   id?: string;
+  geometry?: MapGeometryCollection;
   inactive?: boolean;
   onSelect: (id: string) => void;
   places: PlaceCollection;
@@ -77,6 +85,7 @@ interface MapDiagnosticsSnapshot {
   clusterLayerReady: boolean;
   clusteringEnabled: boolean;
   featureCount: number | null;
+  geometryFeatureCount: number | null;
   firstClusterPoint: { x: number; y: number } | null;
   moving: boolean;
   renderedClusterCount: number;
@@ -192,6 +201,12 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
   return source !== undefined && isGeoJsonSource(source) ? source : null;
 }
 
+function getGeometrySource(map: MapLibreMap): GeoJSONSource | null {
+  const source = map.getSource(GEOMETRY_SOURCE_ID);
+
+  return source !== undefined && isGeoJsonSource(source) ? source : null;
+}
+
 function getSourcePlaces(
   places: PlaceCollection,
   selectedId: string | null,
@@ -243,6 +258,7 @@ export function TripMap({
   onExpandedChange,
   id,
   inactive = false,
+  geometry = EMPTY_MAP_GEOMETRY,
   onSelect,
   places: allPlaces,
   orderPlaces,
@@ -257,6 +273,7 @@ export function TripMap({
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(places);
   const selectRef = useRef(onSelect);
+  const geometryRef = useRef(geometry);
   const selectedIdRef = useRef(selectedId);
   const syncLabelPlacementRef = useRef<() => void>(() => undefined);
   const [localExpanded, setLocalExpanded] = useState(false);
@@ -270,6 +287,7 @@ export function TripMap({
 
   placesRef.current = places;
   selectRef.current = onSelect;
+  geometryRef.current = geometry;
   selectedIdRef.current = selectedId;
   bottomInsetRef.current = bottomInset;
   statusRef.current = status;
@@ -343,6 +361,7 @@ export function TripMap({
     const readDiagnostics = (): MapDiagnosticsSnapshot => {
       const source = getSource(activeMap);
       const sourceOptions = source?.serialize();
+      const geometrySource = getGeometrySource(activeMap);
       const clusters =
         activeMap.getLayer(CLUSTER_LAYER_ID) === undefined
           ? []
@@ -411,6 +430,8 @@ export function TripMap({
               }))
             : [],
         featureCount: source === null ? null : getSourceFeatureCount(source),
+        geometryFeatureCount:
+          geometrySource === null ? null : getSourceFeatureCount(geometrySource),
         firstClusterPoint:
           firstCluster === undefined ? null : { x: firstCluster.x, y: firstCluster.y },
         moving: activeMap.isMoving(),
@@ -645,6 +666,22 @@ export function TripMap({
       }
 
       try {
+        activeMap.addSource(GEOMETRY_SOURCE_ID, {
+          type: "geojson",
+          data: geometryRef.current,
+          promoteId: "id",
+        });
+        activeMap.addLayer({
+          id: LINE_LAYER_ID,
+          type: "line",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "LineString"],
+          paint: {
+            "line-color": "#1677ff",
+            "line-opacity": 0.78,
+            "line-width": 3,
+          },
+        });
         activeMap.addSource(POINT_SOURCE_ID, {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
@@ -874,6 +911,29 @@ export function TripMap({
         }
       });
   }, [markerMode, places]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (map === null) {
+      return;
+    }
+    const source = getGeometrySource(map);
+    if (source === null) {
+      return;
+    }
+    void source
+      .setData(geometry)
+      .then(() => map.triggerRepaint())
+      .catch(() => {
+        if (mapRef.current === map) {
+          setErrorMessage(
+            "The imported map geometry could not be loaded. Try loading the map again.",
+          );
+          setStatus("error");
+        }
+      });
+  }, [geometry]);
 
   useEffect(() => {
     const map = mapRef.current;

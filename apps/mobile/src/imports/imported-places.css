@@ -173,6 +173,12 @@
 .imported-page__map {
   flex: none;
 }
+.imported-page__map-summary {
+  margin: 0;
+  padding: 8px 16px;
+  color: #526170;
+  font-size: 12px;
+}
 .imported-page__map > .trip-map {
   height: 250px;
 }

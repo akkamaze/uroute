@@ -1,7 +1,7 @@
-import type { ImportedPoint } from "./parse-place-file";
+import type { ImportedLine, ImportedPoint } from "./parse-place-file";
 
 const DATABASE_NAME = "uroute-imported-places";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export const KANTO_DAYS = [
   { date: "2026-09-27", label: "Sun 27 Sep" },
@@ -34,6 +34,15 @@ export function sameImportedPlace(left: ImportedPoint, right: ImportedPoint): bo
   );
 }
 
+export function sameImportedLine(left: ImportedLine, right: ImportedLine): boolean {
+  return (
+    left.sourceKey === right.sourceKey ||
+    (left.name.trim().toLocaleLowerCase() === right.name.trim().toLocaleLowerCase() &&
+      left.folder.trim().toLocaleLowerCase() === right.folder.trim().toLocaleLowerCase() &&
+      JSON.stringify(left.coordinates) === JSON.stringify(right.coordinates))
+  );
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
@@ -41,6 +50,9 @@ function openDatabase(): Promise<IDBDatabase> {
       const database = request.result;
       if (!database.objectStoreNames.contains("places")) {
         database.createObjectStore("places", { keyPath: "id" });
+      }
+      if (!database.objectStoreNames.contains("geometries")) {
+        database.createObjectStore("geometries", { keyPath: "id" });
       }
       if (!database.objectStoreNames.contains("visits")) {
         database.createObjectStore("visits", { keyPath: "id" });
@@ -85,29 +97,59 @@ export async function loadImportedPlaces(): Promise<ImportedPoint[]> {
   }
 }
 
-export async function saveImportedPlaces(points: readonly ImportedPoint[]): Promise<number> {
+export async function loadImportedLines(): Promise<ImportedLine[]> {
   const database = await openDatabase();
   try {
-    const knownPlaces = await requestResult(
-      database.transaction("places", "readonly").objectStore("places").getAll() as IDBRequest<
-        ImportedPoint[]
-      >,
+    const lines = await requestResult(
+      database
+        .transaction("geometries", "readonly")
+        .objectStore("geometries")
+        .getAll() as IDBRequest<ImportedLine[]>,
     );
+
+    return lines.sort(
+      (left, right) =>
+        left.folder.localeCompare(right.folder) || left.name.localeCompare(right.name),
+    );
+  } finally {
+    database.close();
+  }
+}
+export async function saveImportedContent(
+  points: readonly ImportedPoint[],
+  lines: readonly ImportedLine[],
+): Promise<{ placeCount: number; lineCount: number }> {
+  const database = await openDatabase();
+  try {
+    const readTransaction = database.transaction(["places", "geometries"], "readonly");
+    const [knownPlaces, knownLines] = await Promise.all([
+      requestResult(readTransaction.objectStore("places").getAll() as IDBRequest<ImportedPoint[]>),
+      requestResult(
+        readTransaction.objectStore("geometries").getAll() as IDBRequest<ImportedLine[]>,
+      ),
+    ]);
     const knownIds = new Set(knownPlaces.map((point) => point.id));
     const newPoints = points.filter(
       (point) =>
         !knownIds.has(point.id) && !knownPlaces.some((known) => sameImportedPlace(point, known)),
     );
-    if (newPoints.length === 0) {
-      return 0;
+    const knownLineIds = new Set(knownLines.map((line) => line.id));
+    const newLines = lines.filter(
+      (line) =>
+        !knownLineIds.has(line.id) && !knownLines.some((known) => sameImportedLine(line, known)),
+    );
+    if (newPoints.length === 0 && newLines.length === 0) {
+      return { placeCount: 0, lineCount: 0 };
     }
-    const transaction = database.transaction("places", "readwrite");
+    const transaction = database.transaction(["places", "geometries"], "readwrite");
     const done = complete(transaction);
-    const store = transaction.objectStore("places");
-    newPoints.forEach((point) => store.put(point));
+    const placeStore = transaction.objectStore("places");
+    const geometryStore = transaction.objectStore("geometries");
+    newPoints.forEach((point) => placeStore.put(point));
+    newLines.forEach((line) => geometryStore.put(line));
     await done;
 
-    return newPoints.length;
+    return { placeCount: newPoints.length, lineCount: newLines.length };
   } finally {
     database.close();
   }

@@ -17,13 +17,26 @@ export interface ImportedPoint {
   mediaReferences: string[];
 }
 
+export interface ImportedLine {
+  id: string;
+  sourceKey: string;
+  sourceFile: string;
+  folder: string;
+  name: string;
+  description: string;
+  coordinates: [number, number][];
+  styleRef: string;
+  mediaReferences: string[];
+}
+
 export interface ImportPreview {
   fileName: string;
   points: ImportedPoint[];
-  lineCount: number;
+  lines: ImportedLine[];
   polygonCount: number;
   unsupportedCount: number;
   invalidCount: number;
+  invalidGeometryCount: number;
   coordinateCollisionCount: number;
   skipped: { name: string; reason: string }[];
   warnings: string[];
@@ -141,6 +154,15 @@ function parseCoordinates(value: string): [number, number] | null {
   }
 
   return [longitude, latitude];
+}
+
+function parseCoordinateSequence(value: string, minimumLength: number): [number, number][] | null {
+  const coordinates = value.trim().split(/\s+/).filter(Boolean).map(parseCoordinates);
+  if (coordinates.length < minimumLength || coordinates.some((coordinate) => coordinate === null)) {
+    return null;
+  }
+
+  return coordinates as [number, number][];
 }
 
 const SHA_256_INITIAL = new Uint32Array([
@@ -273,10 +295,11 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
   const preview: ImportPreview = {
     fileName: file.name,
     points: [],
-    lineCount: 0,
+    lines: [],
     polygonCount: 0,
     unsupportedCount: 0,
     invalidCount: 0,
+    invalidGeometryCount: 0,
     coordinateCollisionCount: 0,
     skipped: [],
     warnings: [],
@@ -285,12 +308,32 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
 
   placemarks.forEach((placemark, index) => {
     const name = childText(placemark, "name").slice(0, 240);
+    const sourceKey = `${hash}:${index}`;
+    const shared = {
+      id: `import-${sourceKey}`,
+      sourceKey,
+      sourceFile: file.name,
+      folder: folderPath(placemark),
+      name,
+      description: plainDescription(childText(placemark, "description")),
+      styleRef: childText(placemark, "styleUrl").slice(0, 240),
+      mediaReferences: mediaReferences(placemark),
+    };
     const geometry = Array.from(placemark.children).find((child) =>
       ["Point", "LineString", "Polygon", "MultiGeometry"].includes(child.localName),
     );
     if (geometry?.localName === "LineString") {
-      preview.lineCount += 1;
-      preview.skipped.push({ name: name || `Item ${index + 1}`, reason: "Line" });
+      const coordinates = parseCoordinateSequence(childText(geometry, "coordinates"), 2);
+      if (coordinates === null || name === "") {
+        preview.invalidGeometryCount += 1;
+        preview.skipped.push({
+          name: name || `Item ${index + 1}`,
+          reason: "Missing name or valid line coordinates",
+        });
+
+        return;
+      }
+      preview.lines.push({ ...shared, coordinates });
 
       return;
     }
@@ -321,24 +364,16 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
       preview.coordinateCollisionCount += 1;
     }
     coordinatesSeen.add(coordinateKey);
-    const sourceKey = `${hash}:${index}`;
     preview.points.push({
-      id: `import-${sourceKey}`,
-      sourceKey,
-      sourceFile: file.name,
-      folder: folderPath(placemark),
-      name,
-      description: plainDescription(childText(placemark, "description")),
+      ...shared,
       longitude: coordinates[0],
       latitude: coordinates[1],
-      styleRef: childText(placemark, "styleUrl").slice(0, 240),
-      mediaReferences: mediaReferences(placemark),
     });
   });
 
-  if (preview.lineCount + preview.polygonCount + preview.unsupportedCount > 0) {
+  if (preview.polygonCount + preview.unsupportedCount > 0) {
     preview.warnings.push(
-      "Lines, areas and unsupported geometry are shown in this review but not added as places.",
+      "Areas and unsupported geometry are listed in this review but are not imported yet.",
     );
   }
   if (preview.invalidCount > 0) {
@@ -349,6 +384,11 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
   if (preview.coordinateCollisionCount > 0) {
     preview.warnings.push(
       "Some points share coordinates. Review them before adding places to a plan.",
+    );
+  }
+  if (preview.invalidGeometryCount > 0) {
+    preview.warnings.push(
+      "Some map geometry needs a name and valid coordinates and cannot be imported.",
     );
   }
 
