@@ -305,9 +305,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
           </div>
           <p className="imported-page__source-name">{preview.fileName}</p>
           <p>
-            {preview.points.length} points · {preview.lines.length}{" "}
-            {preview.lines.length === 1 ? "line" : "lines"} · {preview.areas.length}{" "}
-            {preview.areas.length === 1 ? "area" : "areas"}
+            {preview.points.length} {preview.points.length === 1 ? "point" : "points"} ·{" "}
+            {preview.lines.length} {preview.lines.length === 1 ? "line" : "lines"} ·{" "}
+            {preview.areas.length} {preview.areas.length === 1 ? "area" : "areas"}
           </p>
           <p>{knownPreviewCount} points already on this device.</p>
           {knownPreviewLineCount > 0 ? (

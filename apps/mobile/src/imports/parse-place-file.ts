@@ -354,12 +354,21 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
   };
   const coordinatesSeen = new Set<string>();
 
+  const geometryNames = new Set([
+    "Point",
+    "LineString",
+    "LinearRing",
+    "Polygon",
+    "MultiGeometry",
+    "Model",
+    "Track",
+    "MultiTrack",
+  ]);
+
   placemarks.forEach((placemark, index) => {
     const name = childText(placemark, "name").slice(0, 240);
-    const sourceKey = `${hash}:${index}`;
+    const itemName = name || `Item ${index + 1}`;
     const shared = {
-      id: `import-${sourceKey}`,
-      sourceKey,
       sourceFile: file.name,
       folder: folderPath(placemark),
       name,
@@ -368,64 +377,121 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
       mediaReferences: mediaReferences(placemark),
     };
     const geometry = Array.from(placemark.children).find((child) =>
-      ["Point", "LineString", "Polygon", "MultiGeometry"].includes(child.localName),
+      geometryNames.has(child.localName),
     );
-    if (geometry?.localName === "LineString") {
-      const coordinates = parseCoordinateSequence(childText(geometry, "coordinates"), 2);
-      if (coordinates === null || name === "") {
-        preview.invalidGeometryCount += 1;
-        preview.skipped.push({
-          name: name || `Item ${index + 1}`,
-          reason: "Missing name or valid line coordinates",
+
+    function processGeometry(item: Element, path: readonly number[]): void {
+      if (item.localName === "MultiGeometry" || item.localName === "MultiTrack") {
+        const children = Array.from(item.children).filter((child) =>
+          geometryNames.has(child.localName),
+        );
+        if (children.length === 0) {
+          preview.unsupportedCount += 1;
+          preview.skipped.push({ name: itemName, reason: `Empty ${item.localName}` });
+
+          return;
+        }
+        children.forEach((child, childIndex) => processGeometry(child, [...path, childIndex]));
+
+        return;
+      }
+
+      const sourceKey =
+        path.length === 0 ? `${hash}:${index}` : `${hash}:${index}:geometry-${path.join("-")}`;
+      const identified = { ...shared, id: `import-${sourceKey}`, sourceKey };
+      if (
+        item.localName === "LineString" ||
+        item.localName === "LinearRing" ||
+        item.localName === "Track"
+      ) {
+        let coordinates: [number, number][] | null;
+        if (item.localName === "Track") {
+          const trackCoordinates = Array.from(item.children)
+            .filter((child) => child.localName === "coord")
+            .map((child) =>
+              parseCoordinates((child.textContent ?? "").trim().split(/\s+/).slice(0, 2).join(",")),
+            );
+          coordinates =
+            trackCoordinates.length >= 2 &&
+            trackCoordinates.every((coordinate) => coordinate !== null)
+              ? trackCoordinates
+              : null;
+        } else {
+          const minimumLength = item.localName === "LinearRing" ? 4 : 2;
+          coordinates = parseCoordinateSequence(childText(item, "coordinates"), minimumLength);
+          if (
+            item.localName === "LinearRing" &&
+            (coordinates === null ||
+              coordinates[0]?.[0] !== coordinates.at(-1)?.[0] ||
+              coordinates[0]?.[1] !== coordinates.at(-1)?.[1])
+          ) {
+            coordinates = null;
+          }
+        }
+        if (coordinates === null || name === "") {
+          preview.invalidGeometryCount += 1;
+          preview.skipped.push({
+            name: itemName,
+            reason: "Missing name or valid line coordinates",
+          });
+
+          return;
+        }
+        preview.lines.push({ ...identified, coordinates });
+
+        return;
+      }
+      if (item.localName === "Polygon") {
+        const rings = parsePolygonRings(item);
+        if (rings === null || name === "") {
+          preview.invalidGeometryCount += 1;
+          preview.skipped.push({
+            name: itemName,
+            reason: "Missing name or valid closed area coordinates",
+          });
+
+          return;
+        }
+        preview.areas.push({ ...identified, rings });
+
+        return;
+      }
+      if (item.localName === "Point") {
+        const coordinates = parseCoordinates(childText(item, "coordinates"));
+        if (coordinates === null || name === "") {
+          preview.invalidCount += 1;
+          preview.skipped.push({
+            name: itemName,
+            reason: "Missing name or coordinates",
+          });
+
+          return;
+        }
+        const coordinateKey = coordinates.join(",");
+        if (coordinatesSeen.has(coordinateKey)) {
+          preview.coordinateCollisionCount += 1;
+        }
+        coordinatesSeen.add(coordinateKey);
+        preview.points.push({
+          ...identified,
+          longitude: coordinates[0],
+          latitude: coordinates[1],
         });
 
         return;
       }
-      preview.lines.push({ ...shared, coordinates });
 
-      return;
-    }
-    if (geometry?.localName === "Polygon") {
-      const rings = parsePolygonRings(geometry);
-      if (rings === null || name === "") {
-        preview.invalidGeometryCount += 1;
-        preview.skipped.push({
-          name: name || `Item ${index + 1}`,
-          reason: "Missing name or valid closed area coordinates",
-        });
-
-        return;
-      }
-      preview.areas.push({ ...shared, rings });
-
-      return;
-    }
-    if (geometry?.localName !== "Point") {
       preview.unsupportedCount += 1;
-      preview.skipped.push({ name: name || `Item ${index + 1}`, reason: "Unsupported geometry" });
+      preview.skipped.push({ name: itemName, reason: `Unsupported ${item.localName} geometry` });
+    }
+
+    if (geometry === undefined) {
+      preview.unsupportedCount += 1;
+      preview.skipped.push({ name: itemName, reason: "Missing or unsupported geometry" });
 
       return;
     }
-    const coordinates = parseCoordinates(childText(geometry, "coordinates"));
-    if (coordinates === null || name === "") {
-      preview.invalidCount += 1;
-      preview.skipped.push({
-        name: name || `Item ${index + 1}`,
-        reason: "Missing name or coordinates",
-      });
-
-      return;
-    }
-    const coordinateKey = coordinates.join(",");
-    if (coordinatesSeen.has(coordinateKey)) {
-      preview.coordinateCollisionCount += 1;
-    }
-    coordinatesSeen.add(coordinateKey);
-    preview.points.push({
-      ...shared,
-      longitude: coordinates[0],
-      latitude: coordinates[1],
-    });
+    processGeometry(geometry, []);
   });
 
   if (preview.unsupportedCount > 0) {

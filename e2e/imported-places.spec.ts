@@ -113,6 +113,52 @@ test("imports a polygon with an inner ring and does not duplicate it", async ({ 
   await expect(page.getByRole("status")).toContainText("already on this device");
 });
 
+test("imports supported parts of nested MultiGeometry and reports the rest", async ({ page }) => {
+  const compound = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2"><Document><Folder><name>Mixed</name>
+<Placemark><name>Compound item</name><MultiGeometry>
+<Point><coordinates>139.75,35.65</coordinates></Point>
+<MultiGeometry>
+<LineString><coordinates>139.70,35.60 139.80,35.70</coordinates></LineString>
+<gx:MultiTrack><gx:Track><gx:coord>139.71 35.61 0</gx:coord><gx:coord>139.79 35.69 0</gx:coord></gx:Track></gx:MultiTrack>
+<Polygon><outerBoundaryIs><LinearRing><coordinates>139.70,35.60 139.80,35.60 139.80,35.70 139.70,35.70 139.70,35.60</coordinates></LinearRing></outerBoundaryIs></Polygon>
+<Model><Location><longitude>139.75</longitude><latitude>35.65</latitude></Location></Model>
+</MultiGeometry>
+</MultiGeometry></Placemark></Folder></Document></kml>`;
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.fulfill({ path: "apps/mobile/public/images/kyoto.png", contentType: "image/png" }),
+  );
+  await page.goto("/plan/kanto");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "compound.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(compound),
+  });
+  const review = page.getByRole("region", { name: "Import review" });
+  await expect(review).toContainText("1 point · 2 lines · 1 area");
+  await expect(review).toContainText("1 unsupported");
+  await review.getByText("Review 1 items not imported").click();
+  await expect(review).toContainText("Unsupported Model geometry");
+  await review.getByRole("button", { name: "Import 1 place, 2 lines and 1 area" }).click();
+  await expect(page.getByRole("button", { name: "Places 1" })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const diagnostics = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              featureCount: number | null;
+              geometryFeatureCount: number | null;
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return [diagnostics?.featureCount, diagnostics?.geometryFeatureCount];
+      }),
+    )
+    .toEqual([1, 3]);
+});
+
 test("searches imported places by name and folder", async ({ page }) => {
   await page.goto("/plan/kanto");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
