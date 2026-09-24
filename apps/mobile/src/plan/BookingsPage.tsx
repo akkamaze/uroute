@@ -367,7 +367,7 @@ export function BookingsPage(): React.JSX.Element {
             <article aria-label="Share preview" className="booking-ticket">
               <header className="booking-ticket__header">
                 <span className="booking-ticket__brand">
-                  uroute<span>.</span>
+                  <span>u</span>route
                 </span>
                 <span className="booking-ticket__tagline">Travel brings us closer</span>
               </header>

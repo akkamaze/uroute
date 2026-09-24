@@ -85,9 +85,12 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   context.fill();
 
   context.textBaseline = "alphabetic";
-  context.fillStyle = "#183a57";
   context.font = "800 52px Arial, sans-serif";
-  context.fillText("uroute.", 150, 318);
+  context.fillStyle = "#1666ff";
+  context.fillText("u", 150, 318);
+  const initialWidth = context.measureText("u").width;
+  context.fillStyle = "#183a57";
+  context.fillText("route", 150 + initialWidth, 318);
   context.fillStyle = "#607487";
   context.font = "700 21px Arial, sans-serif";
   context.textAlign = "right";
