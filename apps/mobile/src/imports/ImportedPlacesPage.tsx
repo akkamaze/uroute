@@ -296,6 +296,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
   const [searchOrigin, setSearchOrigin] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
+  const [searchDraftOrigin, setSearchDraftOrigin] = useState<MapViewport | null>(
+    savedMapsState.viewport ?? null,
+  );
   const [sheetHeight, setSheetHeight] = useState(0);
   const [sheetViewportHeight, setSheetViewportHeight] = useState(window.innerHeight);
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
@@ -544,12 +547,16 @@ export function ImportedPlacesPage(): React.JSX.Element {
     () =>
       normalizedDraft === ""
         ? []
-        : places
-            .filter((place) =>
-              `${place.name} ${place.folder}`.toLocaleLowerCase().includes(normalizedDraft),
-            )
-            .slice(0, 20),
-    [normalizedDraft, places],
+        : selectSearchMapItems(
+            places.filter(
+              (place) =>
+                isImportLayerVisible(place, hiddenLayers) &&
+                `${place.name} ${place.folder}`.toLocaleLowerCase().includes(normalizedDraft),
+            ),
+            searchDraftOrigin,
+            (place) => [place.longitude, place.latitude],
+          ),
+    [hiddenLayers, normalizedDraft, places, searchDraftOrigin],
   );
   const visiblePlaces = useMemo(
     () =>
@@ -987,7 +994,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
   function submitSearch(value = draftQuery): void {
     const nextQuery = value.trim();
-    setSearchOrigin(viewport);
+    setSearchOrigin(searchDraftOrigin);
     setDraftQuery(nextQuery);
     setQuery(nextQuery);
     setSearchEditing(false);
@@ -1040,6 +1047,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
           onFocus={() => {
             if (globalMaps && !searchEditing) {
               searchWasOpenRef.current = searchOpen;
+              setSearchDraftOrigin(viewport);
               setDraftQuery(query);
               setSearchEditing(true);
               setSearchOpen(false);

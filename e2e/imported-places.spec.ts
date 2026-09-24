@@ -1250,9 +1250,15 @@ test("shows only nearby or dense map subsets in Maps search results", async ({ p
     )
     .toBeLessThan(136);
   await page.getByLabel("Search imported places").fill("H");
+  const previewNames = await page
+    .getByRole("region", { name: "Search suggestions" })
+    .locator(".imported-page__search-list strong")
+    .allTextContents();
+  expect(previewNames).toHaveLength(40);
   await page.getByLabel("Search imported places").press("Enter");
   await expect(page.locator(".imported-page__list-heading span")).toHaveCount(0);
   await expect(page.locator(".imported-page__row")).toHaveCount(40);
+  await expect(page.locator(".imported-page__row strong")).toHaveText(previewNames);
   await expect(page.getByRole("button", { name: "Show more places" })).toHaveCount(0);
   await expect
     .poll(() =>
