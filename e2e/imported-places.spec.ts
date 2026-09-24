@@ -93,7 +93,7 @@ test("imports a polygon with an inner ring and does not duplicate it", async ({ 
   await expect(review).toContainText("0 points · 0 lines · 1 area");
   await review.getByRole("button", { name: "Import 0 places, 0 lines and 1 area" }).click();
   await expect(page.getByRole("status")).toContainText("0 places, 0 lines and 1 area imported");
-  await expect(page.getByText("0 lines and 1 area shown on map")).toBeVisible();
+  await expect(page.getByText("0 points, 0 lines and 1 area shown on map")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -111,6 +111,82 @@ test("imports a polygon with an inner ring and does not duplicate it", async ({ 
   await expect(review).toContainText("1 area already on this device");
   await review.getByRole("button", { name: "Import 0 places, 0 lines and 0 areas" }).click();
   await expect(page.getByRole("status")).toContainText("already on this device");
+});
+
+test("toggles imported file, geometry and folder layers without deleting places", async ({
+  page,
+}) => {
+  const areaFile = {
+    name: "osaka.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(`<kml><Document><Folder><name>Osaka</name>
+<Placemark><name>Park area</name><Polygon><outerBoundaryIs><LinearRing><coordinates>135.49,34.69 135.51,34.69 135.51,34.71 135.49,34.71 135.49,34.69</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+</Folder></Document></kml>`),
+  };
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.fulfill({ path: "apps/mobile/public/images/kyoto.png", contentType: "image/png" }),
+  );
+  await page.goto("/plan/kanto");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles(areaFile);
+  await page.getByRole("button", { name: "Import 0 places, 0 lines and 1 area" }).click();
+
+  const readMap = (): Promise<
+    | {
+        featureCount: number | null;
+        geometryFeatureCount: number | null;
+        center: { longitude: number; latitude: number };
+        zoom: number;
+      }
+    | undefined
+  > =>
+    page.evaluate(() =>
+      (
+        window as Window & {
+          __urouteMapDiagnostics?: () => {
+            featureCount: number | null;
+            geometryFeatureCount: number | null;
+            center: { longitude: number; latitude: number };
+            zoom: number;
+          };
+        }
+      ).__urouteMapDiagnostics?.(),
+    );
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(2);
+  await page.getByRole("button", { name: "Map layers" }).click();
+  const layers = page.getByRole("region", { name: "Map layers" });
+  await expect(layers.getByRole("checkbox", { name: "Show sample.kml" })).toBeChecked();
+  await layers.getByRole("checkbox", { name: "Show lines in sample.kml" }).uncheck();
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(1);
+  await layers.getByRole("checkbox", { name: "Show areas in osaka.kml" }).uncheck();
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
+  await expect(page.getByRole("button", { name: "Places 2" })).toBeVisible();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  await expect(
+    layers.getByRole("checkbox", { name: "Show lines in sample.kml" }),
+  ).not.toBeChecked();
+  await expect(layers.getByRole("checkbox", { name: "Show areas in osaka.kml" })).not.toBeChecked();
+  await layers.getByRole("checkbox", { name: "Show areas in osaka.kml" }).check();
+  await layers.locator("details").last().locator("summary").click();
+  const beforeFolderToggle = await readMap();
+  expect(beforeFolderToggle).toBeDefined();
+  await layers.getByRole("checkbox", { name: "Show Tokyo in sample.kml" }).uncheck();
+  await expect.poll(async () => (await readMap())?.featureCount).toBe(0);
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(1);
+  const afterFolderToggle = await readMap();
+  expect(afterFolderToggle?.center.longitude).toBeCloseTo(beforeFolderToggle!.center.longitude, 6);
+  expect(afterFolderToggle?.center.latitude).toBeCloseTo(beforeFolderToggle!.center.latitude, 6);
+  expect(afterFolderToggle?.zoom).toBeCloseTo(beforeFolderToggle!.zoom, 6);
+  await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
+  await layers.getByRole("checkbox", { name: "Show osaka.kml" }).uncheck();
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
 });
 
 test("imports supported parts of nested MultiGeometry and reports the rest", async ({ page }) => {
@@ -230,4 +306,57 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
       ),
     )
     .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 10 });
+
+  await page.getByRole("button", { name: "Map layers" }).click();
+  const layers = page.getByRole("region", { name: "Map layers" });
+  await layers.locator("details summary").click();
+  const readCamera = (): Promise<{
+    center: { longitude: number; latitude: number };
+    zoom: number;
+    count: number | null;
+    firstClusterPoint: { x: number; y: number } | null;
+    renderedClusterLabels: string[];
+  } | null> =>
+    page.evaluate(() => {
+      const map = (
+        window as Window & {
+          __urouteMapDiagnostics?: () => {
+            center: { longitude: number; latitude: number };
+            featureCount: number | null;
+            firstClusterPoint: { x: number; y: number } | null;
+            renderedClusterLabels: string[];
+            zoom: number;
+          };
+        }
+      ).__urouteMapDiagnostics?.();
+
+      return map === undefined
+        ? null
+        : {
+            center: map.center,
+            zoom: map.zoom,
+            count: map.featureCount,
+            firstClusterPoint: map.firstClusterPoint,
+            renderedClusterLabels: map.renderedClusterLabels,
+          };
+    });
+  const beforeSumidaToggle = await readCamera();
+  expect(beforeSumidaToggle?.firstClusterPoint).not.toBeNull();
+  await layers.getByRole("checkbox", { name: /Show TOKYO \(SUMIDA\) in/ }).uncheck();
+  await expect.poll(async () => (await readCamera())?.count).toBeLessThan(463);
+  const afterSumidaToggle = await readCamera();
+  expect(afterSumidaToggle?.center.longitude).toBeCloseTo(beforeSumidaToggle!.center.longitude, 6);
+  expect(afterSumidaToggle?.center.latitude).toBeCloseTo(beforeSumidaToggle!.center.latitude, 6);
+  expect(afterSumidaToggle?.zoom).toBeCloseTo(beforeSumidaToggle!.zoom, 6);
+  expect(afterSumidaToggle?.renderedClusterLabels).not.toEqual(
+    beforeSumidaToggle?.renderedClusterLabels,
+  );
+  expect(afterSumidaToggle?.firstClusterPoint?.x).toBeCloseTo(
+    beforeSumidaToggle!.firstClusterPoint!.x,
+    3,
+  );
+  expect(afterSumidaToggle?.firstClusterPoint?.y).toBeCloseTo(
+    beforeSumidaToggle!.firstClusterPoint!.y,
+    3,
+  );
 });

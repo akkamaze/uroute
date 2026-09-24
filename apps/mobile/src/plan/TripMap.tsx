@@ -67,7 +67,9 @@ const EMPTY_MAP_GEOMETRY: MapGeometryCollection = {
 
 interface TripMapProps {
   bottomInset?: number;
+  clusterAnchorPlaces?: PlaceCollection;
   expanded?: boolean;
+  frameKey?: string;
   onExpandedChange?: (expanded: boolean) => void;
   id?: string;
   geometry?: MapGeometryCollection;
@@ -126,6 +128,7 @@ function framePlaces(
   places: PlaceCollection,
   animated: boolean,
   bottomInset = 0,
+  geometry: MapGeometryCollection = EMPTY_MAP_GEOMETRY,
 ): void {
   const cameraPadding = {
     top: 104,
@@ -134,7 +137,33 @@ function framePlaces(
     left: 32,
   };
 
+  let west = Number.POSITIVE_INFINITY;
+  let south = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+  let north = Number.NEGATIVE_INFINITY;
+
+  function include(coordinates: readonly number[]): void {
+    const [longitude, latitude] = coordinates;
+    if (longitude === undefined || latitude === undefined) {
+      return;
+    }
+    west = Math.min(west, longitude);
+    south = Math.min(south, latitude);
+    east = Math.max(east, longitude);
+    north = Math.max(north, latitude);
+  }
+
+  places.features.forEach((feature) => include(feature.geometry.coordinates));
   if (places.features.length === 0) {
+    geometry.features.forEach((feature) => {
+      const paths =
+        feature.geometry.type === "LineString"
+          ? [feature.geometry.coordinates]
+          : feature.geometry.coordinates;
+      paths.forEach((path) => path.forEach(include));
+    });
+  }
+  if (west === Number.POSITIVE_INFINITY) {
     map.easeTo({
       center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
       duration: animated ? 350 : 0,
@@ -144,24 +173,6 @@ function framePlaces(
 
     return;
   }
-
-  let west = Number.POSITIVE_INFINITY;
-  let south = Number.POSITIVE_INFINITY;
-  let east = Number.NEGATIVE_INFINITY;
-  let north = Number.NEGATIVE_INFINITY;
-
-  places.features.forEach((feature) => {
-    const [longitude, latitude] = feature.geometry.coordinates;
-
-    if (longitude === undefined || latitude === undefined) {
-      return;
-    }
-
-    west = Math.min(west, longitude);
-    south = Math.min(south, latitude);
-    east = Math.max(east, longitude);
-    north = Math.max(north, latitude);
-  });
 
   map.fitBounds(
     [
@@ -213,31 +224,61 @@ function getSourcePlaces(
   places: PlaceCollection,
   selectedId: string | null,
   markerMode: "places" | "order",
+  clusterAnchorPlaces?: PlaceCollection,
 ): PlaceCollection {
+  const visibleIds = new Set(places.features.map((place) => place.properties.id));
+  const sourcePlaces =
+    markerMode === "places" && clusterAnchorPlaces !== undefined
+      ? {
+          ...clusterAnchorPlaces,
+          features: clusterAnchorPlaces.features.map((place) => ({
+            ...place,
+            properties: {
+              ...place.properties,
+              visible: visibleIds.has(place.properties.id) ? 1 : 0,
+            },
+          })),
+        }
+      : places;
   if (markerMode === "order" || selectedId === null) {
-    return places;
+    return sourcePlaces;
   }
 
   return {
-    ...places,
-    features: places.features.filter((place) => place.properties.id !== selectedId),
+    ...sourcePlaces,
+    features: sourcePlaces.features.filter((place) => place.properties.id !== selectedId),
   };
 }
 
-function getLabelFilter(selectedId: string | null): FilterSpecification {
-  return ["all", ["!", ["has", "point_count"]], ["!=", ["get", "id"], selectedId ?? ""]];
+function getLabelFilter(selectedId: string | null, anchored = false): FilterSpecification {
+  const filter: FilterSpecification = [
+    "all",
+    ["!", ["has", "point_count"]],
+    ["!=", ["get", "id"], selectedId ?? ""],
+  ];
+  if (anchored) {
+    filter.push(["!=", ["get", "visible"], 0]);
+  }
+
+  return filter;
 }
 
 function getPlacedLabelFilter(
   selectedId: string | null,
   ids: readonly string[],
+  anchored = false,
 ): FilterSpecification {
-  return [
+  const filter: FilterSpecification = [
     "all",
     ["!", ["has", "point_count"]],
     ["!=", ["get", "id"], selectedId ?? ""],
     ["in", ["get", "id"], ["literal", [...ids]]],
   ];
+  if (anchored) {
+    filter.push(["!=", ["get", "visible"], 0]);
+  }
+
+  return filter;
 }
 
 function syncSelectedPlace(
@@ -256,7 +297,9 @@ function syncSelectedPlace(
 
 export function TripMap({
   bottomInset = 0,
+  clusterAnchorPlaces,
   expanded: controlledExpanded,
+  frameKey,
   onExpandedChange,
   id,
   inactive = false,
@@ -270,10 +313,14 @@ export function TripMap({
 }: TripMapProps): React.JSX.Element {
   const [markerMode, setMarkerMode] = useState<"places" | "order">("places");
   const places = markerMode === "order" ? orderPlaces : allPlaces;
+  const anchored = clusterAnchorPlaces !== undefined && markerMode === "places";
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomInsetRef = useRef(bottomInset);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(places);
+  const clusterAnchorPlacesRef = useRef(clusterAnchorPlaces);
+  const lastFrameKeyRef = useRef(frameKey);
+  const lastMarkerModeRef = useRef(markerMode);
   const selectRef = useRef(onSelect);
   const geometryRef = useRef(geometry);
   const selectedIdRef = useRef(selectedId);
@@ -288,6 +335,7 @@ export function TripMap({
   const statusRef = useRef<MapStatus>(status);
 
   placesRef.current = places;
+  clusterAnchorPlacesRef.current = clusterAnchorPlaces;
   selectRef.current = onSelect;
   geometryRef.current = geometry;
   selectedIdRef.current = selectedId;
@@ -431,7 +479,18 @@ export function TripMap({
                 marker: feature.properties.marker ?? "",
               }))
             : [],
-        featureCount: source === null ? null : getSourceFeatureCount(source),
+        featureCount:
+          source === null
+            ? null
+            : !anchored
+              ? getSourceFeatureCount(source)
+              : placesRef.current.features.length -
+                Number(
+                  markerMode === "places" &&
+                    placesRef.current.features.some(
+                      (place) => place.properties.id === selectedIdRef.current,
+                    ),
+                ),
         geometryFeatureCount:
           geometrySource === null ? null : getSourceFeatureCount(geometrySource),
         firstClusterPoint:
@@ -439,7 +498,11 @@ export function TripMap({
         moving: activeMap.isMoving(),
         renderedClusterCount: clusters.length,
         renderedClusterLabels: clusters.map((cluster) =>
-          String(cluster.properties.point_count_abbreviated),
+          String(
+            !anchored
+              ? cluster.properties.point_count_abbreviated
+              : cluster.properties.visible_count,
+          ),
         ),
         renderedSelectedIds:
           activeMap.getLayer(SELECTED_LAYER_ID) === undefined
@@ -627,10 +690,13 @@ export function TripMap({
         return;
       }
       placementKey = nextPlacementKey;
-      activeMap.setFilter(LABEL_LAYER_ID, getPlacedLabelFilter(selectedIdRef.current, rightIds));
+      activeMap.setFilter(
+        LABEL_LAYER_ID,
+        getPlacedLabelFilter(selectedIdRef.current, rightIds, anchored),
+      );
       activeMap.setFilter(
         LEFT_LABEL_LAYER_ID,
-        getPlacedLabelFilter(selectedIdRef.current, leftIds),
+        getPlacedLabelFilter(selectedIdRef.current, leftIds, anchored),
       );
       activeMap.setLayoutProperty(
         SELECTED_LABEL_LAYER_ID,
@@ -711,15 +777,24 @@ export function TripMap({
           cluster: markerMode === "places",
           clusterMaxZoom: 14,
           clusterRadius: 24,
+          ...(anchored ? { clusterProperties: { visible_count: ["+", ["get", "visible"]] } } : {}),
           promoteId: "id",
         });
         activeMap.addLayer({
           id: CLUSTER_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: ["has", "point_count"],
+          filter: !anchored
+            ? ["has", "point_count"]
+            : ["all", ["has", "point_count"], [">", ["get", "visible_count"], 0]],
           layout: {
-            "icon-image": ["concat", "cluster-", ["to-string", ["get", "point_count_abbreviated"]]],
+            "icon-image": [
+              "concat",
+              "cluster-",
+              !anchored
+                ? ["to-string", ["get", "point_count_abbreviated"]]
+                : ["to-string", ["get", "visible_count"]],
+            ],
             "icon-allow-overlap": true,
           },
         });
@@ -727,7 +802,9 @@ export function TripMap({
           id: SYMBOL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: ["!", ["has", "point_count"]],
+          filter: !anchored
+            ? ["!", ["has", "point_count"]]
+            : ["all", ["!", ["has", "point_count"]], ["!=", ["get", "visible"], 0]],
           layout: {
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
@@ -752,7 +829,7 @@ export function TripMap({
           id: LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: getLabelFilter(selectedIdRef.current),
+          filter: getLabelFilter(selectedIdRef.current, anchored),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
@@ -766,7 +843,7 @@ export function TripMap({
           id: LEFT_LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: getPlacedLabelFilter(selectedIdRef.current, []),
+          filter: getPlacedLabelFilter(selectedIdRef.current, [], anchored),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "right",
@@ -804,11 +881,24 @@ export function TripMap({
         }
 
         void source
-          .setData(getSourcePlaces(placesRef.current, selectedIdRef.current, markerMode))
+          .setData(
+            getSourcePlaces(
+              placesRef.current,
+              selectedIdRef.current,
+              markerMode,
+              clusterAnchorPlacesRef.current,
+            ),
+          )
           .then(() => {
             if (!disposed) {
               applySelection();
-              framePlaces(activeMap, placesRef.current, false, bottomInsetRef.current);
+              framePlaces(
+                activeMap,
+                placesRef.current,
+                false,
+                bottomInsetRef.current,
+                geometryRef.current,
+              );
               activeMap.triggerRepaint();
             }
           })
@@ -903,7 +993,7 @@ export function TripMap({
       }
       activeMap.remove();
     };
-  }, [retryCount, markerMode]);
+  }, [retryCount, markerMode, anchored]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -918,12 +1008,21 @@ export function TripMap({
       return;
     }
 
+    const shouldFrame =
+      frameKey === undefined ||
+      frameKey !== lastFrameKeyRef.current ||
+      markerMode !== lastMarkerModeRef.current;
+    lastFrameKeyRef.current = frameKey;
+    lastMarkerModeRef.current = markerMode;
+
     void source
-      .setData(getSourcePlaces(places, selectedIdRef.current, markerMode))
+      .setData(getSourcePlaces(places, selectedIdRef.current, markerMode, clusterAnchorPlaces))
       .then(() => {
         if (mapRef.current === map) {
           syncSelectedPlace(map, places, selectedIdRef.current);
-          framePlaces(map, places, true, bottomInsetRef.current);
+          if (shouldFrame) {
+            framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+          }
           map.triggerRepaint();
         }
       })
@@ -933,7 +1032,7 @@ export function TripMap({
           setStatus("error");
         }
       });
-  }, [markerMode, places]);
+  }, [clusterAnchorPlaces, frameKey, markerMode, places]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -947,7 +1046,14 @@ export function TripMap({
     }
     void source
       .setData(geometry)
-      .then(() => map.triggerRepaint())
+      .then(() => {
+        if (mapRef.current === map) {
+          if (frameKey === undefined && placesRef.current.features.length === 0) {
+            framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometry);
+          }
+          map.triggerRepaint();
+        }
+      })
       .catch(() => {
         if (mapRef.current === map) {
           setErrorMessage(
@@ -956,7 +1062,7 @@ export function TripMap({
           setStatus("error");
         }
       });
-  }, [geometry]);
+  }, [frameKey, geometry]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -968,7 +1074,14 @@ export function TripMap({
     const source = getSource(map);
     if (source !== null) {
       void source
-        .setData(getSourcePlaces(placesRef.current, selectedId, markerMode))
+        .setData(
+          getSourcePlaces(
+            placesRef.current,
+            selectedId,
+            markerMode,
+            clusterAnchorPlacesRef.current,
+          ),
+        )
         .then(() => map.triggerRepaint())
         .catch(() => {
           if (mapRef.current === map) {
@@ -998,7 +1111,7 @@ export function TripMap({
     const map = mapRef.current;
 
     if (map !== null) {
-      framePlaces(map, placesRef.current, true, bottomInsetRef.current);
+      framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometryRef.current);
     }
   }
 

@@ -9,7 +9,7 @@
 
 .imported-page__header {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px 44px;
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
@@ -17,6 +17,7 @@
 }
 
 .imported-page__header > a,
+.imported-page__layers-button,
 .imported-page__import-button {
   display: grid;
   width: 44px;
@@ -36,6 +37,106 @@
   margin: 3px 0 0;
   color: #697482;
   font-size: 12px;
+}
+.imported-page__layers-button:disabled {
+  opacity: 0.4;
+}
+.imported-page__layers {
+  flex: none;
+  max-height: min(56dvh, 420px);
+  overflow-y: auto;
+  padding: 14px 16px 18px;
+  border-bottom: 1px solid #d9e5f2;
+  background: #f8fbff;
+}
+.imported-page__layers-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.imported-page__layers-heading h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.imported-page__layers-heading p {
+  margin: 4px 0 12px;
+  color: #647487;
+  font-size: 12px;
+}
+.imported-page__layers-heading button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #405164;
+}
+.imported-page__layer-source {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #d9e5f2;
+  border-radius: 12px;
+  background: white;
+}
+.imported-page__layer-row {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  color: #27384a;
+  font-size: 13px;
+}
+.imported-page__layer-row input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: #1677ff;
+}
+.imported-page__layer-row span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.imported-page__layer-row strong,
+.imported-page__layer-row small {
+  display: block;
+}
+.imported-page__layer-row small {
+  color: #667789;
+  font-size: 11px;
+}
+.imported-page__layer-row--source {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf1f5;
+}
+.imported-page__layer-types {
+  padding-left: 12px;
+}
+.imported-page__layer-hint {
+  margin: 3px 0 10px 12px;
+  color: #647487;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.imported-page__layer-folders {
+  padding: 6px 0 0 12px;
+  border-top: 1px solid #edf1f5;
+}
+.imported-page__layer-folders summary {
+  min-height: 32px;
+  color: #405d7a;
+  cursor: pointer;
+  font-size: 12px;
+}
+.imported-page__layer-folders .imported-page__layer-row {
+  padding-left: 12px;
+}
+.imported-page__layer-row:has(input:disabled) {
+  opacity: 0.5;
 }
 .imported-page__file-input {
   display: none;

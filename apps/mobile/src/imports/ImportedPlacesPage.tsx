@@ -1,9 +1,16 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, FileUp, MapPin, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, MapPin, Menu, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { MapGeometryCollection, PlaceCollection } from "../plan/map-data";
 import { TripMap } from "../plan/TripMap";
+import { ImportLayerMenu } from "./ImportLayerMenu";
+import {
+  buildImportLayerSources,
+  isImportLayerVisible,
+  loadHiddenImportLayers,
+  saveHiddenImportLayers,
+} from "./import-layer-visibility";
 import {
   addImportedVisit,
   KANTO_DAYS,
@@ -78,6 +85,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [folder, setFolder] = useState("All folders");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"places" | "plan">("places");
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [hiddenLayers, setHiddenLayers] = useState(loadHiddenImportLayers);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -103,6 +112,27 @@ export function ImportedPlacesPage(): React.JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    saveHiddenImportLayers(hiddenLayers);
+  }, [hiddenLayers]);
+
+  function toggleLayer(key: string): void {
+    setHiddenLayers((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+
+      return next;
+    });
+  }
+
+  const layerSources = useMemo(
+    () => buildImportLayerSources(places, geometries),
+    [places, geometries],
+  );
   const folders = useMemo(
     () => ["All folders", ...new Set([...places, ...geometries].map((item) => item.folder))],
     [geometries, places],
@@ -140,15 +170,36 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
-  const mapPlaces = useMemo(
+  const clusterAnchorPlaces = useMemo(
     () => toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces),
     [dayPlaces, view, visiblePlaces],
   );
-  const mapGeometry = useMemo(
-    () => toMapGeometry(view === "plan" ? geometries : visibleGeometries),
-    [geometries, view, visibleGeometries],
+  const mapPlaces = useMemo(
+    () =>
+      toMapPlaces(
+        (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
+          isImportLayerVisible(point, hiddenLayers),
+        ),
+      ),
+    [dayPlaces, hiddenLayers, view, visiblePlaces],
   );
-  const orderPlaces = useMemo(() => toMapPlaces(dayPlaces, true), [dayPlaces]);
+  const mapGeometry = useMemo(
+    () =>
+      toMapGeometry(
+        (view === "plan" ? geometries : visibleGeometries).filter((item) =>
+          isImportLayerVisible(item, hiddenLayers),
+        ),
+      ),
+    [geometries, hiddenLayers, view, visibleGeometries],
+  );
+  const orderPlaces = useMemo(
+    () =>
+      toMapPlaces(
+        dayPlaces.filter((point) => isImportLayerVisible(point, hiddenLayers)),
+        true,
+      ),
+    [dayPlaces, hiddenLayers],
+  );
   const displayedPlaces = view === "plan" ? dayPlaces : visiblePlaces;
   const knownPreviewCount =
     preview?.points.filter((point) => places.some((place) => sameImportedPlace(point, place)))
@@ -159,8 +210,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const knownPreviewAreaCount =
     preview?.areas.filter((area) => geometries.some((known) => sameImportedGeometry(area, known)))
       .length ?? 0;
-  const lineCount = geometries.filter((item) => "coordinates" in item).length;
-  const areaCount = geometries.length - lineCount;
+  const lineCount = mapGeometry.features.filter((item) => item.properties.kind === "line").length;
+  const areaCount = mapGeometry.features.length - lineCount;
   const existingCoordinateCount =
     preview?.points.filter(
       (point) =>
@@ -262,6 +313,17 @@ export function ImportedPlacesPage(): React.JSX.Element {
           <p>27 Sep–1 Oct 2026 · saved on this device</p>
         </div>
         <button
+          aria-controls="import-map-layers"
+          aria-expanded={layersOpen}
+          aria-label="Map layers"
+          className="imported-page__layers-button"
+          disabled={places.length === 0 && geometries.length === 0}
+          onClick={() => setLayersOpen((current) => !current)}
+          type="button"
+        >
+          <Menu aria-hidden="true" size={21} />
+        </button>
+        <button
           aria-label="Import KML or KMZ"
           className="imported-page__import-button"
           onClick={() => fileInputRef.current?.click()}
@@ -278,6 +340,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
           type="file"
         />
       </header>
+
+      {layersOpen && layerSources.length > 0 ? (
+        <ImportLayerMenu
+          hidden={hiddenLayers}
+          onClose={() => setLayersOpen(false)}
+          onToggle={toggleLayer}
+          sources={layerSources}
+        />
+      ) : null}
 
       {error !== "" ? (
         <p className="imported-page__error" role="alert">
@@ -400,11 +471,14 @@ export function ImportedPlacesPage(): React.JSX.Element {
           </div>
           {geometries.length > 0 ? (
             <p className="imported-page__map-summary">
-              {countLabel(lineCount, "line")} and {countLabel(areaCount, "area")} shown on map
+              {countLabel(mapPlaces.features.length, "point")}, {countLabel(lineCount, "line")} and{" "}
+              {countLabel(areaCount, "area")} shown on map
             </p>
           ) : null}
           <div className="imported-page__map">
             <TripMap
+              clusterAnchorPlaces={clusterAnchorPlaces}
+              frameKey={`${view}:${selectedDay}:${folder}:${normalizedQuery}:${places.length}:${geometries.length}`}
               geometry={mapGeometry}
               onSelect={(id) => setSelectedId(id)}
               orderPlaces={orderPlaces}
