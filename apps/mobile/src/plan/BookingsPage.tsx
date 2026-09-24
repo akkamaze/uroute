@@ -1,6 +1,7 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   Compass,
@@ -14,9 +15,11 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
-import { splitBookingTimeline, type BookingFilter } from "./booking-timeline";
+import { trips } from "../trips/trips-data";
+import { bookingsForTrip, splitBookingTimeline, type BookingFilter } from "./booking-timeline";
 import { BOOKINGS, type Booking } from "./bookings-data";
 import { shareBookingCard } from "./share-booking-card";
+import { TripHeader } from "./TripHeader";
 import "./bookings.css";
 
 const BOOKING_ICONS = {
@@ -32,9 +35,10 @@ const FILTERS: readonly { id: BookingFilter; label: string; emptyLabel: string }
   { id: "flight", label: "Flights", emptyLabel: "flights" },
   { id: "stay", label: "Stays", emptyLabel: "stays" },
   { id: "train", label: "Trains", emptyLabel: "trains" },
-  { id: "ticket", label: "Tickets", emptyLabel: "tickets" },
-  { id: "pass", label: "Passes", emptyLabel: "passes" },
+  { id: "tickets", label: "Tickets", emptyLabel: "tickets" },
 ];
+
+const PLAN_TRIP = trips[0];
 
 interface BookingItemsProps {
   bookings: readonly Booking[];
@@ -45,7 +49,7 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
   return (
     <ol className="booking-timeline">
       {bookings.map((booking) => {
-        const Icon = BOOKING_ICONS[booking.id];
+        const Icon = BOOKING_ICONS[booking.category];
         const startDate = new Date(`${booking.startDay}T12:00:00Z`);
         const day = new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "UTC" }).format(
           startDate,
@@ -53,28 +57,55 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
         const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" })
           .format(startDate)
           .toUpperCase();
+        const journeyDate = new Intl.DateTimeFormat("en-GB", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        }).format(startDate);
+        const isFlight = booking.category === "flight";
 
         return (
-          <li className="booking-timeline__item" key={booking.id}>
-            <span aria-hidden="true" className="booking-timeline__date">
-              <strong>{day}</strong>
-              <span>{month}</span>
+          <li
+            className={`booking-timeline__item${isFlight ? " booking-timeline__item--flight" : ""}`}
+            key={booking.id}
+          >
+            <span
+              aria-hidden="true"
+              className={`booking-timeline__date${isFlight ? " booking-timeline__date--journey" : ""}`}
+            >
+              {!isFlight ? (
+                <>
+                  <strong>{day}</strong>
+                  <span>{month}</span>
+                </>
+              ) : null}
             </span>
+            {isFlight ? (
+              <div className="booking-timeline__journey">
+                <h4>
+                  {booking.fromName} to {booking.toName}
+                </h4>
+                <span>
+                  <CalendarDays aria-hidden="true" size={15} strokeWidth={1.8} />
+                  {journeyDate}
+                </span>
+              </div>
+            ) : null}
             <button
-              className={`booking-timeline__card booking-timeline__card--${booking.id}`}
+              className={`booking-timeline__card booking-timeline__card--${booking.category}`}
               onClick={(event) => onOpen(booking, event.currentTarget)}
               type="button"
             >
-              {booking.id === "flight" ? (
+              {isFlight ? (
                 <>
                   <span className="booking-timeline__topline">
                     <span className="booking-timeline__kind">
                       <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
                       {booking.kind}
                     </span>
-                    <span>
-                      {booking.dateLabel} · {booking.service}
-                    </span>
+                    <span>{booking.service}</span>
                   </span>
                   <span className="booking-timeline__route">
                     <span className="booking-timeline__airport">
@@ -155,10 +186,12 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
   );
 }
 
-export function BookingsPage(): React.JSX.Element {
+function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element {
   const navigate = useNavigate();
-  const search = useSearch({ from: "/mobile-shell/bookings" });
-  const selectedBooking = BOOKINGS.find((booking) => booking.id === search.booking);
+  const search = useSearch({ strict: false });
+  const route = scope === "all" ? "/bookings" : "/plan/bookings";
+  const scopedBookings = scope === "all" ? BOOKINGS : bookingsForTrip(BOOKINGS, PLAN_TRIP);
+  const selectedBooking = scopedBookings.find((booking) => booking.id === search.booking);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement>(null);
@@ -169,7 +202,7 @@ export function BookingsPage(): React.JSX.Element {
   const [now, setNow] = useState(() => new Date());
   const [shareMessage, setShareMessage] = useState("");
   const [sharing, setSharing] = useState(false);
-  const { upcoming, past } = splitBookingTimeline(BOOKINGS, filter, now);
+  const { upcoming, past } = splitBookingTimeline(scopedBookings, filter, now);
   const pastOpen = pastPreference ?? upcoming.length === 0;
   const emptyLabel = FILTERS.find((option) => option.id === filter)?.emptyLabel ?? "bookings";
 
@@ -217,7 +250,7 @@ export function BookingsPage(): React.JSX.Element {
     lastTriggerRef.current = trigger;
     openedHereRef.current = true;
     setShareMessage("");
-    void navigate({ to: "/bookings", search: { booking: booking.id }, resetScroll: false });
+    void navigate({ to: route, search: { booking: booking.id }, resetScroll: false });
   }
 
   function closeBooking(): void {
@@ -227,7 +260,7 @@ export function BookingsPage(): React.JSX.Element {
     if (openedHereRef.current) {
       window.history.back();
     } else {
-      void navigate({ to: "/bookings", search: {}, replace: true, resetScroll: false });
+      void navigate({ to: route, search: {}, replace: true, resetScroll: false });
     }
   }
 
@@ -250,23 +283,20 @@ export function BookingsPage(): React.JSX.Element {
   }
 
   return (
-    <section className="booking-page">
-      <header className="booking-page__header">
-        <Link aria-label="Back to trips" className="booking-page__back" to="/trips">
-          <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
-        </Link>
-        <h1>Bookings</h1>
-        <span aria-hidden="true" className="booking-page__header-spacer" />
-      </header>
+    <section className={`booking-page booking-page--${scope}`}>
+      {scope === "trip" ? (
+        <TripHeader active="bookings" />
+      ) : (
+        <header className="booking-page__header">
+          <Link aria-label="Back to trips" className="booking-page__back" to="/trips">
+            <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+          </Link>
+          <h1>Bookings</h1>
+          <span aria-hidden="true" className="booking-page__header-spacer" />
+        </header>
+      )}
 
       <main className="booking-page__content">
-        <div className="booking-page__intro">
-          <p className="booking-page__eyebrow">KYOTO · 12–16 NOV</p>
-          <h2>Your bookings</h2>
-          <p>Reservations, tickets, and passes in one place.</p>
-          <span className="booking-page__sample">Sample bookings</span>
-        </div>
-
         <nav aria-label="Booking categories" className="booking-filters">
           {FILTERS.map((option) => (
             <button
@@ -339,7 +369,7 @@ export function BookingsPage(): React.JSX.Element {
 
       <dialog
         aria-label={selectedBooking === undefined ? "Booking card" : selectedBooking.title}
-        className={`booking-dialog booking-dialog--${selectedBooking?.id ?? "flight"}`}
+        className={`booking-dialog booking-dialog--${selectedBooking?.category ?? "flight"}`}
         onCancel={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -376,11 +406,11 @@ export function BookingsPage(): React.JSX.Element {
               {selectedBooking.fromCode === undefined ? (
                 <div className="booking-ticket__primary booking-ticket__primary--feature">
                   <span className="booking-ticket__overline">
-                    {selectedBooking.id === "stay"
-                      ? "YOUR STAY IN KYOTO"
-                      : selectedBooking.id === "train"
-                        ? "TRAIN TO THE AIRPORT"
-                        : "TICKETS & PASSES"}
+                    {selectedBooking.category === "stay"
+                      ? "YOUR STAY"
+                      : selectedBooking.category === "train"
+                        ? "YOUR TRAIN"
+                        : "TICKETS"}
                   </span>
                   <h2>{selectedBooking.title}</h2>
                   <p>{selectedBooking.timeLabel}</p>
@@ -388,7 +418,9 @@ export function BookingsPage(): React.JSX.Element {
               ) : (
                 <div className="booking-ticket__primary">
                   <span className="booking-ticket__overline">
-                    {selectedBooking.id === "flight" ? "FLIGHT TO OSAKA" : "TRAIN TO THE AIRPORT"}
+                    {selectedBooking.category === "flight"
+                      ? `FLIGHT TO ${selectedBooking.toName?.toUpperCase() ?? "YOUR DESTINATION"}`
+                      : "YOUR TRAIN"}
                   </span>
                   <div className="booking-ticket__route">
                     <div>
@@ -402,7 +434,7 @@ export function BookingsPage(): React.JSX.Element {
                       ) : null}
                     </div>
                     <span aria-hidden="true" className="booking-ticket__route-line">
-                      {selectedBooking.id === "flight" ? (
+                      {selectedBooking.category === "flight" ? (
                         <Plane size={19} />
                       ) : (
                         <TrainFront size={19} />
@@ -426,7 +458,7 @@ export function BookingsPage(): React.JSX.Element {
                   <span>DATE</span>
                   <strong>{selectedBooking.dateLabel}</strong>
                 </div>
-                {selectedBooking.id === "flight" ? (
+                {selectedBooking.category === "flight" ? (
                   <div className="booking-ticket__operator">
                     <span aria-hidden="true" className="booking-ticket__operator-mark">
                       {selectedBooking.airlineCode ?? <Plane size={17} strokeWidth={1.8} />}
@@ -500,4 +532,12 @@ export function BookingsPage(): React.JSX.Element {
       </dialog>
     </section>
   );
+}
+
+export function BookingsPage(): React.JSX.Element {
+  return <BookingScreen scope="all" />;
+}
+
+export function TripBookingsPage(): React.JSX.Element {
+  return <BookingScreen scope="trip" />;
 }

@@ -6,6 +6,15 @@
   background: var(--color-surface);
 }
 
+.booking-page--trip > .plan-header,
+.booking-page--trip > .trip-sections {
+  flex: none;
+}
+
+.booking-page--trip .booking-page__content {
+  padding-top: 1.125rem;
+}
+
 .booking-page__header {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -36,44 +45,6 @@
   padding: 1.5rem var(--space-4) 6rem;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-}
-
-.booking-page__intro {
-  margin-bottom: 1.75rem;
-}
-
-.booking-page__intro p,
-.booking-page__intro h2 {
-  margin: 0;
-}
-
-.booking-page__eyebrow {
-  color: var(--color-active);
-  font-size: var(--type-label-size);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.booking-page__intro h2 {
-  margin-top: 0.375rem;
-  color: var(--color-text);
-  font-size: var(--type-display-size);
-  letter-spacing: -0.025em;
-  line-height: 1.2;
-}
-
-.booking-page__intro > p:not(.booking-page__eyebrow) {
-  margin-top: 0.5rem;
-  color: var(--color-muted);
-  font-size: var(--type-body-size);
-  line-height: 1.45;
-}
-
-.booking-page__sample {
-  display: inline-block;
-  margin-top: 0.75rem;
-  color: var(--color-muted);
-  font-size: var(--type-caption-size);
 }
 
 .booking-filters {
@@ -228,6 +199,14 @@
   align-items: start;
 }
 
+.booking-timeline__item--flight {
+  row-gap: 0.875rem;
+}
+
+.booking-timeline__item--flight .booking-timeline__card {
+  grid-column: 2;
+}
+
 .booking-timeline__date {
   z-index: 1;
   display: flex;
@@ -258,6 +237,39 @@
   border-radius: 50%;
   background: var(--color-surface);
   content: "";
+}
+
+.booking-timeline__date--journey {
+  min-height: 1.5rem;
+}
+
+.booking-timeline__date--journey::after {
+  top: 0.35rem;
+  left: 15px;
+  width: 11px;
+  height: 11px;
+  border: 0;
+  background: var(--color-active);
+}
+
+.booking-timeline__journey {
+  min-width: 0;
+}
+
+.booking-timeline__journey h4 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--type-title-lg-size);
+  line-height: 1.25;
+}
+
+.booking-timeline__journey > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  color: var(--color-muted);
+  font-size: var(--type-body-sm-size);
 }
 
 .booking-timeline__card {

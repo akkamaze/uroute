@@ -1,6 +1,9 @@
 export type TripPeriod = "upcoming" | "past";
 
 export interface TripSummary {
+  id: string;
+  startDay: string;
+  endDay: string;
   dateLabel: string;
   durationLabel: string;
   featured: boolean;
@@ -12,6 +15,9 @@ export interface TripSummary {
 
 export const trips = [
   {
+    id: "kyoto",
+    startDay: "2026-11-12",
+    endDay: "2026-11-16",
     dateLabel: "12–16 Nov 2026",
     durationLabel: "5 days",
     featured: true,
@@ -21,6 +27,9 @@ export const trips = [
     period: "upcoming",
   },
   {
+    id: "da-nang",
+    startDay: "2026-12-04",
+    endDay: "2026-12-07",
     dateLabel: "4–7 Dec 2026",
     durationLabel: "4 days",
     featured: false,

@@ -94,7 +94,7 @@ function BeforeYouGo({
         <Tickets aria-hidden="true" className="preparation-row__icon" size={30} strokeWidth={1.7} />
         <span className="preparation-row__copy">
           <strong>Bookings</strong>
-          <span>Flights and stays for Kyoto</span>
+          <span>Across all your trips</span>
         </span>
         <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
       </Link>
@@ -246,6 +246,9 @@ export function TripsPage(): React.JSX.Element {
     setDraftTrips((current) => [
       ...current,
       {
+        id: crypto.randomUUID(),
+        startDay: startDate,
+        endDay: endDate,
         dateLabel: formatDateRange(start, end),
         durationLabel: `${duration} ${duration === 1 ? "day" : "days"}`,
         featured: false,

@@ -1,5 +1,7 @@
 export interface Booking {
-  id: "flight" | "stay" | "train" | "pass" | "ticket";
+  id: string;
+  tripId: string;
+  category: "flight" | "stay" | "train" | "pass" | "ticket";
   group: "travel" | "tickets";
   kind: "Flight" | "Stay" | "Train" | "Pass" | "Ticket";
   dateLabel: string;
@@ -27,6 +29,8 @@ export interface Booking {
 export const BOOKINGS: readonly Booking[] = [
   {
     id: "flight",
+    tripId: "kyoto",
+    category: "flight",
     group: "travel",
     kind: "Flight",
     dateLabel: "12 Nov 2026",
@@ -48,6 +52,8 @@ export const BOOKINGS: readonly Booking[] = [
   },
   {
     id: "stay",
+    tripId: "kyoto",
+    category: "stay",
     group: "travel",
     kind: "Stay",
     dateLabel: "12–16 Nov 2026",
@@ -60,6 +66,8 @@ export const BOOKINGS: readonly Booking[] = [
   },
   {
     id: "train",
+    tripId: "kyoto",
+    category: "train",
     group: "travel",
     kind: "Train",
     dateLabel: "16 Nov 2026",
@@ -73,6 +81,8 @@ export const BOOKINGS: readonly Booking[] = [
   },
   {
     id: "pass",
+    tripId: "kyoto",
+    category: "pass",
     group: "tickets",
     kind: "Pass",
     dateLabel: "13–15 Nov 2026",
@@ -85,6 +95,8 @@ export const BOOKINGS: readonly Booking[] = [
   },
   {
     id: "ticket",
+    tripId: "kyoto",
+    category: "ticket",
     group: "tickets",
     kind: "Ticket",
     dateLabel: "14 Nov 2026",
@@ -94,6 +106,20 @@ export const BOOKINGS: readonly Booking[] = [
     startDay: "2026-11-14",
     dayOrder: 0,
     endExclusive: "2026-11-15T00:00:00+09:00",
+  },
+  {
+    id: "da-nang-stay",
+    tripId: "da-nang",
+    category: "stay",
+    group: "travel",
+    kind: "Stay",
+    dateLabel: "4–7 Dec 2026",
+    title: "Da Nang hotel stay",
+    timeLabel: "3 nights · 4–7 Dec",
+    detail: "Sample reservation",
+    startDay: "2026-12-04",
+    dayOrder: 0,
+    endExclusive: "2026-12-08T00:00:00+07:00",
   },
 ];
 

@@ -72,7 +72,7 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
   }
 
   const primary =
-    booking.id === "stay" ? "#f5f4f0" : booking.group === "tickets" ? "#eef5f1" : "#eff6ff";
+    booking.category === "stay" ? "#f5f4f0" : booking.group === "tickets" ? "#eef5f1" : "#eff6ff";
 
   context.drawImage(skyArtwork, 0, 0, canvas.width, canvas.height);
 
@@ -123,12 +123,12 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
   context.font = "700 21px Arial, sans-serif";
   context.fillText(
     booking.group === "tickets"
-      ? "TICKETS & PASSES"
-      : booking.id === "stay"
-        ? "YOUR STAY IN KYOTO"
-        : booking.id === "flight"
-          ? "FLIGHT TO OSAKA"
-          : "TRAIN TO THE AIRPORT",
+      ? "TICKETS"
+      : booking.category === "stay"
+        ? "YOUR STAY"
+        : booking.category === "flight"
+          ? `FLIGHT TO ${booking.toName?.toUpperCase() ?? "YOUR DESTINATION"}`
+          : "YOUR TRAIN",
     155,
     430,
   );
@@ -148,7 +148,7 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
     context.stroke();
     context.fillStyle = "#1677ff";
     context.font = "700 32px Arial, sans-serif";
-    context.fillText(booking.id === "flight" ? "✈" : "→", 525, 544);
+    context.fillText(booking.category === "flight" ? "✈" : "→", 525, 544);
     context.fillStyle = "#4e6170";
     context.font = "28px Arial, sans-serif";
     context.fillText(booking.fromName ?? "", 155, 610);
@@ -184,7 +184,7 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
   if (booking.fromCode === undefined) {
     context.fillText("DETAILS", 555, 815);
   }
-  if (booking.fromCode !== undefined && booking.id !== "flight") {
+  if (booking.fromCode !== undefined && booking.category !== "flight") {
     context.fillText("SERVICE", 555, 815);
   }
 
@@ -194,7 +194,7 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
   if (booking.fromCode === undefined) {
     drawWrappedText(context, booking.detail, 555, 858, 350, 37);
   }
-  if (booking.id === "flight") {
+  if (booking.category === "flight") {
     context.fillStyle = "#eaf3ff";
     roundedRect(context, 555, 794, 65, 65, 14);
     context.fill();

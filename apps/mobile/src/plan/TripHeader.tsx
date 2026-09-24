@@ -13,7 +13,7 @@ interface TripHeaderProps {
 
 const SECTIONS = [
   { id: "plan", label: "Plan", to: "/plan" },
-  { id: "bookings", label: "Bookings", to: "/bookings" },
+  { id: "bookings", label: "Bookings", to: "/plan/bookings" },
   { id: "expenses", label: "Expenses", to: "/expenses" },
 ] as const;
 

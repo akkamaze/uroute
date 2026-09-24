@@ -19,7 +19,8 @@ const navigationItems = [
 
 function isNavigationItemActive(to: string, pathname: string): boolean {
   return (
-    pathname === to || (to === "/trips" && ["/bookings", "/expenses", "/plan"].includes(pathname))
+    pathname === to ||
+    (to === "/trips" && ["/bookings", "/plan/bookings", "/expenses", "/plan"].includes(pathname))
   );
 }
 

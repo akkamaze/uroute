@@ -128,6 +128,18 @@ const bookingsRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/BookingsPage"), "BookingsPage"),
 });
 
+const tripBookingsRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/bookings",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { booking?: Booking["id"]; members?: "open" } => ({
+    ...(isBookingId(search.booking) ? { booking: search.booking } : {}),
+    ...(search.members === "open" ? { members: "open" } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./plan/BookingsPage"), "TripBookingsPage"),
+});
+
 const expensesRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/expenses",
@@ -197,6 +209,7 @@ const mobileShellTree = mobileShellRoute.addChildren([
   tripsRoute,
   planRoute,
   bookingsRoute,
+  tripBookingsRoute,
   expensesRoute,
   savedRoute,
   journalRoute,
