@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.38",
+    "fflate": "^0.8.3",
     "lucide-react": "^1.47.0",
     "maplibre-gl": "^6.10.0",
     "react": "^19.1.1",

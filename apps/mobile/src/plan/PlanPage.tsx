@@ -14,7 +14,11 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
+import { loadImportedPlaces } from "../imports/place-library";
+import { importedPointAsStop } from "../imports/imported-stop";
+import type { ImportedPoint } from "../imports/parse-place-file";
 import { loadEditPlanDraft, visitsSignature } from "./edit-plan-store";
+import { MapLoading } from "./MapLoading";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
@@ -97,6 +101,21 @@ export function PlanPage(): React.JSX.Element {
   const search = useSearch({ from: "/mobile-shell/plan" });
   const selectedDay = search.day ?? 13;
   const plan = useKyotoPlan();
+  const [importedPoints, setImportedPoints] = useState<ImportedPoint[]>([]);
+  useEffect(() => {
+    let active = true;
+    void loadImportedPlaces()
+      .then((points) => {
+        if (active) {
+          setImportedPoints(points);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
   const draftDays = new Set<KyotoDay>(
     TRIP_DAYS.flatMap(({ date }) =>
       loadEditPlanDraft(date, visitsSignature(plan.days[date])) === null ? [] : [date],
@@ -122,13 +141,55 @@ export function PlanPage(): React.JSX.Element {
   const stops = useMemo(
     () =>
       plan.days[selectedDay].flatMap((visit) => {
-        const place = FRIDAY_STOPS.find((candidate) => candidate.id === visit.placeId);
+        const place =
+          FRIDAY_STOPS.find((candidate) => candidate.id === visit.placeId) ??
+          importedPoints.find((candidate) => candidate.id === visit.placeId);
 
-        return place === undefined ? [] : [{ ...place, time: visit.time }];
+        return place === undefined
+          ? []
+          : [
+              {
+                ...("latitude" in place ? importedPointAsStop(place, visit.time) : place),
+                time: visit.time,
+              },
+            ];
       }),
-    [plan.days, selectedDay],
+    [importedPoints, plan.days, selectedDay],
   );
-  const orderPlaces = useMemo(() => createOrderedPlaces(stops.map(({ id }) => id)), [stops]);
+  const orderPlaces = useMemo(() => {
+    const staticPlaces = createOrderedPlaces(stops.map(({ id }) => id));
+
+    return {
+      ...staticPlaces,
+      features: stops.flatMap((stop, index) => {
+        const known = staticPlaces.features.find((feature) => feature.properties.id === stop.id);
+        if (known !== undefined) {
+          return [known];
+        }
+        const point = importedPoints.find((item) => item.id === stop.id);
+
+        return point === undefined
+          ? []
+          : [
+              {
+                type: "Feature" as const,
+                id: point.id,
+                geometry: {
+                  type: "Point" as const,
+                  coordinates: [point.longitude, point.latitude],
+                },
+                properties: {
+                  id: point.id,
+                  name: point.name,
+                  category: "Imported place",
+                  marker: `place-${index + 1}`,
+                  synthetic: false,
+                },
+              },
+            ];
+      }),
+    };
+  }, [importedPoints, stops]);
   const places = useMemo(
     () => (stressEnabled && selectedDay === 13 ? createStressPlaces() : orderPlaces),
     [orderPlaces, selectedDay, stressEnabled],
@@ -390,7 +451,7 @@ export function PlanPage(): React.JSX.Element {
               id="plan-map"
               role="region"
             >
-              <p className="trip-map__status">Loading map…</p>
+              <MapLoading />
             </div>
           }
         >
@@ -511,11 +572,22 @@ export function PlanPage(): React.JSX.Element {
                             return;
                           }
                           setSelectedId(stop.id);
-                          captureNavigationSnapshot("/places");
-                          void navigate({
-                            search: { place: stop.id, day: selectedDay },
-                            to: "/places",
-                          });
+                          if (stop.id.startsWith("import-")) {
+                            void navigate({
+                              to: "/maps",
+                              search: {
+                                trip: "kyoto",
+                                day: `2026-11-${selectedDay}`,
+                                place: stop.id,
+                              },
+                            });
+                          } else {
+                            captureNavigationSnapshot("/places");
+                            void navigate({
+                              search: { place: stop.id, day: selectedDay },
+                              to: "/places",
+                            });
+                          }
                         }}
                         ref={(element) => {
                           stopRefs.current[stop.id] = element;
@@ -532,7 +604,9 @@ export function PlanPage(): React.JSX.Element {
                             {stop.type} · {stop.duration}
                           </span>
                         </span>
-                        <img alt="" className="timeline__photo" src={stop.image} />
+                        {stop.image ? (
+                          <img alt="" className="timeline__photo" src={stop.image} />
+                        ) : null}
                       </button>
                     </div>
                   </div>
@@ -558,6 +632,15 @@ export function PlanPage(): React.JSX.Element {
             <p>Add your first place when you are ready.</p>
           </div>
         )}
+        <button
+          className="day-plan__browse-maps"
+          onClick={() =>
+            void navigate({ to: "/maps", search: { trip: "kyoto", day: `2026-11-${selectedDay}` } })
+          }
+          type="button"
+        >
+          Browse imported maps
+        </button>
         {removal === null && openSwipeId === null ? (
           <button
             aria-label={`Add a place to ${dayLabel}`}

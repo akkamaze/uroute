@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
+import { createTrip, loadCreatedTrips, type CreatedTrip } from "./trip-store";
 import "./trips.css";
 
 interface TripCardProps {
@@ -144,7 +145,7 @@ export function TripsPage(): React.JSX.Element {
   }
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
-  const [draftTrips, setDraftTrips] = useState<readonly TripSummary[]>([]);
+  const [createdTrips, setCreatedTrips] = useState<CreatedTrip[]>(loadCreatedTrips);
   const newTripOpen = search.newTrip === "open";
   const newTripButtonRef = useRef<HTMLButtonElement>(null);
   const newTripOpenedHereRef = useRef(false);
@@ -158,9 +159,13 @@ export function TripsPage(): React.JSX.Element {
   const destinationRef = useRef<HTMLInputElement>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const allTrips: readonly TripSummary[] = [...trips, ...draftTrips];
-  const visibleTrips = allTrips.filter(
+  const visibleTrips = trips.filter(
     (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
+  );
+  const visibleCreatedTrips = createdTrips.filter(
+    (trip) =>
+      trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
+      (period === "upcoming") === trip.endDate >= new Date().toISOString().slice(0, 10),
   );
 
   useEffect(() => {
@@ -243,20 +248,16 @@ export function TripsPage(): React.JSX.Element {
       return;
     }
 
-    setDraftTrips((current) => [
-      ...current,
-      {
-        dateLabel: formatDateRange(start, end),
-        durationLabel: `${duration} ${duration === 1 ? "day" : "days"}`,
-        featured: false,
-        imageAlt: "A beach destination",
-        imageSrc: "/images/danang.png",
-        name,
-        period: "upcoming",
-      },
-    ]);
+    try {
+      const trip = createTrip(name, startDate, endDate);
+      setCreatedTrips((current) => [...current, trip]);
+    } catch (error) {
+      setFormMessage(error instanceof Error ? error.message : "Could not create this trip.");
+
+      return;
+    }
     setDestination("");
-    setPeriod("upcoming");
+    setPeriod(endDate >= new Date().toISOString().slice(0, 10) ? "upcoming" : "past");
     setQuery("");
     closeNewTrip();
   }
@@ -326,7 +327,29 @@ export function TripsPage(): React.JSX.Element {
         ref={resultsScrollRef}
       >
         <div aria-live="polite" className="trip-results">
-          {visibleTrips.length === 0 ? (
+          {visibleCreatedTrips.map((trip) => {
+            const start = new Date(`${trip.startDate}T12:00:00Z`);
+            const end = new Date(`${trip.endDate}T12:00:00Z`);
+            const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+
+            return (
+              <Link
+                className="imported-trip-link"
+                key={trip.id}
+                to="/plan/trip/$tripId"
+                params={{ tripId: trip.id }}
+              >
+                <span>
+                  <strong>{trip.name}</strong>
+                  <small>
+                    {formatDateRange(start, end)} · {duration} {duration === 1 ? "day" : "days"}
+                  </small>
+                </span>
+                <ChevronRight aria-hidden="true" size={20} />
+              </Link>
+            );
+          })}
+          {visibleTrips.length === 0 && visibleCreatedTrips.length === 0 ? (
             <div className="trip-results__empty">
               <h2>
                 {period === "past" && normalizedQuery.length === 0

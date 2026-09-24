@@ -448,3 +448,33 @@
 .trip-period {
   flex: none;
 }
+.imported-trip-link {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 16px 12px;
+  padding: 14px 16px;
+  border: 1px solid #dce7f2;
+  border-radius: 16px;
+  background: #f6faff;
+  color: #202124;
+  text-decoration: none;
+}
+.imported-trip-link strong,
+.imported-trip-link small {
+  display: block;
+}
+.imported-trip-link strong {
+  font-size: 16px;
+}
+.imported-trip-link small {
+  margin-top: 4px;
+  color: #637385;
+  font-size: 12px;
+}
+.imported-trip-link:focus-visible {
+  outline: 3px solid #1677ff;
+  outline-offset: 3px;
+}

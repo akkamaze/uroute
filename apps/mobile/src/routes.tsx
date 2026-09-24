@@ -8,6 +8,7 @@ import { allowAnyOrientation, preferPortraitOrientation } from "./orientation";
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
+  { icon: "maps", label: "Maps", to: "/maps" },
   { icon: "saved", label: "Saved", to: "/saved" },
   { icon: "journal", label: "Journal", to: "/journal" },
   { icon: "you", label: "You", to: "/user" },
@@ -19,7 +20,9 @@ const navigationItems = [
 
 function isNavigationItemActive(to: string, pathname: string): boolean {
   return (
-    pathname === to || (to === "/trips" && ["/bookings", "/expenses", "/plan"].includes(pathname))
+    pathname === to ||
+    (to === "/trips" &&
+      (["/bookings", "/expenses"].includes(pathname) || pathname.startsWith("/plan")))
   );
 }
 

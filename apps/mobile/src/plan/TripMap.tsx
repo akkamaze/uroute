@@ -2,6 +2,7 @@ import { LocateFixed, Maximize2, Minimize2 } from "lucide-react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   Map as MapLibreMap,
+  Marker,
   setWorkerUrl,
   type FilterSpecification,
   type GeoJSONSource,
@@ -12,7 +13,8 @@ import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
-import { KYOTO_CENTER, type PlaceCollection } from "./map-data";
+import { MapLoading } from "./MapLoading";
+import { KYOTO_CENTER, type MapGeometryCollection, type PlaceCollection } from "./map-data";
 import {
   MAP_LABEL_GAP,
   placeMapLabels,
@@ -28,6 +30,10 @@ import {
 } from "./map-markers";
 
 const POINT_SOURCE_ID = "trip-places";
+const GEOMETRY_SOURCE_ID = "trip-map-geometry";
+const AREA_FILL_LAYER_ID = "trip-map-area-fill";
+const AREA_OUTLINE_LAYER_ID = "trip-map-area-outline";
+const LINE_LAYER_ID = "trip-map-lines";
 const CLUSTER_LAYER_ID = "place-clusters";
 const SYMBOL_LAYER_ID = "place-symbols";
 const SELECTED_SOURCE_ID = "selected-place";
@@ -56,18 +62,39 @@ const BASEMAP_STYLE = {
   layers: [{ id: "open-street-map", type: "raster" as const, source: "openStreetMap" }],
 };
 
+const EMPTY_MAP_GEOMETRY: MapGeometryCollection = {
+  type: "FeatureCollection",
+  features: [],
+};
+
 interface TripMapProps {
   bottomInset?: number;
+  controlsBottomInset?: number;
+  clusterAnchorPlaces?: PlaceCollection;
   expanded?: boolean;
+  focusSelectedId?: string | null;
+  frameKey?: string;
+  initialViewport?: MapViewport | null;
+  onViewportChange?: (viewport: MapViewport) => void;
   onExpandedChange?: (expanded: boolean) => void;
   id?: string;
+  geometry?: MapGeometryCollection;
   inactive?: boolean;
   onSelect: (id: string) => void;
   places: PlaceCollection;
   orderPlaces: PlaceCollection;
+  recenterLabel?: string;
+  searchResultsMode?: boolean;
   selectedId: string | null;
   showLocate?: boolean;
+  showDayOrder?: boolean;
   variant?: "discovery" | "planner";
+}
+
+export interface MapViewport {
+  latitude: number;
+  longitude: number;
+  zoom: number;
 }
 
 type MapStatus = "loading" | "ready" | "error";
@@ -77,11 +104,13 @@ interface MapDiagnosticsSnapshot {
   clusterLayerReady: boolean;
   clusteringEnabled: boolean;
   featureCount: number | null;
+  geometryFeatureCount: number | null;
   firstClusterPoint: { x: number; y: number } | null;
   moving: boolean;
   renderedClusterCount: number;
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
+  selectedPoint: { x: number; y: number } | null;
   placeLabels: { id: string; name: string; label: string }[];
   labelPlacements: { leftIds: string[]; rightIds: string[]; selectedSide: MapLabelSide | null };
   renderedPlaces: { id: string; x: number; y: number }[];
@@ -115,6 +144,7 @@ function framePlaces(
   places: PlaceCollection,
   animated: boolean,
   bottomInset = 0,
+  geometry: MapGeometryCollection = EMPTY_MAP_GEOMETRY,
 ): void {
   const cameraPadding = {
     top: 104,
@@ -123,7 +153,33 @@ function framePlaces(
     left: 32,
   };
 
+  let west = Number.POSITIVE_INFINITY;
+  let south = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+  let north = Number.NEGATIVE_INFINITY;
+
+  function include(coordinates: readonly number[]): void {
+    const [longitude, latitude] = coordinates;
+    if (longitude === undefined || latitude === undefined) {
+      return;
+    }
+    west = Math.min(west, longitude);
+    south = Math.min(south, latitude);
+    east = Math.max(east, longitude);
+    north = Math.max(north, latitude);
+  }
+
+  places.features.forEach((feature) => include(feature.geometry.coordinates));
   if (places.features.length === 0) {
+    geometry.features.forEach((feature) => {
+      const paths =
+        feature.geometry.type === "LineString"
+          ? [feature.geometry.coordinates]
+          : feature.geometry.coordinates;
+      paths.forEach((path) => path.forEach(include));
+    });
+  }
+  if (west === Number.POSITIVE_INFINITY) {
     map.easeTo({
       center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
       duration: animated ? 350 : 0,
@@ -133,24 +189,6 @@ function framePlaces(
 
     return;
   }
-
-  let west = Number.POSITIVE_INFINITY;
-  let south = Number.POSITIVE_INFINITY;
-  let east = Number.NEGATIVE_INFINITY;
-  let north = Number.NEGATIVE_INFINITY;
-
-  places.features.forEach((feature) => {
-    const [longitude, latitude] = feature.geometry.coordinates;
-
-    if (longitude === undefined || latitude === undefined) {
-      return;
-    }
-
-    west = Math.min(west, longitude);
-    south = Math.min(south, latitude);
-    east = Math.max(east, longitude);
-    north = Math.max(north, latitude);
-  });
 
   map.fitBounds(
     [
@@ -163,6 +201,25 @@ function framePlaces(
       padding: cameraPadding,
     },
   );
+}
+
+function focusMapPlace(
+  map: MapLibreMap,
+  places: PlaceCollection,
+  id: string | null,
+  bottomInset: number,
+  animated: boolean,
+): void {
+  const feature = places.features.find((place) => place.properties.id === id);
+  if (feature === undefined) {
+    return;
+  }
+  map.easeTo({
+    center: [feature.geometry.coordinates[0] ?? 0, feature.geometry.coordinates[1] ?? 0],
+    offset: [0, -bottomInset / 2],
+    zoom: Math.max(map.getZoom(), 14.5),
+    duration: animated ? 350 : 0,
+  });
 }
 
 function supportsWebGl(): boolean {
@@ -192,35 +249,71 @@ function getSource(map: MapLibreMap): GeoJSONSource | null {
   return source !== undefined && isGeoJsonSource(source) ? source : null;
 }
 
+function getGeometrySource(map: MapLibreMap): GeoJSONSource | null {
+  const source = map.getSource(GEOMETRY_SOURCE_ID);
+
+  return source !== undefined && isGeoJsonSource(source) ? source : null;
+}
+
 function getSourcePlaces(
   places: PlaceCollection,
   selectedId: string | null,
   markerMode: "places" | "order",
+  clusterAnchorPlaces?: PlaceCollection,
 ): PlaceCollection {
+  const visibleIds = new Set(places.features.map((place) => place.properties.id));
+  const sourcePlaces =
+    markerMode === "places" && clusterAnchorPlaces !== undefined
+      ? {
+          ...clusterAnchorPlaces,
+          features: clusterAnchorPlaces.features.map((place) => ({
+            ...place,
+            properties: {
+              ...place.properties,
+              visible: visibleIds.has(place.properties.id) ? 1 : 0,
+            },
+          })),
+        }
+      : places;
   if (markerMode === "order" || selectedId === null) {
-    return places;
+    return sourcePlaces;
   }
 
   return {
-    ...places,
-    features: places.features.filter((place) => place.properties.id !== selectedId),
+    ...sourcePlaces,
+    features: sourcePlaces.features.filter((place) => place.properties.id !== selectedId),
   };
 }
 
-function getLabelFilter(selectedId: string | null): FilterSpecification {
-  return ["all", ["!", ["has", "point_count"]], ["!=", ["get", "id"], selectedId ?? ""]];
+function getLabelFilter(selectedId: string | null, anchored = false): FilterSpecification {
+  const filter: FilterSpecification = [
+    "all",
+    ["!", ["has", "point_count"]],
+    ["!=", ["get", "id"], selectedId ?? ""],
+  ];
+  if (anchored) {
+    filter.push(["!=", ["get", "visible"], 0]);
+  }
+
+  return filter;
 }
 
 function getPlacedLabelFilter(
   selectedId: string | null,
   ids: readonly string[],
+  anchored = false,
 ): FilterSpecification {
-  return [
+  const filter: FilterSpecification = [
     "all",
     ["!", ["has", "point_count"]],
     ["!=", ["get", "id"], selectedId ?? ""],
     ["in", ["get", "id"], ["literal", [...ids]]],
   ];
+  if (anchored) {
+    filter.push(["!=", ["get", "visible"], 0]);
+  }
+
+  return filter;
 }
 
 function syncSelectedPlace(
@@ -239,25 +332,45 @@ function syncSelectedPlace(
 
 export function TripMap({
   bottomInset = 0,
+  controlsBottomInset = bottomInset,
+  clusterAnchorPlaces,
   expanded: controlledExpanded,
+  focusSelectedId = null,
+  frameKey,
+  initialViewport = null,
+  onViewportChange,
   onExpandedChange,
   id,
   inactive = false,
+  geometry = EMPTY_MAP_GEOMETRY,
   onSelect,
   places: allPlaces,
   orderPlaces,
+  recenterLabel = "Recenter on Kyoto",
+  searchResultsMode = false,
   selectedId,
   showLocate = true,
+  showDayOrder = true,
   variant = "planner",
 }: TripMapProps): React.JSX.Element {
-  const [markerMode, setMarkerMode] = useState<"places" | "order">("places");
+  const [selectedMarkerMode, setMarkerMode] = useState<"places" | "order">("places");
+  const markerMode = searchResultsMode ? "places" : selectedMarkerMode;
   const places = markerMode === "order" ? orderPlaces : allPlaces;
+  const anchored = clusterAnchorPlaces !== undefined && markerMode === "places";
   const containerRef = useRef<HTMLDivElement>(null);
   const bottomInsetRef = useRef(bottomInset);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(places);
+  const clusterAnchorPlacesRef = useRef(clusterAnchorPlaces);
+  const lastFrameKeyRef = useRef(frameKey);
+  const lastMarkerModeRef = useRef(markerMode);
   const selectRef = useRef(onSelect);
+  const geometryRef = useRef(geometry);
   const selectedIdRef = useRef(selectedId);
+  const focusSelectedIdRef = useRef(focusSelectedId);
+  const initialViewportRef = useRef(initialViewport);
+  const viewportChangeRef = useRef(onViewportChange);
+  const skippedRestoredFrameRef = useRef(false);
   const syncLabelPlacementRef = useRef<() => void>(() => undefined);
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
@@ -269,8 +382,12 @@ export function TripMap({
   const statusRef = useRef<MapStatus>(status);
 
   placesRef.current = places;
+  clusterAnchorPlacesRef.current = clusterAnchorPlaces;
   selectRef.current = onSelect;
+  geometryRef.current = geometry;
   selectedIdRef.current = selectedId;
+  focusSelectedIdRef.current = focusSelectedId;
+  viewportChangeRef.current = onViewportChange;
   bottomInsetRef.current = bottomInset;
   statusRef.current = status;
 
@@ -298,6 +415,8 @@ export function TripMap({
     };
     let disposed = false;
     let failed = false;
+    const externalPhotoMarkers = new Map<string, Marker>();
+    const failedExternalPhotos = new Set<string>();
     const tileTimer: { id: number | undefined } = { id: undefined };
 
     function showError(message: string): void {
@@ -318,8 +437,10 @@ export function TripMap({
       map = new MapLibreMap({
         container,
         style: BASEMAP_STYLE,
-        center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
-        zoom: 13.4,
+        center: initialViewportRef.current
+          ? [initialViewportRef.current.longitude, initialViewportRef.current.latitude]
+          : [KYOTO_CENTER[0], KYOTO_CENTER[1]],
+        zoom: initialViewportRef.current?.zoom ?? 13.4,
         attributionControl: { compact: true },
         cooperativeGestures: false,
       });
@@ -343,6 +464,7 @@ export function TripMap({
     const readDiagnostics = (): MapDiagnosticsSnapshot => {
       const source = getSource(activeMap);
       const sourceOptions = source?.serialize();
+      const geometrySource = getGeometrySource(activeMap);
       const clusters =
         activeMap.getLayer(CLUSTER_LAYER_ID) === undefined
           ? []
@@ -364,6 +486,15 @@ export function TripMap({
           );
         })[0];
       const center = activeMap.getCenter();
+      const selectedFeature = placesRef.current.features.find(
+        (place) => place.properties.id === selectedIdRef.current,
+      );
+      const projectedSelected = selectedFeature
+        ? activeMap.project([
+            selectedFeature.geometry.coordinates[0] ?? 0,
+            selectedFeature.geometry.coordinates[1] ?? 0,
+          ])
+        : null;
 
       return {
         center: { latitude: center.lat, longitude: center.lng },
@@ -410,13 +541,30 @@ export function TripMap({
                 marker: feature.properties.marker ?? "",
               }))
             : [],
-        featureCount: source === null ? null : getSourceFeatureCount(source),
+        featureCount:
+          source === null
+            ? null
+            : !anchored
+              ? getSourceFeatureCount(source)
+              : placesRef.current.features.length -
+                Number(
+                  markerMode === "places" &&
+                    placesRef.current.features.some(
+                      (place) => place.properties.id === selectedIdRef.current,
+                    ),
+                ),
+        geometryFeatureCount:
+          geometrySource === null ? null : getSourceFeatureCount(geometrySource),
         firstClusterPoint:
           firstCluster === undefined ? null : { x: firstCluster.x, y: firstCluster.y },
         moving: activeMap.isMoving(),
         renderedClusterCount: clusters.length,
         renderedClusterLabels: clusters.map((cluster) =>
-          String(cluster.properties.point_count_abbreviated),
+          String(
+            !anchored
+              ? cluster.properties.point_count_abbreviated
+              : cluster.properties.visible_count,
+          ),
         ),
         renderedSelectedIds:
           activeMap.getLayer(SELECTED_LAYER_ID) === undefined
@@ -424,6 +572,9 @@ export function TripMap({
             : activeMap
                 .queryRenderedFeatures({ layers: [SELECTED_LAYER_ID] })
                 .map((feature) => String(feature.properties.id)),
+        selectedPoint: projectedSelected
+          ? { x: projectedSelected.x, y: projectedSelected.y }
+          : null,
         sourceId: POINT_SOURCE_ID,
         sourceLoaded: source !== null && activeMap.isSourceLoaded(POINT_SOURCE_ID),
         status: statusRef.current,
@@ -525,6 +676,60 @@ export function TripMap({
       activeMap.getCanvas().style.cursor = "";
     }
 
+    function syncExternalPhotoMarkers(): void {
+      if (
+        !layersReady ||
+        activeMap.getLayer(SYMBOL_LAYER_ID) === undefined ||
+        activeMap.getLayer(SELECTED_LAYER_ID) === undefined
+      ) {
+        return;
+      }
+      const visibleIds = new Set<string>();
+      const features =
+        markerMode === "places"
+          ? activeMap.queryRenderedFeatures({ layers: [SYMBOL_LAYER_ID, SELECTED_LAYER_ID] })
+          : [];
+      for (const feature of features) {
+        const id: unknown = feature.properties.id;
+        const image: unknown = feature.properties.image;
+        if (
+          typeof id !== "string" ||
+          typeof image !== "string" ||
+          !image.startsWith("https://mymaps.usercontent.google.com/hostedimage/") ||
+          failedExternalPhotos.has(image) ||
+          feature.geometry.type !== "Point"
+        ) {
+          continue;
+        }
+        visibleIds.add(id);
+        if (externalPhotoMarkers.has(id)) {
+          continue;
+        }
+        const photo = document.createElement("img");
+        photo.className = searchResultsMode
+          ? "trip-map__external-photo trip-map__external-photo--search-result"
+          : "trip-map__external-photo";
+        photo.src = image;
+        photo.alt = "";
+        photo.draggable = false;
+        photo.onerror = () => {
+          failedExternalPhotos.add(image);
+          externalPhotoMarkers.get(id)?.remove();
+          externalPhotoMarkers.delete(id);
+        };
+        const marker = new Marker({ element: photo, anchor: "center" })
+          .setLngLat(feature.geometry.coordinates as [number, number])
+          .addTo(activeMap);
+        externalPhotoMarkers.set(id, marker);
+      }
+      for (const [id, marker] of externalPhotoMarkers) {
+        if (!visibleIds.has(id)) {
+          marker.remove();
+          externalPhotoMarkers.delete(id);
+        }
+      }
+    }
+
     function applySelection(): void {
       syncSelectedPlace(activeMap, placesRef.current, selectedIdRef.current);
     }
@@ -604,10 +809,13 @@ export function TripMap({
         return;
       }
       placementKey = nextPlacementKey;
-      activeMap.setFilter(LABEL_LAYER_ID, getPlacedLabelFilter(selectedIdRef.current, rightIds));
+      activeMap.setFilter(
+        LABEL_LAYER_ID,
+        getPlacedLabelFilter(selectedIdRef.current, rightIds, anchored),
+      );
       activeMap.setFilter(
         LEFT_LABEL_LAYER_ID,
-        getPlacedLabelFilter(selectedIdRef.current, leftIds),
+        getPlacedLabelFilter(selectedIdRef.current, leftIds, anchored),
       );
       activeMap.setLayoutProperty(
         SELECTED_LABEL_LAYER_ID,
@@ -645,21 +853,67 @@ export function TripMap({
       }
 
       try {
+        activeMap.addSource(GEOMETRY_SOURCE_ID, {
+          type: "geojson",
+          data: geometryRef.current,
+          promoteId: "id",
+        });
+        activeMap.addLayer({
+          id: AREA_FILL_LAYER_ID,
+          type: "fill",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: {
+            "fill-color": "#1677ff",
+            "fill-opacity": 0.14,
+          },
+        });
+        activeMap.addLayer({
+          id: AREA_OUTLINE_LAYER_ID,
+          type: "line",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: {
+            "line-color": "#1677ff",
+            "line-opacity": 0.8,
+            "line-width": 2,
+          },
+        });
+        activeMap.addLayer({
+          id: LINE_LAYER_ID,
+          type: "line",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "LineString"],
+          paint: {
+            "line-color": "#1677ff",
+            "line-opacity": 0.78,
+            "line-width": 3,
+          },
+        });
         activeMap.addSource(POINT_SOURCE_ID, {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
-          cluster: markerMode === "places",
+          cluster: markerMode === "places" && !searchResultsMode,
           clusterMaxZoom: 14,
           clusterRadius: 24,
+          ...(anchored ? { clusterProperties: { visible_count: ["+", ["get", "visible"]] } } : {}),
           promoteId: "id",
         });
         activeMap.addLayer({
           id: CLUSTER_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: ["has", "point_count"],
+          filter: !anchored
+            ? ["has", "point_count"]
+            : ["all", ["has", "point_count"], [">", ["get", "visible_count"], 0]],
           layout: {
-            "icon-image": ["concat", "cluster-", ["to-string", ["get", "point_count_abbreviated"]]],
+            "icon-image": [
+              "concat",
+              "cluster-",
+              !anchored
+                ? ["to-string", ["get", "point_count_abbreviated"]]
+                : ["to-string", ["get", "visible_count"]],
+            ],
             "icon-allow-overlap": true,
           },
         });
@@ -667,7 +921,9 @@ export function TripMap({
           id: SYMBOL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: ["!", ["has", "point_count"]],
+          filter: !anchored
+            ? ["!", ["has", "point_count"]]
+            : ["all", ["!", ["has", "point_count"]], ["!=", ["get", "visible"], 0]],
           layout: {
             "icon-allow-overlap": true,
             "icon-ignore-placement": true,
@@ -692,7 +948,7 @@ export function TripMap({
           id: LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: getLabelFilter(selectedIdRef.current),
+          filter: getLabelFilter(selectedIdRef.current, anchored),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "left",
@@ -706,7 +962,7 @@ export function TripMap({
           id: LEFT_LABEL_LAYER_ID,
           type: "symbol",
           source: POINT_SOURCE_ID,
-          filter: getPlacedLabelFilter(selectedIdRef.current, []),
+          filter: getPlacedLabelFilter(selectedIdRef.current, [], anchored),
           layout: {
             "icon-image": ["concat", "name-", ["get", "name"]],
             "icon-anchor": "right",
@@ -744,11 +1000,36 @@ export function TripMap({
         }
 
         void source
-          .setData(getSourcePlaces(placesRef.current, selectedIdRef.current, markerMode))
+          .setData(
+            getSourcePlaces(
+              placesRef.current,
+              selectedIdRef.current,
+              markerMode,
+              clusterAnchorPlacesRef.current,
+            ),
+          )
           .then(() => {
             if (!disposed) {
               applySelection();
-              framePlaces(activeMap, placesRef.current, false, bottomInsetRef.current);
+              if (
+                initialViewportRef.current === null &&
+                (!searchResultsMode || placesRef.current.features.length > 0)
+              ) {
+                framePlaces(
+                  activeMap,
+                  placesRef.current,
+                  false,
+                  bottomInsetRef.current,
+                  geometryRef.current,
+                );
+              }
+              focusMapPlace(
+                activeMap,
+                placesRef.current,
+                focusSelectedIdRef.current,
+                bottomInsetRef.current,
+                false,
+              );
               activeMap.triggerRepaint();
             }
           })
@@ -786,6 +1067,7 @@ export function TripMap({
         place.properties.image,
         markerMode === "order" ? place.properties.marker?.slice(6) : undefined,
         selected,
+        searchResultsMode,
       );
       if (!disposed && !activeMap.hasImage(imageId)) {
         activeMap.addImage(imageId, sprite, { pixelRatio: 2 });
@@ -796,7 +1078,17 @@ export function TripMap({
     activeMap.on("render", finishReady);
     activeMap.on("render", scheduleLabelPlacement);
     activeMap.on("moveend", scheduleLabelPlacement);
+    const reportViewport = (): void => {
+      const center = activeMap.getCenter();
+      viewportChangeRef.current?.({
+        latitude: center.lat,
+        longitude: center.lng,
+        zoom: activeMap.getZoom(),
+      });
+    };
+    activeMap.on("moveend", reportViewport);
     activeMap.on("idle", scheduleLabelPlacement);
+    activeMap.on("idle", syncExternalPhotoMarkers);
     activeMap.once("idle", finishReady);
     tileTimer.id = window.setTimeout(() => {
       showError("Map tiles took too long to load. Try again when the connection is stable.");
@@ -808,6 +1100,7 @@ export function TripMap({
     resizeObserver.observe(container);
 
     return () => {
+      reportViewport();
       disposed = true;
       if (tileTimer.id !== undefined) {
         window.clearTimeout(tileTimer.id);
@@ -819,8 +1112,13 @@ export function TripMap({
       activeMap.off("render", finishReady);
       activeMap.off("render", scheduleLabelPlacement);
       activeMap.off("moveend", scheduleLabelPlacement);
+      activeMap.off("moveend", reportViewport);
       activeMap.off("idle", scheduleLabelPlacement);
+      activeMap.off("idle", syncExternalPhotoMarkers);
       activeMap.off("idle", finishReady);
+      for (const marker of externalPhotoMarkers.values()) {
+        marker.remove();
+      }
       if (labelPlacementFrame !== undefined) {
         window.cancelAnimationFrame(labelPlacementFrame);
       }
@@ -843,7 +1141,7 @@ export function TripMap({
       }
       activeMap.remove();
     };
-  }, [retryCount, markerMode]);
+  }, [retryCount, markerMode, anchored, searchResultsMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -858,12 +1156,32 @@ export function TripMap({
       return;
     }
 
+    const shouldFrame =
+      frameKey === undefined ||
+      frameKey !== lastFrameKeyRef.current ||
+      markerMode !== lastMarkerModeRef.current;
+    lastFrameKeyRef.current = frameKey;
+    lastMarkerModeRef.current = markerMode;
+
     void source
-      .setData(getSourcePlaces(places, selectedIdRef.current, markerMode))
+      .setData(getSourcePlaces(places, selectedIdRef.current, markerMode, clusterAnchorPlaces))
       .then(() => {
         if (mapRef.current === map) {
           syncSelectedPlace(map, places, selectedIdRef.current);
-          framePlaces(map, places, true, bottomInsetRef.current);
+          if (
+            shouldFrame &&
+            initialViewportRef.current !== null &&
+            !skippedRestoredFrameRef.current
+          ) {
+            skippedRestoredFrameRef.current = true;
+          } else if (shouldFrame) {
+            if (!searchResultsMode || places.features.length > 0) {
+              framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+            }
+          }
+          if (shouldFrame) {
+            focusMapPlace(map, places, focusSelectedIdRef.current, bottomInsetRef.current, true);
+          }
           map.triggerRepaint();
         }
       })
@@ -873,7 +1191,37 @@ export function TripMap({
           setStatus("error");
         }
       });
-  }, [markerMode, places]);
+  }, [clusterAnchorPlaces, frameKey, markerMode, places, searchResultsMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (map === null) {
+      return;
+    }
+    const source = getGeometrySource(map);
+    if (source === null) {
+      return;
+    }
+    void source
+      .setData(geometry)
+      .then(() => {
+        if (mapRef.current === map) {
+          if (frameKey === undefined && placesRef.current.features.length === 0) {
+            framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometry);
+          }
+          map.triggerRepaint();
+        }
+      })
+      .catch(() => {
+        if (mapRef.current === map) {
+          setErrorMessage(
+            "The imported map geometry could not be loaded. Try loading the map again.",
+          );
+          setStatus("error");
+        }
+      });
+  }, [frameKey, geometry]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -885,7 +1233,14 @@ export function TripMap({
     const source = getSource(map);
     if (source !== null) {
       void source
-        .setData(getSourcePlaces(placesRef.current, selectedId, markerMode))
+        .setData(
+          getSourcePlaces(
+            placesRef.current,
+            selectedId,
+            markerMode,
+            clusterAnchorPlacesRef.current,
+          ),
+        )
         .then(() => map.triggerRepaint())
         .catch(() => {
           if (mapRef.current === map) {
@@ -897,6 +1252,17 @@ export function TripMap({
     syncSelectedPlace(map, placesRef.current, selectedId);
     map.triggerRepaint();
   }, [markerMode, selectedId]);
+
+  useEffect(() => {
+    if (focusSelectedId === null) {
+      return;
+    }
+    const map = mapRef.current;
+    if (map === null) {
+      return;
+    }
+    focusMapPlace(map, placesRef.current, focusSelectedId, bottomInset, true);
+  }, [bottomInset, focusSelectedId]);
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -915,7 +1281,7 @@ export function TripMap({
     const map = mapRef.current;
 
     if (map !== null) {
-      framePlaces(map, placesRef.current, true, bottomInsetRef.current);
+      framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometryRef.current);
     }
   }
 
@@ -951,35 +1317,37 @@ export function TripMap({
       className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}
       id={id}
       inert={inactive}
-      style={{ "--map-bottom-inset": `${bottomInset}px` } as React.CSSProperties}
+      style={{ "--map-bottom-inset": `${controlsBottomInset}px` } as React.CSSProperties}
     >
       <div className="trip-map__canvas" ref={containerRef} />
 
-      <div className="trip-map__modes" role="group" aria-label="Map marker mode">
-        <button
-          type="button"
-          aria-pressed={markerMode === "places"}
-          onClick={() => setMarkerMode("places")}
-          title="Explore places and photos"
-        >
-          Places
-        </button>
-        <button
-          type="button"
-          aria-pressed={markerMode === "order"}
-          onClick={() => setMarkerMode("order")}
-          title="Show only this day's stops in visit order"
-        >
-          Day order
-        </button>
-      </div>
-      {markerMode === "order" && places.features.length === 0 ? (
+      {showDayOrder ? (
+        <div className="trip-map__modes" role="group" aria-label="Map marker mode">
+          <button
+            type="button"
+            aria-pressed={markerMode === "places"}
+            onClick={() => setMarkerMode("places")}
+            title="Explore places and photos"
+          >
+            Places
+          </button>
+          <button
+            type="button"
+            aria-pressed={markerMode === "order"}
+            onClick={() => setMarkerMode("order")}
+            title="Show only this day's stops in visit order"
+          >
+            Day order
+          </button>
+        </div>
+      ) : null}
+      {showDayOrder && markerMode === "order" && places.features.length === 0 ? (
         <p className="trip-map__empty-order">No stops planned for this day</p>
       ) : null}
       <div aria-label="Map controls" className="trip-map__controls" role="group">
         {showLocate ? (
           <button
-            aria-label="Recenter on Kyoto"
+            aria-label={recenterLabel}
             className="trip-map__locate"
             onClick={recenter}
             type="button"
@@ -1002,7 +1370,7 @@ export function TripMap({
         </button>
       </div>
 
-      {status === "loading" ? <p className="trip-map__status">Loading map…</p> : null}
+      {status === "loading" ? <MapLoading /> : null}
 
       {status === "error" ? (
         <div className="trip-map__error" role="alert">

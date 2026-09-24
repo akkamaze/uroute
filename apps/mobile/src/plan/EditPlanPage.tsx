@@ -26,6 +26,9 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isSwipeBackEdgeStart } from "../navigation/swipe-back";
+import { loadImportedPlaces } from "../imports/place-library";
+import { importedPointAsStop } from "../imports/imported-stop";
+import type { ImportedPoint } from "../imports/parse-place-file";
 
 import { FRIDAY_STOPS } from "./plan-data";
 import {
@@ -318,9 +321,11 @@ function VersionHistoryMetadata({
       </>
     );
   }
-  const otherChanges = version.summary.split(/\s*·\s*/).filter(
-    (part) => part !== "Reordered places" && !/^Removed ([1-9]\d*)(?: places?)?$/.test(part),
-  );
+  const otherChanges = version.summary
+    .split(/\s*·\s*/)
+    .filter(
+      (part) => part !== "Reordered places" && !/^Removed ([1-9]\d*)(?: places?)?$/.test(part),
+    );
 
   return (
     <>
@@ -431,6 +436,21 @@ export function EditPlanPage(): React.JSX.Element {
   const routeState = useRouterState({ select: (state) => state.location.state });
   const day = search.day ?? 13;
   const plan = useKyotoPlan();
+  const [importedPoints, setImportedPoints] = useState<ImportedPoint[]>([]);
+  useEffect(() => {
+    let active = true;
+    void loadImportedPlaces()
+      .then((points) => {
+        if (active) {
+          setImportedPoints(points);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
   const initialVisitsRef = useRef(cloneVisits(plan.days[day]));
   const baseSignatureRef = useRef(visitsSignature(initialVisitsRef.current));
   const storedDraftRef = useRef(loadEditPlanDraft(day, baseSignatureRef.current));
@@ -478,7 +498,15 @@ export function EditPlanPage(): React.JSX.Element {
   const dayLabel = `${dayName}, ${day} November`;
   const selectionCount = selectedIds.size;
 
-  const stops = useMemo(() => new Map(FRIDAY_STOPS.map((stop) => [stop.id, stop])), []);
+  const stops = useMemo(
+    () =>
+      new Map(
+        [...FRIDAY_STOPS, ...importedPoints.map((point) => importedPointAsStop(point))].map(
+          (stop) => [stop.id, stop],
+        ),
+      ),
+    [importedPoints],
+  );
 
   const navigationBlocker = useBlocker({
     enableBeforeUnload: false,
@@ -924,7 +952,10 @@ export function EditPlanPage(): React.JSX.Element {
       direction * (event.clientX - gesture.startX) >= 48 &&
       direction * velocity >= 0.65;
     if (Math.abs(finalOffset) >= gesture.width * REMOVE_COMMIT_RATIO || flick) {
-      gesture.surface.style.setProperty("--edit-plan-row-swipe-x", `${direction * gesture.width}px`);
+      gesture.surface.style.setProperty(
+        "--edit-plan-row-swipe-x",
+        `${direction * gesture.width}px`,
+      );
       finishSwipeRemoval(gesture.id, direction * gesture.width);
     } else {
       gesture.surface.style.setProperty("--edit-plan-row-swipe-x", "0px");
@@ -1267,17 +1298,15 @@ export function EditPlanPage(): React.JSX.Element {
       return undefined;
     }
     const frame = window.requestAnimationFrame(() => {
-      const row = Array.from(
-        document.querySelectorAll<HTMLElement>("[data-version-id]"),
-      ).find((element) => element.dataset.versionId === highlightedVersionId);
+      const row = Array.from(document.querySelectorAll<HTMLElement>("[data-version-id]")).find(
+        (element) => element.dataset.versionId === highlightedVersionId,
+      );
       if (row === undefined) {
         return;
       }
       row.focus({ preventScroll: true });
       row.scrollIntoView({
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
         block: "center",
       });
       window.clearTimeout(sourceHighlightTimerRef.current);
@@ -1323,7 +1352,7 @@ export function EditPlanPage(): React.JSX.Element {
             <strong>{stop.name}</strong>
             <span>{stop.type}</span>
           </span>
-          <img alt="" src={stop.image} />
+          {stop.image ? <img alt="" src={stop.image} /> : null}
         </div>
         {changes.length === 0 || (options.compact === true && options.removed === true) ? null : (
           <div className="version-place__changes">
@@ -1365,8 +1394,7 @@ export function EditPlanPage(): React.JSX.Element {
     const previewVersion = versions.find((version) => version.id === search.version);
     const previewVersionIndex = versions.findIndex((version) => version.id === search.version);
     const previousVersion = versions[previewVersionIndex + 1];
-    const nextVersion =
-      previewVersionIndex > 0 ? versions[previewVersionIndex - 1] : undefined;
+    const nextVersion = previewVersionIndex > 0 ? versions[previewVersionIndex - 1] : undefined;
     const openAdjacentVersion = (version: EditPlanVersion | undefined): void => {
       if (version === undefined) {
         return;
@@ -1445,10 +1473,7 @@ export function EditPlanPage(): React.JSX.Element {
               </strong>
               <span className="version-preview__location">Kyoto · {dayLabel}</span>
               <div className="version-preview__metadata">
-                <VersionPlaceCount
-                  count={previewVersion.visits.length}
-                  delta={previewPlaceDelta}
-                />
+                <VersionPlaceCount count={previewVersion.visits.length} delta={previewPlaceDelta} />
                 <VersionDiffIndicators counts={previewChangeCounts} />
               </div>
             </div>
@@ -1624,43 +1649,43 @@ export function EditPlanPage(): React.JSX.Element {
 
               return (
                 <article
-                className={`version-entry${highlightedVersionId === version.id ? " version-entry--highlighted" : ""}`}
-                data-version-id={version.id}
-                key={version.id}
-                tabIndex={-1}
-              >
-                <span aria-hidden="true" className="version-entry__dot" />
-                <div className="version-entry__details">
-                  <strong>{formatVersionTime(version.savedAt)}</strong>
-                  <VersionHistoryMetadata
-                    changeCounts={getVersionChangeCounts(versionDiff)}
-                    onRevealSource={revealSourceVersion}
-                    placeDelta={getVersionPlaceDelta(version, versions, index)}
-                    sourceAvailable={versions.some(
-                      (candidate) => candidate.id === version.restoreContext?.sourceId,
-                    )}
-                    version={version}
-                  />
-                </div>
-                <div className="version-entry__actions">
-                  <span className="version-entry__number">Version {version.sequence}</span>
-                  <button
-                    aria-label={`View Version ${version.sequence}`}
-                    onClick={() => {
-                      setVersionFilter("changes");
-                      setRestoreError("");
-                      void navigate({
-                        to: "/plan/edit",
-                        search: { day, view: "versions", version: version.id },
-                        state: (current) => ({ ...current, editPlanVersionEntry: true }),
-                      });
-                    }}
-                    type="button"
-                  >
-                    View
-                    <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
-                  </button>
-                </div>
+                  className={`version-entry${highlightedVersionId === version.id ? " version-entry--highlighted" : ""}`}
+                  data-version-id={version.id}
+                  key={version.id}
+                  tabIndex={-1}
+                >
+                  <span aria-hidden="true" className="version-entry__dot" />
+                  <div className="version-entry__details">
+                    <strong>{formatVersionTime(version.savedAt)}</strong>
+                    <VersionHistoryMetadata
+                      changeCounts={getVersionChangeCounts(versionDiff)}
+                      onRevealSource={revealSourceVersion}
+                      placeDelta={getVersionPlaceDelta(version, versions, index)}
+                      sourceAvailable={versions.some(
+                        (candidate) => candidate.id === version.restoreContext?.sourceId,
+                      )}
+                      version={version}
+                    />
+                  </div>
+                  <div className="version-entry__actions">
+                    <span className="version-entry__number">Version {version.sequence}</span>
+                    <button
+                      aria-label={`View Version ${version.sequence}`}
+                      onClick={() => {
+                        setVersionFilter("changes");
+                        setRestoreError("");
+                        void navigate({
+                          to: "/plan/edit",
+                          search: { day, view: "versions", version: version.id },
+                          state: (current) => ({ ...current, editPlanVersionEntry: true }),
+                        });
+                      }}
+                      type="button"
+                    >
+                      View
+                      <ChevronRight aria-hidden="true" size={16} strokeWidth={1.7} />
+                    </button>
+                  </div>
                 </article>
               );
             })}
@@ -1877,7 +1902,7 @@ export function EditPlanPage(): React.JSX.Element {
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
                       </span>
-                      <img alt="" src={stop.image} />
+                      {stop.image ? <img alt="" src={stop.image} /> : null}
                     </button>
                   ) : (
                     <>
@@ -1913,7 +1938,7 @@ export function EditPlanPage(): React.JSX.Element {
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
                       </span>
-                      <img alt="" src={stop.image} />
+                      {stop.image ? <img alt="" src={stop.image} /> : null}
                     </>
                   )}
                 </article>
@@ -1975,9 +2000,9 @@ export function EditPlanPage(): React.JSX.Element {
           className="edit-plan__notice"
           role={notice.persistent ? "alert" : undefined}
         >
-          {notice.card === undefined ? null : (
+          {notice.card?.image ? (
             <img alt="" className="edit-plan__notice-image" src={notice.card.image} />
-          )}
+          ) : null}
           <span className="edit-plan__notice-copy">
             {notice.card === undefined ? (
               <span>{notice.message}</span>

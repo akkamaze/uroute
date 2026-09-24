@@ -77,6 +77,16 @@
   object-fit: cover;
 }
 
+.saved-place__image-placeholder {
+  display: grid;
+  width: 66px;
+  height: 66px;
+  place-items: center;
+  border-radius: 10px;
+  background: #eef3f8;
+  color: #66798d;
+}
+
 .saved-place__copy {
   display: flex;
   min-width: 0;

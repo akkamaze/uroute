@@ -74,7 +74,7 @@ export function createCategoryMarker(category: string): ImageData {
   }
   context.scale(2, 2);
   context.beginPath();
-  context.arc(18, 18, 12, 0, Math.PI * 2);
+  context.arc(18, 18, 14, 0, Math.PI * 2);
   context.fillStyle =
     category === "coffee" ? "#98653b" : category === "food" ? "#cf7736" : "#4679a8";
   context.shadowColor = "rgba(15, 42, 77, 0.22)";
@@ -247,8 +247,15 @@ export async function createPlaceHead(
   imageUrl: string | undefined,
   number: string | undefined,
   selected: boolean,
+  searchResult = false,
 ): Promise<ImageData> {
-  const photo = imageUrl === undefined || number !== undefined ? null : await loadPhoto(imageUrl);
+  // My Maps images lack CORS headers; TripMap displays them as DOM photo overlays instead.
+  const photo =
+    imageUrl === undefined ||
+    number !== undefined ||
+    imageUrl.startsWith("https://mymaps.usercontent.google.com/hostedimage/")
+      ? null
+      : await loadPhoto(imageUrl);
   const canvas = document.createElement("canvas");
   canvas.width = 80;
   canvas.height = 80;
@@ -297,11 +304,11 @@ export async function createPlaceHead(
     context.lineWidth = 2;
     context.stroke();
   }
-  if (selected) {
+  if (selected || searchResult) {
     context.beginPath();
     context.arc(20, 20, 16.5, 0, Math.PI * 2);
-    context.strokeStyle = "#1677ff";
-    context.lineWidth = 1.5;
+    context.strokeStyle = searchResult ? "#f59e0b" : "#1677ff";
+    context.lineWidth = searchResult ? 2.5 : 1.5;
     context.stroke();
   }
 

@@ -109,6 +109,43 @@ test("expanded place content owns scrolling and a handle drag settles the sheet"
   expect(await readCamera()).toEqual(originalCamera);
 });
 
+test("Plan map controls track the sheet while dragging and hide when expanded", async ({
+  page,
+}) => {
+  await page.goto("/places?place=kiyomizu&day=13");
+  const sheet = page.locator(".place-sheet");
+  const locate = page.getByRole("button", { name: "Recenter on Kyoto" });
+  const modes = page.getByRole("group", { name: "Map marker mode" });
+  const handle = page.getByRole("button", { name: "Expand place details" });
+  const handleBox = await handle.boundingBox();
+  const beforeSheet = await sheet.boundingBox();
+  const beforeLocate = await locate.boundingBox();
+  const beforeModes = await modes.boundingBox();
+  expect(handleBox).not.toBeNull();
+  expect(beforeSheet).not.toBeNull();
+  expect(beforeLocate).not.toBeNull();
+  expect(beforeModes).not.toBeNull();
+
+  const x = handleBox!.x + handleBox!.width / 2;
+  const y = handleBox!.y + handleBox!.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + 100, { steps: 8 });
+  await expect
+    .poll(async () => (await sheet.boundingBox())?.y)
+    .toBeGreaterThan(beforeSheet!.y + 70);
+  const duringLocate = await locate.boundingBox();
+  const duringModes = await modes.boundingBox();
+  expect(duringLocate!.y - beforeLocate!.y).toBeGreaterThan(70);
+  expect(duringModes!.y - beforeModes!.y).toBeGreaterThan(70);
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect(sheet).toHaveAttribute("data-snap", "expanded");
+  await expect(locate).toHaveCount(0);
+  await expect(modes).toHaveCount(0);
+});
+
 test("swipe back reserves the system edge and accepts the adjacent app zone", async ({ page }) => {
   await page.goto("/trips");
   await page.getByRole("link", { name: "Open Kyoto trip plan" }).click();

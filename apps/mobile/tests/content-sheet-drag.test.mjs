@@ -18,13 +18,14 @@ afterAll(() => {
   globalThis.Element = previousElement;
 });
 
-function setup() {
+function setup(allowUpwardFrom) {
   const content = new Content();
   const calls = [];
   const cleanup = attachContentSheetDrag(content, {
     onDrag: (delta) => calls.push(["drag", delta]),
     onRelease: (delta) => calls.push(["release", delta]),
     onCancel: () => calls.push(["cancel"]),
+    allowUpwardFrom,
   });
   function pointer(type, x, y, options = {}) {
     const event = new globalThis.Event(type, { cancelable: true });
@@ -88,6 +89,32 @@ test("upward and horizontal content gestures are not prevented", () => {
   expect(touch("touchmove", 200, 215).defaultPrevented).toBe(false);
   touch("touchend", 200, 215);
   expect(calls).toEqual([]);
+  cleanup();
+});
+
+test("an opted-in handle owns upward drags without changing ordinary content behavior", () => {
+  const { calls, content, touch, cleanup } = setup(() => true);
+  content.scrollTop = 100;
+  touch("touchstart", 100, 200);
+  expect(touch("touchmove", 100, 130).defaultPrevented).toBe(true);
+  touch("touchend", 100, 130);
+  expect(calls).toEqual([
+    ["drag", -70],
+    ["release", -70],
+  ]);
+  cleanup();
+});
+
+test("an opted-in handle captures pointer immediately so upward movement can leave its bounds", () => {
+  const { calls, content, pointer, cleanup } = setup(() => true);
+  pointer("pointerdown", 100, 200);
+  expect(content.captured).toBe(1);
+  pointer("pointermove", 100, 130);
+  pointer("pointerup", 100, 130);
+  expect(calls).toEqual([
+    ["drag", -70],
+    ["release", -70],
+  ]);
   cleanup();
 });
 

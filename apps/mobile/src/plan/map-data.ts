@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, Point } from "geojson";
+import type { Feature, FeatureCollection, LineString, Point, Polygon } from "geojson";
 import { FRIDAY_STOPS } from "./plan-data";
 
 export const KYOTO_CENTER = [135.775, 34.999] as const;
@@ -11,6 +11,14 @@ export interface PlaceProperties {
   name: string;
   synthetic: boolean;
 }
+
+export interface MapGeometryProperties {
+  id: string;
+  kind: "line" | "area";
+  name: string;
+}
+
+export type MapGeometryCollection = FeatureCollection<LineString | Polygon, MapGeometryProperties>;
 
 export type PlaceFeature = Feature<Point, PlaceProperties>;
 export type PlaceCollection = FeatureCollection<Point, PlaceProperties>;

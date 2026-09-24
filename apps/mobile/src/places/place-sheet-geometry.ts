@@ -1,5 +1,8 @@
 export type SheetSnap = "collapsed" | "expanded" | "middle";
 
+// Keep 44px map controls and their 12px gap below the sheet's 72px top boundary.
+export const MIN_VISIBLE_MAP_CONTROLS_TOP = 128;
+
 const SHEET_FLING_VELOCITY = 0.75;
 const SHEET_MIN_FLING_DISTANCE = 64;
 const SHEET_MIN_DRAG_INTENT = 18;

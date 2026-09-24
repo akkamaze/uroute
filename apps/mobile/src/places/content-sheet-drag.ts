@@ -2,6 +2,7 @@ interface DragCallbacks {
   onDrag: (delta: number) => void;
   onRelease: (delta: number, duration: number) => void;
   onCancel: () => void;
+  allowUpwardFrom?: (target: Element) => boolean;
 }
 
 interface ContentGesture {
@@ -12,6 +13,7 @@ interface ContentGesture {
   startedAt: number;
   delta: number;
   active: boolean;
+  allowUpward: boolean;
 }
 
 const INTERACTIVE =
@@ -37,7 +39,11 @@ export function attachContentSheetDrag(content: HTMLElement, callbacks: DragCall
     y: number,
   ): void {
     cancel();
-    if (!(target instanceof Element) || target.closest(INTERACTIVE) !== null) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const allowUpward = callbacks.allowUpwardFrom?.(target) ?? false;
+    if (target.closest(INTERACTIVE) !== null && !allowUpward) {
       return;
     }
     gesture = {
@@ -48,6 +54,7 @@ export function attachContentSheetDrag(content: HTMLElement, callbacks: DragCall
       startedAt: performance.now(),
       delta: 0,
       active: false,
+      allowUpward,
     };
   }
 
@@ -63,14 +70,15 @@ export function attachContentSheetDrag(content: HTMLElement, callbacks: DragCall
 
         return;
       }
-      if (content.scrollTop > 1) {
+      if (content.scrollTop > 1 && !gesture.allowUpward) {
         // Keep native scroll ownership; only movement after reaching the top may drag the sheet.
         gesture.startY = y;
         gesture.startedAt = performance.now();
 
         return;
       }
-      if (vertical <= INTENT_PX || vertical <= horizontal * 1.15) {
+      const intent = gesture.allowUpward ? Math.abs(vertical) : vertical;
+      if (intent <= INTENT_PX || intent <= horizontal * 1.15) {
         return;
       }
       if (!event.cancelable) {
@@ -80,13 +88,13 @@ export function attachContentSheetDrag(content: HTMLElement, callbacks: DragCall
         return;
       }
       gesture.active = true;
-      if (gesture.kind === "pointer") {
+      if (gesture.kind === "pointer" && !gesture.allowUpward) {
         content.setPointerCapture(gesture.id);
       }
     }
     event.preventDefault();
     event.stopPropagation();
-    gesture.delta = Math.max(0, y - gesture.startY);
+    gesture.delta = gesture.allowUpward ? y - gesture.startY : Math.max(0, y - gesture.startY);
     callbacks.onDrag(gesture.delta);
   }
 
@@ -101,6 +109,14 @@ export function attachContentSheetDrag(content: HTMLElement, callbacks: DragCall
   function pointerDown(event: PointerEvent): void {
     if (event.pointerType !== "touch" && event.button === 0) {
       start(event.target, "pointer", event.pointerId, event.clientX, event.clientY);
+      if (gesture?.allowUpward) {
+        const handle = event.target as Element & {
+          setPointerCapture?: (pointerId: number) => void;
+        };
+        (handle.setPointerCapture === undefined ? content : handle).setPointerCapture(
+          event.pointerId,
+        );
+      }
     }
   }
   function pointerMove(event: PointerEvent): void {

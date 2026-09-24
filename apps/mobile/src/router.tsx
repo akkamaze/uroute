@@ -9,6 +9,7 @@ import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 import { FRIDAY_STOPS } from "./plan/plan-data";
+import { isMapDestination, type ImportDestinationTrip } from "./imports/map-destination";
 
 interface LoginSearch {
   profile?: "open";
@@ -16,7 +17,7 @@ interface LoginSearch {
 
 interface PlaceSearch {
   map?: "full";
-  search?: "open";
+  search?: "open" | "results";
   q?: string;
   day?: KyotoDay;
   add?: "open";
@@ -103,6 +104,40 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
+const mapsRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/maps",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    trip?: ImportDestinationTrip;
+    day?: string;
+    place?: string;
+    add?: "open";
+  } => ({
+    ...(isMapDestination({ trip: search.trip, day: search.day })
+      ? { trip: search.trip as ImportDestinationTrip, day: search.day as string }
+      : {}),
+    ...(typeof search.place === "string" && search.place.length < 200
+      ? { place: search.place }
+      : {}),
+    ...(search.add === "open" ? { add: "open" as const } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./imports/ImportedPlacesPage"), "ImportedPlacesPage"),
+});
+
+const createdTripPlanRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/trip/$tripId",
+  component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
+});
+
+const kantoPlanRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/kanto",
+  component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
+});
+
 const editPlanRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan/edit",
@@ -150,9 +185,9 @@ const placesRoute = createRoute({
         ? { add: "open" }
         : search.note === "open"
           ? { note: "open" }
-          : search.search === "open"
+          : search.search === "open" || search.search === "results"
             ? {
-                search: "open",
+                search: search.search,
                 ...(typeof search.q === "string" && search.q.trim() !== ""
                   ? { q: search.q.trim().slice(0, 120) }
                   : {}),
@@ -193,7 +228,10 @@ const userRoute = createRoute({
 
 const mobileShellTree = mobileShellRoute.addChildren([
   tripsRoute,
+  mapsRoute,
   planRoute,
+  kantoPlanRoute,
+  createdTripPlanRoute,
   bookingsRoute,
   expensesRoute,
   savedRoute,

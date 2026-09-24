@@ -1,0 +1,96 @@
+:is(.imported-page__search-screen, .map-search__screen) {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(78px + env(safe-area-inset-top, 0px)) 18px 24px;
+  background: #fff;
+}
+
+:is(.imported-page__search-screen, .map-search__screen) h2 {
+  margin: 0 0 12px;
+  color: #1e2b36;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+:is(.imported-page__search-list, .map-search__list) button {
+  display: flex;
+  width: 100%;
+  min-height: 62px;
+  align-items: center;
+  gap: 17px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: #fff;
+  color: #253645;
+  text-align: left;
+  cursor: pointer;
+}
+
+:is(.imported-page__search-list, .map-search__list) button > svg {
+  flex: none;
+  margin: 0 10px;
+  color: #6b7b8c;
+}
+
+:is(.imported-page__search-thumbnail, .map-search__thumbnail) {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  aspect-ratio: 1;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #f2f5f8;
+  color: #6b7b8c;
+}
+
+:is(.imported-page__search-thumbnail, .map-search__thumbnail) img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+:is(.imported-page__search-list, .map-search__list)
+  button
+  > span:not(:is(.imported-page__search-thumbnail, .map-search__thumbnail)) {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+
+:is(.imported-page__search-list, .map-search__list) strong,
+:is(.imported-page__search-list, .map-search__list) small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:is(.imported-page__search-list, .map-search__list) strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+:is(.imported-page__search-list, .map-search__list) small {
+  margin-top: 4px;
+  color: #788696;
+  font-size: 12px;
+}
+
+:is(.imported-page__search-list, .map-search__list) button:active {
+  background: #f5f8fb;
+}
+
+:is(.imported-page__search-empty, .map-search__empty) {
+  margin: 8px 0;
+  color: #6d7d8e;
+  font-size: 14px;
+  line-height: 1.5;
+}
