@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1600" viewBox="0 0 800 1600" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#e4f1ff"/><stop offset=".6" stop-color="#dfedfc"/><stop offset="1" stop-color="#bddcf0"/></linearGradient>
+    <radialGradient id="cloud"><stop stop-color="#fff" stop-opacity=".8"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="mist" x2="0" y2="1"><stop stop-color="#e6f3ff" stop-opacity="0"/><stop offset=".7" stop-color="#e6f3ff" stop-opacity=".7"/><stop offset="1" stop-color="#e6f3ff" stop-opacity=".15"/></linearGradient>
+    <filter id="haze" x="-15%" y="-25%" width="130%" height="150%"><feGaussianBlur stdDeviation="12"/></filter>
+    <filter id="soft" x="-15%" y="-25%" width="130%" height="150%"><feGaussianBlur stdDeviation="5"/></filter>
+  </defs>
+  <path fill="url(#sky)" d="M0 0H800V1600H0z"/>
+  <ellipse fill="url(#cloud)" cx="670" cy="310" rx="380" ry="370" opacity=".55"/>
+  <ellipse fill="url(#cloud)" cx="60" cy="800" rx="310" ry="370" opacity=".45"/>
+  <g filter="url(#haze)">
+    <path fill="#9ec9e5" opacity=".42" d="M-30 1370 Q20 1297 67 1320 T150 1302 Q174 1285 202 1304 T260 1288 Q292 1251 324 1274 T385 1255 Q427 1218 469 1250 T520 1238 Q553 1200 586 1231 T648 1254 Q692 1227 728 1260 T830 1240V1630H-30Z"/>
+    <path fill="#81b7dc" opacity=".3" d="M-30 1510 Q17 1465 40 1488 L60 1460 78 1468 100 1430 127 1440 160 1408 180 1427 205 1415 239 1460 260 1438 291 1451 327 1418 354 1430 385 1403 412 1434 434 1424 466 1453 503 1440 538 1469 570 1446 600 1470 638 1447 671 1467 704 1418 739 1437 773 1407 830 1451V1630H-30Z"/>
+  </g>
+  <g fill="#86b7d5" opacity=".25" filter="url(#soft)">
+    <path d="M0 1530h27v-30h19v31h25v-57h24v57h29v-22h22v34h39v-53h20v-19h17v70h21v-35h29v41h21v-17h34v29h28v-67h23v-24h16v88h30v-49h26v64h27v-32h24v38h27v-59h19v-17h22v77h25v-34h31v31h24v-68h19v-12h18v75h24v-40h25v46h19v-70h27v83h22v-23h31v-25h26v64h28v80H0Z"/>
+  </g>
+  <ellipse fill="url(#cloud)" cx="190" cy="1350" rx="410" ry="130"/>
+  <ellipse fill="url(#cloud)" cx="660" cy="1430" rx="400" ry="160" opacity=".8"/>
+  <path fill="url(#mist)" d="M0 1210H800V1600H0z"/>
+</svg>

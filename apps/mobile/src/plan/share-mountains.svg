@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="180" viewBox="0 0 760 180" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="ridge" x2="0" y2="1"><stop stop-color="#dfedfc"/><stop offset="1" stop-color="#f4f9ff" stop-opacity=".25"/></linearGradient>
+    <linearGradient id="near" x2="0" y2="1"><stop stop-color="#e6f1fc"/><stop offset="1" stop-color="#f7fbff" stop-opacity=".2"/></linearGradient>
+    <linearGradient id="fade"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".24" stop-color="#fff" stop-opacity=".3"/><stop offset=".5" stop-color="#fff"/></linearGradient>
+    <mask id="reveal"><path fill="url(#fade)" d="M0 0H760V180H0z"/></mask>
+  </defs>
+  <g mask="url(#reveal)">
+    <path fill="url(#near)" d="M0 169C78 166 113 162 163 151L222 134 245 125 269 122 290 113 312 109 337 115 360 109 388 101 409 91 428 88 447 94 468 105 493 114 519 104 544 99 563 91 583 87 603 78 620 75 638 70 659 75 679 81 704 91 731 105 760 109V180H0Z"/>
+    <path fill="url(#ridge)" d="M0 179C102 171 177 170 242 149L278 138 308 126 333 119 358 107 380 101 399 91 416 88 440 77 461 70 481 61Q493 55 505 63L523 67 547 80 568 87 587 97 609 106 631 116 649 111 668 104 691 100 714 93 737 90 760 84V180H0Z"/>
+    <path fill="url(#near)" d="M0 177C88 174 163 176 212 162L253 147 283 134 310 131 333 121 355 115 374 119 398 128 420 133 444 142 469 149 498 148 524 155 556 153 583 142 608 137 633 125 652 123 675 113 697 110 722 105 744 110 760 113V180H0Z"/>
+  </g>
+</svg>

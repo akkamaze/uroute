@@ -95,7 +95,7 @@ function BeforeYouGo({
         <Tickets aria-hidden="true" className="preparation-row__icon" size={30} strokeWidth={1.7} />
         <span className="preparation-row__copy">
           <strong>Bookings</strong>
-          <span>Flights and stays for Kyoto</span>
+          <span>Across all your trips</span>
         </span>
         <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
       </Link>
