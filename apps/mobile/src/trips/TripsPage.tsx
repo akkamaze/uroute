@@ -162,6 +162,8 @@ export function TripsPage(): React.JSX.Element {
   const visibleTrips = allTrips.filter(
     (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
   );
+  const kantoVisible =
+    period === "upcoming" && (normalizedQuery === "" || "kanto".includes(normalizedQuery));
 
   useEffect(() => {
     const dialog = newTripDialogRef.current;
@@ -326,7 +328,16 @@ export function TripsPage(): React.JSX.Element {
         ref={resultsScrollRef}
       >
         <div aria-live="polite" className="trip-results">
-          {visibleTrips.length === 0 ? (
+          {kantoVisible ? (
+            <Link className="imported-trip-link" to="/plan/kanto">
+              <span>
+                <strong>Kanto 2026</strong>
+                <small>27 Sep–1 Oct · Import places and build your plan</small>
+              </span>
+              <ChevronRight aria-hidden="true" size={20} />
+            </Link>
+          ) : null}
+          {visibleTrips.length === 0 && !kantoVisible ? (
             <div className="trip-results__empty">
               <h2>
                 {period === "past" && normalizedQuery.length === 0

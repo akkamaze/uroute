@@ -103,6 +103,12 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
+const kantoPlanRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/kanto",
+  component: lazyRouteComponent(() => import("./imports/ImportedPlacesPage"), "ImportedPlacesPage"),
+});
+
 const editPlanRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan/edit",
@@ -194,6 +200,7 @@ const userRoute = createRoute({
 const mobileShellTree = mobileShellRoute.addChildren([
   tripsRoute,
   planRoute,
+  kantoPlanRoute,
   bookingsRoute,
   expensesRoute,
   savedRoute,
