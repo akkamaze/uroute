@@ -440,3 +440,14 @@
     transition-duration: 1ms;
   }
 }
+
+.day-plan__browse-maps {
+  display: block;
+  margin: 18px auto 4px;
+  padding: 11px 16px;
+  border: 1px solid #bed6fa;
+  border-radius: 12px;
+  background: #f5f9ff;
+  color: #1769e8;
+  font-weight: 600;
+}

@@ -47,7 +47,7 @@ function isVisit(value: unknown): value is PlannedVisit {
 
   return (
     typeof visit.placeId === "string" &&
-    knownPlaceIds.has(visit.placeId) &&
+    (knownPlaceIds.has(visit.placeId) || /^import-[a-zA-Z0-9:_-]{1,180}$/.test(visit.placeId)) &&
     typeof visit.time === "string" &&
     /^(?:[01]\d|2[0-3]):[0-5]\d$|^$/.test(visit.time) &&
     typeof visit.notes === "string" &&

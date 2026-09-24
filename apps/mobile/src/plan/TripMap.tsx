@@ -79,6 +79,7 @@ interface TripMapProps {
   orderPlaces: PlaceCollection;
   selectedId: string | null;
   showLocate?: boolean;
+  showDayOrder?: boolean;
   variant?: "discovery" | "planner";
 }
 
@@ -309,6 +310,7 @@ export function TripMap({
   orderPlaces,
   selectedId,
   showLocate = true,
+  showDayOrder = true,
   variant = "planner",
 }: TripMapProps): React.JSX.Element {
   const [markerMode, setMarkerMode] = useState<"places" | "order">("places");
@@ -1151,25 +1153,27 @@ export function TripMap({
     >
       <div className="trip-map__canvas" ref={containerRef} />
 
-      <div className="trip-map__modes" role="group" aria-label="Map marker mode">
-        <button
-          type="button"
-          aria-pressed={markerMode === "places"}
-          onClick={() => setMarkerMode("places")}
-          title="Explore places and photos"
-        >
-          Places
-        </button>
-        <button
-          type="button"
-          aria-pressed={markerMode === "order"}
-          onClick={() => setMarkerMode("order")}
-          title="Show only this day's stops in visit order"
-        >
-          Day order
-        </button>
-      </div>
-      {markerMode === "order" && places.features.length === 0 ? (
+      {showDayOrder ? (
+        <div className="trip-map__modes" role="group" aria-label="Map marker mode">
+          <button
+            type="button"
+            aria-pressed={markerMode === "places"}
+            onClick={() => setMarkerMode("places")}
+            title="Explore places and photos"
+          >
+            Places
+          </button>
+          <button
+            type="button"
+            aria-pressed={markerMode === "order"}
+            onClick={() => setMarkerMode("order")}
+            title="Show only this day's stops in visit order"
+          >
+            Day order
+          </button>
+        </div>
+      ) : null}
+      {showDayOrder && markerMode === "order" && places.features.length === 0 ? (
         <p className="trip-map__empty-order">No stops planned for this day</p>
       ) : null}
       <div aria-label="Map controls" className="trip-map__controls" role="group">

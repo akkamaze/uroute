@@ -1,0 +1,114 @@
+.kanto-plan__maps-link {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: #263747;
+}
+.kanto-plan__stop {
+  width: 100%;
+}
+.kanto-plan__remove {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  place-items: center;
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #687789;
+}
+.kanto-plan__add {
+  display: grid;
+  place-items: center;
+  text-decoration: none;
+}
+.kanto-plan__import {
+  display: block;
+  width: fit-content;
+  margin: 0 auto 28px;
+  color: #1769e8;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.kanto-plan__missing {
+  display: grid;
+  gap: 12px;
+  padding: 28px;
+}
+.kanto-plan__missing h1,
+.kanto-plan__missing p {
+  margin: 0;
+}
+.kanto-plan__missing a {
+  color: #1769e8;
+}
+
+.kanto-plan__note {
+  margin: -3px 16px 12px 78px;
+  color: #657387;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.kanto-plan__edit-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) repeat(3, 38px);
+  align-items: end;
+  gap: 6px;
+  padding: 0 10px 14px;
+}
+.kanto-plan__edit-row label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #657387;
+  font-size: 11px;
+}
+.kanto-plan__edit-row input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 7px;
+  border: 1px solid #d7e1ec;
+  border-radius: 9px;
+  background: #fff;
+  color: #25364a;
+  font-size: 12px;
+}
+.kanto-plan__edit-row button {
+  display: grid;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #d7e1ec;
+  border-radius: 9px;
+  background: #f7faff;
+  color: #1769e8;
+}
+.kanto-plan__edit-row button:disabled {
+  opacity: 0.35;
+}
+
+.kanto-plan__legacy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 6px 16px 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f4f8ff;
+  color: #51637b;
+  font-size: 12px;
+}
+.kanto-plan__legacy button {
+  flex: none;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid #bed6fa;
+  border-radius: 9px;
+  background: #fff;
+  color: #1769e8;
+  font-weight: 600;
+}

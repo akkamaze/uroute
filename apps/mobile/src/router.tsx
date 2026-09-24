@@ -9,6 +9,7 @@ import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 import { FRIDAY_STOPS } from "./plan/plan-data";
+import { isMapDestination, type ImportDestinationTrip } from "./imports/map-destination";
 
 interface LoginSearch {
   profile?: "open";
@@ -103,10 +104,36 @@ const planRoute = createRoute({
   component: lazyRouteComponent(() => import("./plan/PlanPage"), "PlanPage"),
 });
 
+const mapsRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/maps",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
+    trip?: ImportDestinationTrip;
+    day?: string;
+    place?: string;
+  } => ({
+    ...(isMapDestination({ trip: search.trip, day: search.day })
+      ? { trip: search.trip as ImportDestinationTrip, day: search.day as string }
+      : {}),
+    ...(typeof search.place === "string" && search.place.length < 200
+      ? { place: search.place }
+      : {}),
+  }),
+  component: lazyRouteComponent(() => import("./imports/ImportedPlacesPage"), "ImportedPlacesPage"),
+});
+
+const createdTripPlanRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/trip/$tripId",
+  component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
+});
+
 const kantoPlanRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/kanto",
-  component: lazyRouteComponent(() => import("./imports/ImportedPlacesPage"), "ImportedPlacesPage"),
+  component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
 });
 
 const editPlanRoute = createRoute({
@@ -199,8 +226,10 @@ const userRoute = createRoute({
 
 const mobileShellTree = mobileShellRoute.addChildren([
   tripsRoute,
+  mapsRoute,
   planRoute,
   kantoPlanRoute,
+  createdTripPlanRoute,
   bookingsRoute,
   expensesRoute,
   savedRoute,

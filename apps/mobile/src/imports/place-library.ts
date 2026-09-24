@@ -15,9 +15,11 @@ export type KantoDay = (typeof KANTO_DAYS)[number]["date"];
 
 export interface ImportedVisit {
   id: string;
-  day: KantoDay;
+  day: string;
+  tripId?: string;
   placeId: string;
   time: string;
+  notes?: string;
   order: number;
 }
 
@@ -204,12 +206,13 @@ export async function loadImportedVisits(): Promise<ImportedVisit[]> {
 }
 
 export async function addImportedVisit(
-  day: KantoDay,
+  day: string,
   placeId: string,
+  tripId?: string,
 ): Promise<"added" | "duplicate"> {
   const database = await openDatabase();
   try {
-    const id = `${day}:${placeId}`;
+    const id = `${tripId ? `${tripId}:` : ""}${day}:${placeId}`;
     const transaction = database.transaction("visits", "readwrite");
     const store = transaction.objectStore("visits");
     const existing = await requestResult(store.get(id) as IDBRequest<ImportedVisit | undefined>);
@@ -218,9 +221,21 @@ export async function addImportedVisit(
     }
     const visits = await requestResult(store.getAll() as IDBRequest<ImportedVisit[]>);
     const nextOrder =
-      Math.max(0, ...visits.filter((visit) => visit.day === day).map((visit) => visit.order)) + 1;
+      Math.max(
+        0,
+        ...visits
+          .filter((visit) => visit.day === day && visit.tripId === tripId)
+          .map((visit) => visit.order),
+      ) + 1;
     const done = complete(transaction);
-    store.put({ id, day, placeId, time: "", order: nextOrder } satisfies ImportedVisit);
+    store.put({
+      id,
+      day,
+      ...(tripId ? { tripId } : {}),
+      placeId,
+      time: "",
+      order: nextOrder,
+    } satisfies ImportedVisit);
     await done;
 
     return "added";
@@ -229,13 +244,103 @@ export async function addImportedVisit(
   }
 }
 
-export async function removeImportedVisit(day: KantoDay, placeId: string): Promise<void> {
+export async function removeImportedVisit(
+  day: string,
+  placeId: string,
+  tripId?: string,
+): Promise<void> {
   const database = await openDatabase();
   try {
     const transaction = database.transaction("visits", "readwrite");
     const done = complete(transaction);
-    transaction.objectStore("visits").delete(`${day}:${placeId}`);
+    transaction.objectStore("visits").delete(`${tripId ? `${tripId}:` : ""}${day}:${placeId}`);
     await done;
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveImportedVisitDetails(
+  visitId: string,
+  time: string,
+  notes: string,
+): Promise<boolean> {
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$|^$/.test(time) || notes.length > 5_000) {
+    return false;
+  }
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("visits", "readwrite");
+    const store = transaction.objectStore("visits");
+    const existing = await requestResult(
+      store.get(visitId) as IDBRequest<ImportedVisit | undefined>,
+    );
+    if (existing === undefined) {
+      return false;
+    }
+    const done = complete(transaction);
+    store.put({ ...existing, time, notes } satisfies ImportedVisit);
+    await done;
+
+    return true;
+  } finally {
+    database.close();
+  }
+}
+
+export async function moveImportedVisit(visitId: string, direction: -1 | 1): Promise<boolean> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("visits", "readwrite");
+    const store = transaction.objectStore("visits");
+    const all = await requestResult(store.getAll() as IDBRequest<ImportedVisit[]>);
+    const current = all.find((visit) => visit.id === visitId);
+    if (current === undefined) {
+      return false;
+    }
+    const ordered = all
+      .filter((visit) => visit.day === current.day && visit.tripId === current.tripId)
+      .sort((a, b) => a.order - b.order);
+    const index = ordered.findIndex((visit) => visit.id === visitId);
+    const neighbor = ordered[index + direction];
+    if (neighbor === undefined) {
+      return false;
+    }
+    const done = complete(transaction);
+    store.put({ ...current, order: neighbor.order } satisfies ImportedVisit);
+    store.put({ ...neighbor, order: current.order } satisfies ImportedVisit);
+    await done;
+
+    return true;
+  } finally {
+    database.close();
+  }
+}
+
+export async function copyLegacyKantoVisits(tripId: string): Promise<number> {
+  const database = await openDatabase();
+  try {
+    const read = database.transaction("visits", "readonly");
+    const known = await requestResult(
+      read.objectStore("visits").getAll() as IDBRequest<ImportedVisit[]>,
+    );
+    const days = new Set<string>(KANTO_DAYS.map(({ date }) => date));
+    const existingIds = new Set(known.map(({ id }) => id));
+    const additions = known
+      .filter((visit) => visit.tripId === undefined && days.has(visit.day))
+      .flatMap((visit) => {
+        const id = `${tripId}:${visit.id}`;
+
+        return existingIds.has(id) ? [] : [{ ...visit, id, tripId }];
+      });
+    if (additions.length === 0) {return 0;}
+    const transaction = database.transaction("visits", "readwrite");
+    const done = complete(transaction);
+    const store = transaction.objectStore("visits");
+    additions.forEach((visit) => store.put(visit));
+    await done;
+
+    return additions.length;
   } finally {
     database.close();
   }
