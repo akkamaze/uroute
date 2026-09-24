@@ -1174,6 +1174,50 @@ test("closing a place opened from Maps search restores the result sheet", async 
   await expect(page.getByLabel("Search imported places")).toHaveValue("Tokyo");
 });
 
+test("system back from Maps Add to trip returns to the selected place", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page.getByLabel("Search imported places").press("Enter");
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page).toHaveURL(/add=open/);
+  await page.goBack();
+
+  await expect(page).not.toHaveURL(/add=open/);
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Add to plan" })).toHaveCount(0);
+});
+
+test("Maps search back closes the editor without stepping through older queries", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  const input = page.getByLabel("Search imported places");
+  await input.fill("Market");
+  await input.press("Enter");
+  await input.fill("Bridge");
+  await input.press("Enter");
+  await input.click();
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toBeVisible();
+  await page.getByRole("button", { name: "Close search" }).click();
+
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toHaveCount(0);
+  await expect(input).toHaveValue("Bridge");
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Market Tokyo" })).toHaveCount(0);
+});
+
 test("fits distant name-search matches on Maps without clustering them", async ({ page }) => {
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({

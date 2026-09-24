@@ -230,6 +230,42 @@ test("visible place back returns to the originating plan", async ({ page }) => {
   await expect(page.locator('[data-stop-id="nishiki"]')).toBeVisible();
 });
 
+test("place header Back skips earlier searches and returns to Plan", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.locator('[data-stop-id="nishiki"]').click();
+  const searchInput = page.getByRole("searchbox", { name: "Search places" });
+
+  await searchInput.fill("nishiki");
+  await searchInput.press("Enter");
+  await expect(page.getByRole("region", { name: "Search results", exact: true })).toBeVisible();
+  await searchInput.fill("arabica");
+  await searchInput.press("Enter");
+  await expect(page.getByRole("region", { name: "Search results", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/plan\?.*day=13/);
+});
+
+test("system back from Plan Add to trip returns to the selected place", async ({ page }) => {
+  await page.goto("/plan?day=13");
+  await page.locator('[data-stop-id="nishiki"]').click();
+  const searchInput = page.getByRole("searchbox", { name: "Search places" });
+  await searchInput.fill("arabica");
+  await searchInput.press("Enter");
+  await page
+    .getByRole("region", { name: "Search results", exact: true })
+    .getByRole("button", { name: /Arabica Higashiyama/ })
+    .click();
+  await page.getByRole("button", { name: "Add to trip" }).click();
+  await expect(page).toHaveURL(/add=open/);
+  await page.goBack();
+
+  await expect(page).toHaveURL(/\/places\?.*place=arabica.*day=13/);
+  await expect(page).not.toHaveURL(/add=open/);
+  await expect(page.getByRole("heading", { name: "% Arabica Higashiyama", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to trip" })).toBeVisible();
+});
+
 test("only the itinerary scrolls while plan chrome stays fixed", async ({ page }) => {
   await page.goto("/plan?day=13");
 

@@ -1,8 +1,6 @@
 import {
   Link,
-  useCanGoBack,
   useNavigate,
-  useRouter,
   useRouterState,
   useSearch,
 } from "@tanstack/react-router";
@@ -99,9 +97,7 @@ function getWindowHeight(): number {
 
 export function PlaceDetailsPage(): React.JSX.Element {
   const layoutHeight = useSyncExternalStore(subscribeWindowResize, getWindowHeight);
-  const canGoBack = useCanGoBack();
   const navigate = useNavigate();
-  const router = useRouter();
   const search = useSearch({ from: "/places" });
   const selectionHistoryBoundary = useRouterState({
     select: (state) =>
@@ -340,12 +336,6 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function goBack(): void {
-    if (canGoBack) {
-      router.history.back();
-
-      return;
-    }
-
     void navigate({
       replace: true,
       resetScroll: false,
