@@ -1,4 +1,4 @@
-import type { ImportedLine, ImportedPoint } from "./parse-place-file";
+import type { ImportedGeometry, ImportedPoint } from "./parse-place-file";
 
 const DATABASE_NAME = "uroute-imported-places";
 const DATABASE_VERSION = 2;
@@ -34,12 +34,18 @@ export function sameImportedPlace(left: ImportedPoint, right: ImportedPoint): bo
   );
 }
 
-export function sameImportedLine(left: ImportedLine, right: ImportedLine): boolean {
+function geometryCoordinates(
+  geometry: ImportedGeometry,
+): [number, number][] | [number, number][][] {
+  return "coordinates" in geometry ? geometry.coordinates : geometry.rings;
+}
+
+export function sameImportedGeometry(left: ImportedGeometry, right: ImportedGeometry): boolean {
   return (
     left.sourceKey === right.sourceKey ||
     (left.name.trim().toLocaleLowerCase() === right.name.trim().toLocaleLowerCase() &&
       left.folder.trim().toLocaleLowerCase() === right.folder.trim().toLocaleLowerCase() &&
-      JSON.stringify(left.coordinates) === JSON.stringify(right.coordinates))
+      JSON.stringify(geometryCoordinates(left)) === JSON.stringify(geometryCoordinates(right)))
   );
 }
 
@@ -97,17 +103,17 @@ export async function loadImportedPlaces(): Promise<ImportedPoint[]> {
   }
 }
 
-export async function loadImportedLines(): Promise<ImportedLine[]> {
+export async function loadImportedGeometries(): Promise<ImportedGeometry[]> {
   const database = await openDatabase();
   try {
-    const lines = await requestResult(
+    const geometries = await requestResult(
       database
         .transaction("geometries", "readonly")
         .objectStore("geometries")
-        .getAll() as IDBRequest<ImportedLine[]>,
+        .getAll() as IDBRequest<ImportedGeometry[]>,
     );
 
-    return lines.sort(
+    return geometries.sort(
       (left, right) =>
         left.folder.localeCompare(right.folder) || left.name.localeCompare(right.name),
     );
@@ -117,15 +123,15 @@ export async function loadImportedLines(): Promise<ImportedLine[]> {
 }
 export async function saveImportedContent(
   points: readonly ImportedPoint[],
-  lines: readonly ImportedLine[],
-): Promise<{ placeCount: number; lineCount: number }> {
+  geometries: readonly ImportedGeometry[],
+): Promise<{ placeCount: number; lineCount: number; areaCount: number }> {
   const database = await openDatabase();
   try {
     const readTransaction = database.transaction(["places", "geometries"], "readonly");
-    const [knownPlaces, knownLines] = await Promise.all([
+    const [knownPlaces, knownGeometries] = await Promise.all([
       requestResult(readTransaction.objectStore("places").getAll() as IDBRequest<ImportedPoint[]>),
       requestResult(
-        readTransaction.objectStore("geometries").getAll() as IDBRequest<ImportedLine[]>,
+        readTransaction.objectStore("geometries").getAll() as IDBRequest<ImportedGeometry[]>,
       ),
     ]);
     const knownIds = new Set(knownPlaces.map((point) => point.id));
@@ -133,23 +139,28 @@ export async function saveImportedContent(
       (point) =>
         !knownIds.has(point.id) && !knownPlaces.some((known) => sameImportedPlace(point, known)),
     );
-    const knownLineIds = new Set(knownLines.map((line) => line.id));
-    const newLines = lines.filter(
-      (line) =>
-        !knownLineIds.has(line.id) && !knownLines.some((known) => sameImportedLine(line, known)),
+    const knownGeometryIds = new Set(knownGeometries.map((geometry) => geometry.id));
+    const newGeometries = geometries.filter(
+      (geometry) =>
+        !knownGeometryIds.has(geometry.id) &&
+        !knownGeometries.some((known) => sameImportedGeometry(geometry, known)),
     );
-    if (newPoints.length === 0 && newLines.length === 0) {
-      return { placeCount: 0, lineCount: 0 };
+    if (newPoints.length === 0 && newGeometries.length === 0) {
+      return { placeCount: 0, lineCount: 0, areaCount: 0 };
     }
     const transaction = database.transaction(["places", "geometries"], "readwrite");
     const done = complete(transaction);
     const placeStore = transaction.objectStore("places");
     const geometryStore = transaction.objectStore("geometries");
     newPoints.forEach((point) => placeStore.put(point));
-    newLines.forEach((line) => geometryStore.put(line));
+    newGeometries.forEach((geometry) => geometryStore.put(geometry));
     await done;
 
-    return { placeCount: newPoints.length, lineCount: newLines.length };
+    return {
+      placeCount: newPoints.length,
+      lineCount: newGeometries.filter((geometry) => "coordinates" in geometry).length,
+      areaCount: newGeometries.filter((geometry) => "rings" in geometry).length,
+    };
   } finally {
     database.close();
   }

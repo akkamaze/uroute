@@ -7,11 +7,11 @@ import { TripMap } from "../plan/TripMap";
 import {
   addImportedVisit,
   KANTO_DAYS,
-  loadImportedLines,
+  loadImportedGeometries,
   loadImportedPlaces,
   loadImportedVisits,
   removeImportedVisit,
-  sameImportedLine,
+  sameImportedGeometry,
   sameImportedPlace,
   saveImportedContent,
   type ImportedVisit,
@@ -19,7 +19,7 @@ import {
 } from "./place-library";
 import {
   parsePlaceFile,
-  type ImportedLine,
+  type ImportedGeometry,
   type ImportedPoint,
   type ImportPreview,
 } from "./parse-place-file";
@@ -43,14 +43,21 @@ function toMapPlaces(points: readonly ImportedPoint[], numbered = false): PlaceC
   };
 }
 
-function toMapGeometry(lines: readonly ImportedLine[]): MapGeometryCollection {
+function toMapGeometry(geometries: readonly ImportedGeometry[]): MapGeometryCollection {
   return {
     type: "FeatureCollection",
-    features: lines.map((line) => ({
+    features: geometries.map((item) => ({
       type: "Feature",
-      id: line.id,
-      geometry: { type: "LineString", coordinates: line.coordinates },
-      properties: { id: line.id, kind: "line", name: line.name },
+      id: item.id,
+      geometry:
+        "coordinates" in item
+          ? { type: "LineString", coordinates: item.coordinates }
+          : { type: "Polygon", coordinates: item.rings },
+      properties: {
+        id: item.id,
+        kind: "coordinates" in item ? "line" : "area",
+        name: item.name,
+      },
     })),
   };
 }
@@ -63,7 +70,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedRef = useRef<HTMLElement>(null);
   const [places, setPlaces] = useState<ImportedPoint[]>([]);
-  const [lines, setLines] = useState<ImportedLine[]>([]);
+  const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -77,11 +84,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([loadImportedPlaces(), loadImportedLines(), loadImportedVisits()])
-      .then(([storedPlaces, storedLines, storedVisits]) => {
+    void Promise.all([loadImportedPlaces(), loadImportedGeometries(), loadImportedVisits()])
+      .then(([storedPlaces, storedGeometries, storedVisits]) => {
         if (active) {
           setPlaces(storedPlaces);
-          setLines(storedLines);
+          setGeometries(storedGeometries);
           setVisits(storedVisits);
         }
       })
@@ -97,8 +104,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
   }, []);
 
   const folders = useMemo(
-    () => ["All folders", ...new Set([...places, ...lines].map((item) => item.folder))],
-    [lines, places],
+    () => ["All folders", ...new Set([...places, ...geometries].map((item) => item.folder))],
+    [geometries, places],
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visiblePlaces = useMemo(
@@ -111,15 +118,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
       ),
     [folder, normalizedQuery, places],
   );
-  const visibleLines = useMemo(
+  const visibleGeometries = useMemo(
     () =>
-      lines.filter(
-        (line) =>
-          (folder === "All folders" || line.folder === folder) &&
+      geometries.filter(
+        (item) =>
+          (folder === "All folders" || item.folder === folder) &&
           (normalizedQuery === "" ||
-            `${line.name} ${line.folder}`.toLocaleLowerCase().includes(normalizedQuery)),
+            `${item.name} ${item.folder}`.toLocaleLowerCase().includes(normalizedQuery)),
       ),
-    [folder, lines, normalizedQuery],
+    [folder, geometries, normalizedQuery],
   );
   const dayPlaces = useMemo(
     () =>
@@ -138,8 +145,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [dayPlaces, view, visiblePlaces],
   );
   const mapGeometry = useMemo(
-    () => toMapGeometry(view === "plan" ? lines : visibleLines),
-    [lines, view, visibleLines],
+    () => toMapGeometry(view === "plan" ? geometries : visibleGeometries),
+    [geometries, view, visibleGeometries],
   );
   const orderPlaces = useMemo(() => toMapPlaces(dayPlaces, true), [dayPlaces]);
   const displayedPlaces = view === "plan" ? dayPlaces : visiblePlaces;
@@ -147,8 +154,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
     preview?.points.filter((point) => places.some((place) => sameImportedPlace(point, place)))
       .length ?? 0;
   const knownPreviewLineCount =
-    preview?.lines.filter((line) => lines.some((known) => sameImportedLine(line, known))).length ??
-    0;
+    preview?.lines.filter((line) => geometries.some((known) => sameImportedGeometry(line, known)))
+      .length ?? 0;
+  const knownPreviewAreaCount =
+    preview?.areas.filter((area) => geometries.some((known) => sameImportedGeometry(area, known)))
+      .length ?? 0;
+  const lineCount = geometries.filter((item) => "coordinates" in item).length;
+  const areaCount = geometries.length - lineCount;
   const existingCoordinateCount =
     preview?.points.filter(
       (point) =>
@@ -191,19 +203,19 @@ export function ImportedPlacesPage(): React.JSX.Element {
     setBusy(true);
     setError("");
     try {
-      const saved = await saveImportedContent(preview.points, preview.lines);
-      const [storedPlaces, storedLines] = await Promise.all([
+      const saved = await saveImportedContent(preview.points, [...preview.lines, ...preview.areas]);
+      const [storedPlaces, storedGeometries] = await Promise.all([
         loadImportedPlaces(),
-        loadImportedLines(),
+        loadImportedGeometries(),
       ]);
       setPlaces(storedPlaces);
-      setLines(storedLines);
+      setGeometries(storedGeometries);
       setPreview(null);
       setView("places");
       setNotice(
-        saved.placeCount === 0 && saved.lineCount === 0
+        saved.placeCount === 0 && saved.lineCount === 0 && saved.areaCount === 0
           ? "These map items are already on this device."
-          : `${countLabel(saved.placeCount, "place")} and ${countLabel(saved.lineCount, "line")} imported.`,
+          : `${countLabel(saved.placeCount, "place")}, ${countLabel(saved.lineCount, "line")} and ${countLabel(saved.areaCount, "area")} imported.`,
       );
     } catch {
       setError("Import could not be saved on this device. No new map items were confirmed.");
@@ -294,12 +306,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
           <p className="imported-page__source-name">{preview.fileName}</p>
           <p>
             {preview.points.length} points · {preview.lines.length}{" "}
-            {preview.lines.length === 1 ? "line" : "lines"} · {preview.polygonCount}{" "}
-            {preview.polygonCount === 1 ? "area" : "areas"}
+            {preview.lines.length === 1 ? "line" : "lines"} · {preview.areas.length}{" "}
+            {preview.areas.length === 1 ? "area" : "areas"}
           </p>
           <p>{knownPreviewCount} points already on this device.</p>
           {knownPreviewLineCount > 0 ? (
             <p>{countLabel(knownPreviewLineCount, "line")} already on this device.</p>
+          ) : null}
+          {knownPreviewAreaCount > 0 ? (
+            <p>{countLabel(knownPreviewAreaCount, "area")} already on this device.</p>
           ) : null}
           {existingCoordinateCount > 0 ? (
             <p className="imported-page__warning">
@@ -344,17 +359,23 @@ export function ImportedPlacesPage(): React.JSX.Element {
           </div>
           <button
             className="imported-page__confirm"
-            disabled={busy || (preview.points.length === 0 && preview.lines.length === 0)}
+            disabled={
+              busy ||
+              (preview.points.length === 0 &&
+                preview.lines.length === 0 &&
+                preview.areas.length === 0)
+            }
             onClick={() => void confirmImport()}
             type="button"
           >
-            Import {countLabel(preview.points.length - knownPreviewCount, "place")} and{" "}
-            {countLabel(preview.lines.length - knownPreviewLineCount, "line")}
+            Import {countLabel(preview.points.length - knownPreviewCount, "place")},{" "}
+            {countLabel(preview.lines.length - knownPreviewLineCount, "line")} and{" "}
+            {countLabel(preview.areas.length - knownPreviewAreaCount, "area")}
           </button>
         </section>
       )}
 
-      {places.length === 0 && lines.length === 0 ? (
+      {places.length === 0 && geometries.length === 0 ? (
         <div className="imported-page__empty">
           <MapPin aria-hidden="true" size={30} />
           <h2>Bring your places onto the map</h2>
@@ -377,8 +398,10 @@ export function ImportedPlacesPage(): React.JSX.Element {
               Plan <span>{visits.length}</span>
             </button>
           </div>
-          {lines.length > 0 ? (
-            <p className="imported-page__map-summary">{lines.length} imported lines shown on map</p>
+          {geometries.length > 0 ? (
+            <p className="imported-page__map-summary">
+              {countLabel(lineCount, "line")} and {countLabel(areaCount, "area")} shown on map
+            </p>
           ) : null}
           <div className="imported-page__map">
             <TripMap

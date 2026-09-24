@@ -29,11 +29,25 @@ export interface ImportedLine {
   mediaReferences: string[];
 }
 
+export interface ImportedArea {
+  id: string;
+  sourceKey: string;
+  sourceFile: string;
+  folder: string;
+  name: string;
+  description: string;
+  rings: [number, number][][];
+  styleRef: string;
+  mediaReferences: string[];
+}
+
+export type ImportedGeometry = ImportedArea | ImportedLine;
+
 export interface ImportPreview {
   fileName: string;
   points: ImportedPoint[];
   lines: ImportedLine[];
-  polygonCount: number;
+  areas: ImportedArea[];
   unsupportedCount: number;
   invalidCount: number;
   invalidGeometryCount: number;
@@ -163,6 +177,40 @@ function parseCoordinateSequence(value: string, minimumLength: number): [number,
   }
 
   return coordinates as [number, number][];
+}
+
+function parseLinearRing(boundary: Element): [number, number][] | null {
+  const ring = directChild(boundary, "LinearRing");
+  if (ring === undefined) {
+    return null;
+  }
+  const coordinates = parseCoordinateSequence(childText(ring, "coordinates"), 4);
+  const first = coordinates?.[0];
+  const last = coordinates?.at(-1);
+  if (
+    coordinates === null ||
+    first === undefined ||
+    last === undefined ||
+    first[0] !== last[0] ||
+    first[1] !== last[1]
+  ) {
+    return null;
+  }
+
+  return coordinates;
+}
+
+function parsePolygonRings(polygon: Element): [number, number][][] | null {
+  const outer = directChild(polygon, "outerBoundaryIs");
+  const outerRing = outer === undefined ? null : parseLinearRing(outer);
+  const innerRings = Array.from(polygon.children)
+    .filter((child) => child.localName === "innerBoundaryIs")
+    .map(parseLinearRing);
+  if (outerRing === null || innerRings.some((ring) => ring === null)) {
+    return null;
+  }
+
+  return [outerRing, ...(innerRings as [number, number][][])];
 }
 
 const SHA_256_INITIAL = new Uint32Array([
@@ -296,7 +344,7 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
     fileName: file.name,
     points: [],
     lines: [],
-    polygonCount: 0,
+    areas: [],
     unsupportedCount: 0,
     invalidCount: 0,
     invalidGeometryCount: 0,
@@ -338,8 +386,17 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
       return;
     }
     if (geometry?.localName === "Polygon") {
-      preview.polygonCount += 1;
-      preview.skipped.push({ name: name || `Item ${index + 1}`, reason: "Area" });
+      const rings = parsePolygonRings(geometry);
+      if (rings === null || name === "") {
+        preview.invalidGeometryCount += 1;
+        preview.skipped.push({
+          name: name || `Item ${index + 1}`,
+          reason: "Missing name or valid closed area coordinates",
+        });
+
+        return;
+      }
+      preview.areas.push({ ...shared, rings });
 
       return;
     }
@@ -371,10 +428,8 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
     });
   });
 
-  if (preview.polygonCount + preview.unsupportedCount > 0) {
-    preview.warnings.push(
-      "Areas and unsupported geometry are listed in this review but are not imported yet.",
-    );
+  if (preview.unsupportedCount > 0) {
+    preview.warnings.push("Unsupported geometry is listed in this review but is not imported yet.");
   }
   if (preview.invalidCount > 0) {
     preview.warnings.push(

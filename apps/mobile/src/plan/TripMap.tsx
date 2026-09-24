@@ -29,6 +29,8 @@ import {
 
 const POINT_SOURCE_ID = "trip-places";
 const GEOMETRY_SOURCE_ID = "trip-map-geometry";
+const AREA_FILL_LAYER_ID = "trip-map-area-fill";
+const AREA_OUTLINE_LAYER_ID = "trip-map-area-outline";
 const LINE_LAYER_ID = "trip-map-lines";
 const CLUSTER_LAYER_ID = "place-clusters";
 const SYMBOL_LAYER_ID = "place-symbols";
@@ -670,6 +672,27 @@ export function TripMap({
           type: "geojson",
           data: geometryRef.current,
           promoteId: "id",
+        });
+        activeMap.addLayer({
+          id: AREA_FILL_LAYER_ID,
+          type: "fill",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: {
+            "fill-color": "#1677ff",
+            "fill-opacity": 0.14,
+          },
+        });
+        activeMap.addLayer({
+          id: AREA_OUTLINE_LAYER_ID,
+          type: "line",
+          source: GEOMETRY_SOURCE_ID,
+          filter: ["==", ["geometry-type"], "Polygon"],
+          paint: {
+            "line-color": "#1677ff",
+            "line-opacity": 0.8,
+            "line-width": 2,
+          },
         });
         activeMap.addLayer({
           id: LINE_LAYER_ID,

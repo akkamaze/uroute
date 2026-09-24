@@ -20,8 +20,8 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("2 points · 1 line · 0 areas");
   await expect(review).toContainText("Tokyo: 2");
-  await review.getByRole("button", { name: "Import 2 places and 1 line" }).click();
-  await expect(page.getByRole("status")).toContainText("2 places and 1 line imported");
+  await review.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await expect(page.getByRole("status")).toContainText("2 places, 1 line and 0 areas imported");
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Market to this day" }).click();
@@ -37,7 +37,7 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
   await expect(review).toContainText("2 points already on this device");
   await expect(review).toContainText("1 line already on this device");
-  await review.getByRole("button", { name: "Import 0 places and 0 lines" }).click();
+  await review.getByRole("button", { name: "Import 0 places, 0 lines and 0 areas" }).click();
   await expect(page.getByRole("button", { name: "Places 2" })).toBeVisible();
 });
 
@@ -72,6 +72,47 @@ test("reviews KML when Web Crypto is unavailable", async ({ page }) => {
   );
 });
 
+test("imports a polygon with an inner ring and does not duplicate it", async ({ page }) => {
+  const polygon = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>Zones</name>
+<Placemark><name>Garden boundary</name><Polygon>
+<outerBoundaryIs><LinearRing><coordinates>139.70,35.60 139.80,35.60 139.80,35.70 139.70,35.70 139.70,35.60</coordinates></LinearRing></outerBoundaryIs>
+<innerBoundaryIs><LinearRing><coordinates>139.73,35.63 139.77,35.63 139.77,35.67 139.73,35.67 139.73,35.63</coordinates></LinearRing></innerBoundaryIs>
+</Polygon></Placemark></Folder></Document></kml>`;
+  const file = {
+    name: "polygon.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(polygon),
+  };
+  await page.route("https://tile.openstreetmap.org/**", (route) =>
+    route.fulfill({ path: "apps/mobile/public/images/kyoto.png", contentType: "image/png" }),
+  );
+  await page.goto("/plan/kanto");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
+  const review = page.getByRole("region", { name: "Import review" });
+  await expect(review).toContainText("0 points · 0 lines · 1 area");
+  await review.getByRole("button", { name: "Import 0 places, 0 lines and 1 area" }).click();
+  await expect(page.getByRole("status")).toContainText("0 places, 0 lines and 1 area imported");
+  await expect(page.getByText("0 lines and 1 area shown on map")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __urouteMapDiagnostics?: () => { geometryFeatureCount: number | null };
+            }
+          ).__urouteMapDiagnostics?.().geometryFeatureCount,
+      ),
+    )
+    .toBe(1);
+
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
+  await expect(review).toContainText("1 area already on this device");
+  await review.getByRole("button", { name: "Import 0 places, 0 lines and 0 areas" }).click();
+  await expect(page.getByRole("status")).toContainText("already on this device");
+});
+
 test("searches imported places by name and folder", async ({ page }) => {
   await page.goto("/plan/kanto");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
@@ -79,7 +120,7 @@ test("searches imported places by name and folder", async ({ page }) => {
     mimeType: "application/vnd.google-earth.kml+xml",
     buffer: Buffer.from(sample),
   });
-  await page.getByRole("button", { name: "Import 2 places and 1 line" }).click();
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
   await page.getByLabel("Search imported places").fill("Bridge");
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toHaveCount(0);
@@ -107,7 +148,7 @@ test("reviews a 1,200-point Unicode file and reports invalid coordinates", async
   await expect(review).toContainText("1200 points · 0 lines · 0 areas");
   await expect(review).toContainText("1 point needing correction");
   await expect(review).toContainText("日本: 1200");
-  await review.getByRole("button", { name: "Import 1200 places and 0 lines" }).click();
+  await review.getByRole("button", { name: "Import 1200 places, 0 lines and 0 areas" }).click();
   await expect(page.getByRole("button", { name: "Places 1200" })).toBeVisible();
   await expect(page.getByRole("button", { name: "東京 1 日本" })).toBeVisible();
 });
@@ -126,7 +167,7 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("463 points · 9 lines · 1 area");
   await expect(review).toContainText("CENTRAL TOKYO: 101");
-  await review.getByRole("button", { name: "Import 463 places and 9 lines" }).click();
+  await review.getByRole("button", { name: "Import 463 places, 9 lines and 1 area" }).click();
   await expect(page.getByRole("button", { name: "Places 463" })).toBeVisible();
   await expect
     .poll(() =>
@@ -142,5 +183,5 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
         ).__urouteMapDiagnostics?.(),
       ),
     )
-    .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 9 });
+    .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 10 });
 });
