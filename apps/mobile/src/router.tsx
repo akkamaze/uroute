@@ -9,6 +9,7 @@ import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 import { FRIDAY_STOPS } from "./plan/plan-data";
+import { isBookingId, type Booking } from "./plan/bookings-data";
 
 interface LoginSearch {
   profile?: "open";
@@ -121,8 +122,9 @@ const editPlanRoute = createRoute({
 const bookingsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/bookings",
-  validateSearch: (search: Record<string, unknown>): { members?: "open" } =>
-    search.members === "open" ? { members: "open" } : {},
+  validateSearch: (search: Record<string, unknown>): { booking?: Booking["id"] } => ({
+    ...(isBookingId(search.booking) ? { booking: search.booking } : {}),
+  }),
   component: lazyRouteComponent(() => import("./plan/BookingsPage"), "BookingsPage"),
 });
 
