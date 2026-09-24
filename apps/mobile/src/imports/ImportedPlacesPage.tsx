@@ -195,6 +195,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const layersButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const destinationTripRef = useRef<HTMLSelectElement>(null);
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [places, setPlaces] = useState<ImportedPoint[]>([]);
@@ -231,6 +232,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    if (notice === "") {
+      return;
+    }
+    const timeout = window.setTimeout(() => setNotice(""), 4_000);
+
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   useEffect(() => {
     let active = true;
@@ -537,7 +547,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
   async function addToPlan(point: ImportedPoint): Promise<void> {
     setError("");
     if (globalMaps && destination === null) {
-      setError("Choose a trip and day before adding this place.");
+      setDestinationOpen(true);
+      setSheetCollapsed(false);
+      window.requestAnimationFrame(() =>
+        destinationTripRef.current?.focus({ preventScroll: true }),
+      );
 
       return;
     }
@@ -1056,6 +1070,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                   <div className="imported-page__destination-fields">
                     <select
                       aria-label="Destination trip"
+                      ref={destinationTripRef}
                       value={destination?.trip ?? ""}
                       onChange={(event) => {
                         const trip = event.target.value;

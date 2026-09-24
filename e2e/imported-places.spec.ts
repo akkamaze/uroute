@@ -54,6 +54,88 @@ test("shows the animated white uroute mark while map tiles load", async ({ page 
   await expect(loader).toBeHidden({ timeout: 15_000 });
 });
 
+test("shows KML photos in a swipeable gallery and on the map marker", async ({ page }) => {
+  await page.route("**/_kml_images/**", (route) =>
+    route.fulfill({
+      path: "apps/mobile/public/images/kyoto.png",
+      contentType: "image/png",
+    }),
+  );
+  const photos = ["a", "b", "c", "d", "e"].map(
+    (name) => `https://mymaps.usercontent.google.com/hostedimage/${name}.jpg`,
+  );
+  const photoKml = `<kml><Document><Placemark><name>Photo Stop</name>
+<description><![CDATA[<img src="${photos[0]}">]]></description>
+<ExtendedData><Data name="gx_media_links"><value>${photos.slice(1).join(" ")}</value></Data></ExtendedData>
+<Point><coordinates>139.770,35.680</coordinates></Point>
+</Placemark></Document></kml>`;
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "photos.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(photoKml),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __urouteMapDiagnostics?: () => { renderedPhotoIds: string[] };
+            }
+          ).__urouteMapDiagnostics?.().renderedPhotoIds.length,
+      ),
+    )
+    .toBe(1);
+  await page.getByRole("button", { name: "Photo Stop Unfiled" }).click();
+  const gallery = page.getByRole("region", { name: "Photo Stop photos" });
+  await expect(gallery.getByRole("button", { name: "View photo 1 of 5" })).toBeVisible();
+  await expect
+    .poll(() =>
+      gallery
+        .locator("img")
+        .first()
+        .evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await expect(gallery.getByRole("button", { name: "See all 5 photos" })).toBeVisible();
+  await expect(page.getByText("source media links")).toHaveCount(0);
+  await gallery.getByRole("button", { name: "See all 5 photos" }).click();
+  const viewer = page.getByRole("dialog", { name: "Photo Stop photos" });
+  await expect(viewer).toContainText("5 / 5");
+  await viewer.getByRole("button", { name: "Previous photo" }).click();
+  await expect(viewer).toContainText("4 / 5");
+  await expect(viewer.getByRole("link", { name: "Open original photo" })).toHaveAttribute(
+    "href",
+    photos[3]!,
+  );
+  await viewer.getByRole("button", { name: "Close photos" }).click();
+  await expect(viewer).not.toBeVisible();
+});
+
+test("clears the import notice and opens trip selection when Add has no destination", async ({
+  page,
+}) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  const notice = page.locator(".imported-page__notice");
+  await expect(notice).toContainText("2 places, 1 line and 0 areas imported");
+  await expect(notice).toBeHidden({ timeout: 6_000 });
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await page.getByRole("button", { name: "Add to plan" }).click();
+  const trip = page.getByLabel("Destination trip");
+  await expect(trip).toBeVisible();
+  await expect(trip).toBeFocused();
+  await trip.selectOption("kyoto");
+  await expect(page.getByRole("button", { name: /Add to Kyoto/ })).toBeVisible();
+});
+
 test("uses the KML map name instead of its file name for imported layers", async ({ page }) => {
   const file = {
     name: "export-2.kml",
@@ -121,7 +203,9 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await expect(review).toContainText("2 points · 1 line · 0 areas");
   await expect(review).toContainText("Tokyo: 2");
   await review.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
-  await expect(page.getByRole("status")).toContainText("2 places, 1 line and 0 areas imported");
+  await expect(page.locator(".imported-page__notice")).toContainText(
+    "2 places, 1 line and 0 areas imported",
+  );
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
 
   await page.getByRole("button", { name: "Market Tokyo" }).click();
@@ -210,7 +294,9 @@ test("imports a polygon with an inner ring and does not duplicate it", async ({ 
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("0 points · 0 lines · 1 area");
   await review.getByRole("button", { name: "Import 0 places, 0 lines and 1 area" }).click();
-  await expect(page.getByRole("status")).toContainText("0 places, 0 lines and 1 area imported");
+  await expect(page.locator(".imported-page__notice")).toContainText(
+    "0 places, 0 lines and 1 area imported",
+  );
   await expect(page.locator(".imported-page__map")).toBeVisible();
   await expect
     .poll(() =>
@@ -540,7 +626,9 @@ test("reviews a 1,200-point Unicode file and reports invalid coordinates", async
   await expect(review).toContainText("1 point needing correction");
   await expect(review).toContainText("日本: 1200");
   await review.getByRole("button", { name: "Import 1200 places, 0 lines and 0 areas" }).click();
-  await expect(page.getByRole("status")).toContainText("1200 places, 0 lines and 0 areas imported");
+  await expect(page.locator(".imported-page__notice")).toContainText(
+    "1200 places, 0 lines and 0 areas imported",
+  );
   await page.getByLabel("Search imported places").click();
   await page.getByLabel("Search imported places").press("Enter");
   await expect(
@@ -565,7 +653,9 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   await expect(review.getByText("KANTO TRIP 2026")).toBeVisible();
   await expect(review).toContainText("CENTRAL TOKYO: 101");
   await review.getByRole("button", { name: "Import 463 places, 9 lines and 1 area" }).click();
-  await expect(page.getByRole("status")).toContainText("463 places, 9 lines and 1 area imported");
+  await expect(page.locator(".imported-page__notice")).toContainText(
+    "463 places, 9 lines and 1 area imported",
+  );
   await page.getByLabel("Search imported places").click();
   await page.getByLabel("Search imported places").press("Enter");
   await expect(
