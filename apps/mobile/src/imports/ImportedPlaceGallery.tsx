@@ -92,6 +92,14 @@ export function ImportedPlaceGallery({
         }}
         ref={dialogRef}
       >
+        {activeUrl !== null && !failed.has(activeUrl) ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            className="imported-gallery__backdrop"
+            src={displayImportedImageUrl(activeUrl)}
+          />
+        ) : null}
         <header>
           <span>{activeIndex === null ? "" : `${activeIndex + 1} / ${images.length}`}</span>
           <button aria-label="Close photos" onClick={() => setActiveIndex(null)} type="button">
@@ -113,20 +121,12 @@ export function ImportedPlaceGallery({
           }}
         >
           {activeUrl !== null && !failed.has(activeUrl) ? (
-            <>
-              <img
-                alt=""
-                aria-hidden="true"
-                className="imported-gallery__backdrop"
-                src={displayImportedImageUrl(activeUrl)}
-              />
-              <img
-                alt={`${name}, photo ${(activeIndex ?? 0) + 1}`}
-                className="imported-gallery__photo"
-                onError={() => setFailed((current) => new Set(current).add(activeUrl))}
-                src={displayImportedImageUrl(activeUrl)}
-              />
-            </>
+            <img
+              alt={`${name}, photo ${(activeIndex ?? 0) + 1}`}
+              className="imported-gallery__photo"
+              onError={() => setFailed((current) => new Set(current).add(activeUrl))}
+              src={displayImportedImageUrl(activeUrl)}
+            />
           ) : (
             <p>Image unavailable.</p>
           )}

@@ -123,9 +123,12 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
   const viewer = page.getByRole("dialog", { name: "Photo Stop photos" });
   await expect(viewer).toContainText("5 / 5");
   expect(
-    await viewer.evaluate((dialog) => Math.abs(dialog.getBoundingClientRect().width - innerWidth)),
-  ).toBeLessThan(1);
-  await page.setViewportSize({ width: 574, height: 844 });
+    await viewer.locator(".imported-gallery__photo").evaluate((photo) => {
+      const bounds = photo.getBoundingClientRect();
+
+      return Math.abs(bounds.top + bounds.height / 2 - innerHeight / 2);
+    }),
+  ).toBeLessThan(2);
   expect(
     await viewer.evaluate((dialog) => Math.abs(dialog.getBoundingClientRect().width - innerWidth)),
   ).toBeLessThan(1);
@@ -133,6 +136,17 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
   await expect(viewer).toContainText("4 / 5");
   await expect(viewer.getByRole("link", { name: "Open original photo" })).toHaveCount(0);
   await expect(viewer.locator(".imported-gallery__backdrop")).toHaveCount(1);
+  expect(
+    await viewer.evaluate((dialog) => {
+      const backdrop = dialog.querySelector(".imported-gallery__backdrop");
+
+      return backdrop === null
+        ? Number.POSITIVE_INFINITY
+        : backdrop.getBoundingClientRect().top - dialog.getBoundingClientRect().top;
+    }),
+  ).toBeLessThanOrEqual(0);
+  await expect(viewer.locator("header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(viewer.locator("header span")).toHaveCSS("background-color", /rgba\(/);
   await viewer.getByRole("button", { name: "Close photos" }).click();
   await expect(viewer).not.toBeVisible();
   expect(osmRequests).toBe(0);
