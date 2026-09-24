@@ -30,6 +30,30 @@ test("opens the mobile file picker on first tap and accepts the same file again"
   }
 });
 
+test("shows the animated white uroute mark while map tiles load", async ({ page }) => {
+  await page.route("https://tile.openstreetmap.org/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.fulfill({
+      path: "apps/mobile/public/images/kyoto.png",
+      contentType: "image/png",
+    });
+  });
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  const loader = page.getByRole("status", { name: "Loading map" });
+  await expect(loader).toBeVisible();
+  await expect(loader.locator(".animated-brand-mark__route")).toHaveCSS(
+    "animation-name",
+    "map-route-loop",
+  );
+  await expect(loader).toBeHidden({ timeout: 15_000 });
+});
+
 test("uses the KML map name instead of its file name for imported layers", async ({ page }) => {
   const file = {
     name: "export-2.kml",
@@ -129,6 +153,7 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await review.getByRole("button", { name: "Import 0 places, 0 lines and 0 areas" }).click();
   await expect(page.getByRole("status")).toContainText("already on this device");
   await page.getByLabel("Search imported places").fill("");
+  await page.getByLabel("Search imported places").press("Enter");
   await expect(
     page.locator(".imported-page__list-heading span").getByText("2", { exact: true }),
   ).toBeVisible();
@@ -284,7 +309,7 @@ test("toggles imported file, geometry and folder layers without deleting places"
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
 
   await page.reload();
-  await page.getByRole("button", { name: "Map layers" }).click();
+  await expect(layers).toBeVisible();
   await expect(layers.getByRole("switch", { name: "Show lines in sample.kml" })).not.toBeChecked();
   await expect(layers.getByRole("switch", { name: "Show areas in osaka.kml" })).not.toBeChecked();
   await layers.getByRole("switch", { name: "Show areas in osaka.kml" }).check();
@@ -319,6 +344,7 @@ test("toggles imported file, geometry and folder layers without deleting places"
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
   await layers.getByRole("button", { name: "Close map layers" }).click();
   await page.getByLabel("Search imported places").fill("");
+  await page.getByLabel("Search imported places").press("Enter");
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(2);
   await page.getByRole("button", { name: "Map layers" }).click();
   await expect(layers.getByRole("switch", { name: "Show Tokyo in sample.kml" })).toBeChecked();
@@ -381,13 +407,118 @@ test("searches imported places by name and folder", async ({ page }) => {
     buffer: Buffer.from(sample),
   });
   await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  const mapPlaceCount = (): Promise<number | null | undefined> =>
+    page.evaluate(
+      () =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => { featureCount: number | null };
+          }
+        ).__urouteMapDiagnostics?.().featureCount,
+    );
+  await expect.poll(mapPlaceCount).toBe(2);
   await page.getByLabel("Search imported places").fill("Bridge");
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search results" })).toHaveCount(0);
+  await expect.poll(mapPlaceCount).toBe(2);
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toHaveCount(0);
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect.poll(mapPlaceCount).toBe(1);
   await page.getByLabel("Search imported places").fill("Tokyo");
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
+  await expect.poll(mapPlaceCount).toBe(1);
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  await expect.poll(mapPlaceCount).toBe(2);
   await page.getByLabel("Filter by folder").selectOption("Tokyo");
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
+  await page.getByLabel("Search imported places").fill("");
+  await expect(page.getByRole("heading", { name: "Recent" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Tokyo" })).toBeVisible();
+  await page.getByRole("button", { name: "Close search" }).click();
+  await expect(page.getByLabel("Search imported places")).toHaveValue("Tokyo");
+});
+
+test("keeps Maps view across tabs, centers a selected place above its sheet, and swipes the sheet down", async ({
+  page,
+}) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page
+    .getByRole("region", { name: "Search suggestions" })
+    .getByRole("button", { name: "Market Tokyo" })
+    .click();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+
+  const mapPosition = (): Promise<{
+    latitude: number;
+    longitude: number;
+    zoom: number;
+    offset: number;
+  } | null> =>
+    page.evaluate(() => {
+      const diagnostics = (
+        window as Window & {
+          __urouteMapDiagnostics?: () => {
+            center: { latitude: number; longitude: number };
+            moving: boolean;
+            selectedPoint: { x: number; y: number } | null;
+            zoom: number;
+          };
+        }
+      ).__urouteMapDiagnostics?.();
+      const map = document.querySelector(".imported-page__map");
+      const sheet = document.querySelector(".imported-page__content--open");
+      if (!diagnostics || diagnostics.moving || !diagnostics.selectedPoint || !map || !sheet) {
+        return null;
+      }
+      const visibleBottom = sheet.getBoundingClientRect().top - map.getBoundingClientRect().top;
+
+      return {
+        ...diagnostics.center,
+        zoom: diagnostics.zoom,
+        offset: Math.abs(diagnostics.selectedPoint.y - visibleBottom / 2),
+      };
+    });
+  await expect.poll(async () => (await mapPosition())?.offset).toBeLessThan(45);
+  const before = await mapPosition();
+  expect(before).not.toBeNull();
+
+  await page.getByRole("link", { name: "Trips" }).click();
+  await page.getByRole("link", { name: "Maps" }).click();
+  await expect(page.getByLabel("Search imported places")).toHaveValue("Market");
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  await expect.poll(async () => (await mapPosition())?.longitude).toBeCloseTo(before!.longitude, 3);
+  await expect.poll(async () => (await mapPosition())?.latitude).toBeCloseTo(before!.latitude, 3);
+  await expect.poll(async () => (await mapPosition())?.zoom).toBeCloseTo(before!.zoom, 1);
+
+  const handle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  expect(handle).not.toBeNull();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 160, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByRole("button", { name: "Expand place details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeHidden();
+  await page.getByRole("link", { name: "Trips" }).click();
+  await page.getByRole("link", { name: "Maps" }).click();
+  await expect(page.getByRole("button", { name: "Expand place details" })).toBeVisible();
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+
+  await page.getByLabel("Search imported places").fill("Brid");
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toBeVisible();
+  await page.getByRole("link", { name: "Trips" }).click();
+  await page.getByRole("link", { name: "Maps" }).click();
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toBeVisible();
+  await expect(page.getByLabel("Search imported places")).toHaveValue("Brid");
 });
 
 test("reviews a 1,200-point Unicode file and reports invalid coordinates", async ({ page }) => {
@@ -411,6 +542,7 @@ test("reviews a 1,200-point Unicode file and reports invalid coordinates", async
   await review.getByRole("button", { name: "Import 1200 places, 0 lines and 0 areas" }).click();
   await expect(page.getByRole("status")).toContainText("1200 places, 0 lines and 0 areas imported");
   await page.getByLabel("Search imported places").click();
+  await page.getByLabel("Search imported places").press("Enter");
   await expect(
     page.locator(".imported-page__list-heading span").getByText("1200", { exact: true }),
   ).toBeVisible();
@@ -435,6 +567,7 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   await review.getByRole("button", { name: "Import 463 places, 9 lines and 1 area" }).click();
   await expect(page.getByRole("status")).toContainText("463 places, 9 lines and 1 area imported");
   await page.getByLabel("Search imported places").click();
+  await page.getByLabel("Search imported places").press("Enter");
   await expect(
     page.locator(".imported-page__list-heading span").getByText("463", { exact: true }),
   ).toBeVisible();

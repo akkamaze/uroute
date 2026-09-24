@@ -12,6 +12,7 @@ import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import { useEffect, useRef, useState } from "react";
 
 import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
+import { MapLoading } from "./MapLoading";
 import { KYOTO_CENTER, type MapGeometryCollection, type PlaceCollection } from "./map-data";
 import {
   MAP_LABEL_GAP,
@@ -69,7 +70,10 @@ interface TripMapProps {
   bottomInset?: number;
   clusterAnchorPlaces?: PlaceCollection;
   expanded?: boolean;
+  focusSelectedId?: string | null;
   frameKey?: string;
+  initialViewport?: MapViewport | null;
+  onViewportChange?: (viewport: MapViewport) => void;
   onExpandedChange?: (expanded: boolean) => void;
   id?: string;
   geometry?: MapGeometryCollection;
@@ -81,6 +85,12 @@ interface TripMapProps {
   showLocate?: boolean;
   showDayOrder?: boolean;
   variant?: "discovery" | "planner";
+}
+
+export interface MapViewport {
+  latitude: number;
+  longitude: number;
+  zoom: number;
 }
 
 type MapStatus = "loading" | "ready" | "error";
@@ -96,6 +106,7 @@ interface MapDiagnosticsSnapshot {
   renderedClusterCount: number;
   renderedClusterLabels: string[];
   renderedSelectedIds: string[];
+  selectedPoint: { x: number; y: number } | null;
   placeLabels: { id: string; name: string; label: string }[];
   labelPlacements: { leftIds: string[]; rightIds: string[]; selectedSide: MapLabelSide | null };
   renderedPlaces: { id: string; x: number; y: number }[];
@@ -186,6 +197,25 @@ function framePlaces(
       padding: cameraPadding,
     },
   );
+}
+
+function focusMapPlace(
+  map: MapLibreMap,
+  places: PlaceCollection,
+  id: string | null,
+  bottomInset: number,
+  animated: boolean,
+): void {
+  const feature = places.features.find((place) => place.properties.id === id);
+  if (feature === undefined) {
+    return;
+  }
+  map.easeTo({
+    center: [feature.geometry.coordinates[0] ?? 0, feature.geometry.coordinates[1] ?? 0],
+    offset: [0, -bottomInset / 2],
+    zoom: Math.max(map.getZoom(), 14.5),
+    duration: animated ? 350 : 0,
+  });
 }
 
 function supportsWebGl(): boolean {
@@ -300,7 +330,10 @@ export function TripMap({
   bottomInset = 0,
   clusterAnchorPlaces,
   expanded: controlledExpanded,
+  focusSelectedId = null,
   frameKey,
+  initialViewport = null,
+  onViewportChange,
   onExpandedChange,
   id,
   inactive = false,
@@ -326,6 +359,10 @@ export function TripMap({
   const selectRef = useRef(onSelect);
   const geometryRef = useRef(geometry);
   const selectedIdRef = useRef(selectedId);
+  const focusSelectedIdRef = useRef(focusSelectedId);
+  const initialViewportRef = useRef(initialViewport);
+  const viewportChangeRef = useRef(onViewportChange);
+  const skippedRestoredFrameRef = useRef(false);
   const syncLabelPlacementRef = useRef<() => void>(() => undefined);
   const [localExpanded, setLocalExpanded] = useState(false);
   const expanded = controlledExpanded ?? localExpanded;
@@ -341,6 +378,8 @@ export function TripMap({
   selectRef.current = onSelect;
   geometryRef.current = geometry;
   selectedIdRef.current = selectedId;
+  focusSelectedIdRef.current = focusSelectedId;
+  viewportChangeRef.current = onViewportChange;
   bottomInsetRef.current = bottomInset;
   statusRef.current = status;
 
@@ -388,8 +427,10 @@ export function TripMap({
       map = new MapLibreMap({
         container,
         style: BASEMAP_STYLE,
-        center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
-        zoom: 13.4,
+        center: initialViewportRef.current
+          ? [initialViewportRef.current.longitude, initialViewportRef.current.latitude]
+          : [KYOTO_CENTER[0], KYOTO_CENTER[1]],
+        zoom: initialViewportRef.current?.zoom ?? 13.4,
         attributionControl: { compact: true },
         cooperativeGestures: false,
       });
@@ -435,6 +476,15 @@ export function TripMap({
           );
         })[0];
       const center = activeMap.getCenter();
+      const selectedFeature = placesRef.current.features.find(
+        (place) => place.properties.id === selectedIdRef.current,
+      );
+      const projectedSelected = selectedFeature
+        ? activeMap.project([
+            selectedFeature.geometry.coordinates[0] ?? 0,
+            selectedFeature.geometry.coordinates[1] ?? 0,
+          ])
+        : null;
 
       return {
         center: { latitude: center.lat, longitude: center.lng },
@@ -512,6 +562,9 @@ export function TripMap({
             : activeMap
                 .queryRenderedFeatures({ layers: [SELECTED_LAYER_ID] })
                 .map((feature) => String(feature.properties.id)),
+        selectedPoint: projectedSelected
+          ? { x: projectedSelected.x, y: projectedSelected.y }
+          : null,
         sourceId: POINT_SOURCE_ID,
         sourceLoaded: source !== null && activeMap.isSourceLoaded(POINT_SOURCE_ID),
         status: statusRef.current,
@@ -894,12 +947,21 @@ export function TripMap({
           .then(() => {
             if (!disposed) {
               applySelection();
-              framePlaces(
+              if (initialViewportRef.current === null) {
+                framePlaces(
+                  activeMap,
+                  placesRef.current,
+                  false,
+                  bottomInsetRef.current,
+                  geometryRef.current,
+                );
+              }
+              focusMapPlace(
                 activeMap,
                 placesRef.current,
-                false,
+                focusSelectedIdRef.current,
                 bottomInsetRef.current,
-                geometryRef.current,
+                false,
               );
               activeMap.triggerRepaint();
             }
@@ -948,6 +1010,15 @@ export function TripMap({
     activeMap.on("render", finishReady);
     activeMap.on("render", scheduleLabelPlacement);
     activeMap.on("moveend", scheduleLabelPlacement);
+    const reportViewport = (): void => {
+      const center = activeMap.getCenter();
+      viewportChangeRef.current?.({
+        latitude: center.lat,
+        longitude: center.lng,
+        zoom: activeMap.getZoom(),
+      });
+    };
+    activeMap.on("moveend", reportViewport);
     activeMap.on("idle", scheduleLabelPlacement);
     activeMap.once("idle", finishReady);
     tileTimer.id = window.setTimeout(() => {
@@ -960,6 +1031,7 @@ export function TripMap({
     resizeObserver.observe(container);
 
     return () => {
+      reportViewport();
       disposed = true;
       if (tileTimer.id !== undefined) {
         window.clearTimeout(tileTimer.id);
@@ -971,6 +1043,7 @@ export function TripMap({
       activeMap.off("render", finishReady);
       activeMap.off("render", scheduleLabelPlacement);
       activeMap.off("moveend", scheduleLabelPlacement);
+      activeMap.off("moveend", reportViewport);
       activeMap.off("idle", scheduleLabelPlacement);
       activeMap.off("idle", finishReady);
       if (labelPlacementFrame !== undefined) {
@@ -1022,8 +1095,17 @@ export function TripMap({
       .then(() => {
         if (mapRef.current === map) {
           syncSelectedPlace(map, places, selectedIdRef.current);
-          if (shouldFrame) {
+          if (
+            shouldFrame &&
+            initialViewportRef.current !== null &&
+            !skippedRestoredFrameRef.current
+          ) {
+            skippedRestoredFrameRef.current = true;
+          } else if (shouldFrame) {
             framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+          }
+          if (shouldFrame) {
+            focusMapPlace(map, places, focusSelectedIdRef.current, bottomInsetRef.current, true);
           }
           map.triggerRepaint();
         }
@@ -1095,6 +1177,17 @@ export function TripMap({
     syncSelectedPlace(map, placesRef.current, selectedId);
     map.triggerRepaint();
   }, [markerMode, selectedId]);
+
+  useEffect(() => {
+    if (focusSelectedId === null) {
+      return;
+    }
+    const map = mapRef.current;
+    if (map === null) {
+      return;
+    }
+    focusMapPlace(map, placesRef.current, focusSelectedId, bottomInset, true);
+  }, [bottomInset, focusSelectedId]);
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -1202,7 +1295,7 @@ export function TripMap({
         </button>
       </div>
 
-      {status === "loading" ? <p className="trip-map__status">Loading map…</p> : null}
+      {status === "loading" ? <MapLoading /> : null}
 
       {status === "error" ? (
         <div className="trip-map__error" role="alert">

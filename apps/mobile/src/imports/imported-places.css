@@ -789,15 +789,54 @@
   box-shadow: 0 -8px 30px rgb(19 43 70 / 16%);
 }
 
-.imported-page--maps .imported-page__content--open::before {
+.imported-page--maps .imported-page__sheet-handle {
+  display: flex;
+  min-height: 22px;
+  flex: none;
+  align-items: flex-start;
+  justify-content: center;
+  touch-action: none;
+}
+
+.imported-page--maps .imported-page__sheet-handle::before {
   width: 32px;
   height: 4px;
-  flex: none;
-  align-self: center;
-  margin: 0 0 12px;
   border-radius: 99px;
   background: #d5dde5;
   content: "";
+}
+
+.imported-page--maps
+  .imported-page__content--collapsed
+  > :not(.imported-page__sheet-handle, .imported-page__sheet-peek) {
+  display: none;
+}
+
+.imported-page__sheet-peek {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px;
+  border: 0;
+  background: #fff;
+  color: #263746;
+  text-align: left;
+  cursor: pointer;
+}
+
+.imported-page__sheet-peek span {
+  flex: 1;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imported-page__sheet-peek svg:last-child {
+  transform: rotate(180deg);
 }
 
 .imported-page--maps .imported-page__list-heading {
@@ -974,6 +1013,12 @@
   padding-top: calc(120px + env(safe-area-inset-top, 0px));
 }
 
+.imported-page__library-loading {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+}
+
 .imported-page--maps .imported-page__row button:first-child:last-child {
   width: 100%;
   flex: 1;
@@ -985,6 +1030,131 @@
 }
 
 .imported-page--maps .imported-page__filters label:focus-within {
+  outline: 2px solid #1769da;
+  outline-offset: 2px;
+}
+
+.imported-page--maps .imported-page__search-back,
+.imported-page--maps .imported-page__search-submit {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: #263746;
+  cursor: pointer;
+}
+
+.imported-page--maps .imported-page__search-back {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.imported-page--maps .imported-page__search-submit {
+  grid-column: 3;
+  grid-row: 1;
+  color: #1769da;
+}
+
+.imported-page--searching .imported-page__header {
+  padding-bottom: 12px;
+  background: #fff;
+  box-shadow: 0 1px 0 #e8edf2;
+}
+
+.imported-page--searching .imported-page__filters label {
+  background: #f3f5f7;
+  box-shadow: none;
+}
+
+.imported-page--searching .imported-page__filters label:focus-within {
+  outline: 0;
+}
+
+.imported-page--searching .imported-page__map {
+  display: none;
+}
+
+.imported-page__search-screen {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(94px + env(safe-area-inset-top, 0px)) 18px 24px;
+  background: #fff;
+}
+
+.imported-page__search-screen h2 {
+  margin: 0 0 12px;
+  color: #1e2b36;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.imported-page__search-list button {
+  display: flex;
+  width: 100%;
+  min-height: 62px;
+  align-items: center;
+  gap: 17px;
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid #edf0f3;
+  background: #fff;
+  color: #253645;
+  text-align: left;
+  cursor: pointer;
+}
+
+.imported-page__search-list button > svg {
+  flex: none;
+  margin: 0 10px;
+  color: #6b7b8c;
+}
+
+.imported-page__search-list button > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 15px;
+}
+
+.imported-page__search-list strong,
+.imported-page__search-list small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imported-page__search-list strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.imported-page__search-list small {
+  margin-top: 4px;
+  color: #788696;
+  font-size: 12px;
+}
+
+.imported-page__search-list button:active {
+  background: #f5f8fb;
+}
+
+.imported-page__search-empty {
+  margin: 8px 0;
+  color: #6d7d8e;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.imported-page--searching button:focus-visible {
   outline: 2px solid #1769da;
   outline-offset: 2px;
 }

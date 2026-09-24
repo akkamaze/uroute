@@ -18,6 +18,7 @@ import { loadImportedPlaces } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
 import type { ImportedPoint } from "../imports/parse-place-file";
 import { loadEditPlanDraft, visitsSignature } from "./edit-plan-store";
+import { MapLoading } from "./MapLoading";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
@@ -450,7 +451,7 @@ export function PlanPage(): React.JSX.Element {
               id="plan-map"
               role="region"
             >
-              <p className="trip-map__status">Loading map…</p>
+              <MapLoading />
             </div>
           }
         >

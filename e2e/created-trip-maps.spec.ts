@@ -33,7 +33,10 @@ test("creates a trip before using imported places and remembers the selected day
   await expect(page.getByRole("status")).toContainText("Market added to Kanto");
   await page.reload();
   await page.getByLabel("Search imported places").fill("Market");
-  await page.getByRole("button", { name: "Market" }).click();
+  await page
+    .getByRole("region", { name: "Search suggestions" })
+    .getByRole("button", { name: "Market Unfiled" })
+    .click();
   await page.getByRole("button", { name: /Add places to Kanto/ }).click();
   await expect(page.getByLabel("Destination day")).toHaveValue("2027-01-10");
   await page.goto("/trips");

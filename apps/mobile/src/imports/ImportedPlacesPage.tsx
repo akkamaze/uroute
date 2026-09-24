@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ChevronDown,
+  Clock3,
   FileUp,
   Layers,
   MapPin,
@@ -12,8 +13,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { attachContentSheetDrag } from "../places/content-sheet-drag";
 import type { MapGeometryCollection, PlaceCollection } from "../plan/map-data";
-import { TripMap } from "../plan/TripMap";
+import { MapLoading } from "../plan/MapLoading";
+import { TripMap, type MapViewport } from "../plan/TripMap";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
 import {
@@ -95,29 +98,132 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
 }
 
+const RECENT_SEARCHES_KEY = "uroute-map-searches:v1";
+const MAPS_STATE_KEY = "uroute-maps-state:v1";
+
+interface MapsState {
+  draftQuery: string;
+  folder: string;
+  layersOpen: boolean;
+  query: string;
+  searchEditing: boolean;
+  searchOpen: boolean;
+  searchWasOpen: boolean;
+  selectedId: string | null;
+  sheetCollapsed: boolean;
+  sheetScrollTop: number;
+  viewport: MapViewport | null;
+  visibleLimit: number;
+}
+
+function loadMapsState(): Partial<MapsState> {
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(MAPS_STATE_KEY) ?? "null");
+    if (typeof stored !== "object" || stored === null) {
+      return {};
+    }
+    const state = stored as Partial<MapsState>;
+    const viewport = state.viewport;
+
+    return {
+      draftQuery: typeof state.draftQuery === "string" ? state.draftQuery : "",
+      folder: typeof state.folder === "string" ? state.folder : "All folders",
+      layersOpen: state.layersOpen === true,
+      query: typeof state.query === "string" ? state.query : "",
+      searchEditing: state.searchEditing === true,
+      searchOpen: state.searchOpen === true,
+      searchWasOpen: state.searchWasOpen === true,
+      selectedId: typeof state.selectedId === "string" ? state.selectedId : null,
+      sheetCollapsed: state.sheetCollapsed === true,
+      sheetScrollTop: typeof state.sheetScrollTop === "number" ? state.sheetScrollTop : 0,
+      viewport:
+        viewport !== null &&
+        typeof viewport === "object" &&
+        Number.isFinite(viewport.latitude) &&
+        Number.isFinite(viewport.longitude) &&
+        Number.isFinite(viewport.zoom)
+          ? viewport
+          : null,
+      visibleLimit: typeof state.visibleLimit === "number" ? state.visibleLimit : 24,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function persistMapsSheetScroll(top: number): void {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(MAPS_STATE_KEY) ?? "null");
+    if (typeof saved === "object" && saved !== null) {
+      sessionStorage.setItem(MAPS_STATE_KEY, JSON.stringify({ ...saved, sheetScrollTop: top }));
+    }
+  } catch {
+    // Scrolling still works when browser storage is unavailable.
+  }
+}
+
+function persistMapsViewport(viewport: MapViewport): void {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(MAPS_STATE_KEY) ?? "null");
+    if (typeof saved === "object" && saved !== null) {
+      sessionStorage.setItem(MAPS_STATE_KEY, JSON.stringify({ ...saved, viewport }));
+    }
+  } catch {
+    // The map remains usable when browser storage is unavailable.
+  }
+}
+
+function loadRecentSearches(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "[]");
+
+    return Array.isArray(stored)
+      ? stored.filter((value): value is string => typeof value === "string").slice(0, 6)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function ImportedPlacesPage(): React.JSX.Element {
   const globalMaps = window.location.pathname === "/maps";
   const requested = new URLSearchParams(window.location.search);
+  const [savedMapsState] = useState<Partial<MapsState>>(() => (globalMaps ? loadMapsState() : {}));
   const layersButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [places, setPlaces] = useState<ImportedPoint[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(requested.get("place"));
+  const [selectedId, setSelectedId] = useState<string | null>(
+    requested.get("place") ?? savedMapsState.selectedId ?? null,
+  );
+  const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
+  const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  const [sheetDragOffset, setSheetDragOffset] = useState(0);
+  const [sheetCollapsed, setSheetCollapsed] = useState(savedMapsState.sheetCollapsed ?? false);
+  const sheetScrollTopRef = useRef(savedMapsState.sheetScrollTop ?? 0);
   const [destination, setDestination] = useState<MapDestination | null>(() => {
     const requestedDestination = { trip: requested.get("trip"), day: requested.get("day") };
 
     return isMapDestination(requestedDestination) ? requestedDestination : loadMapDestination();
   });
   const [selectedDay, setSelectedDay] = useState<KantoDay>(KANTO_DAYS[0].date);
-  const [folder, setFolder] = useState("All folders");
-  const [query, setQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [visibleLimit, setVisibleLimit] = useState(24);
+  const [folder, setFolder] = useState(savedMapsState.folder ?? "All folders");
+  const [query, setQuery] = useState(savedMapsState.query ?? "");
+  const [draftQuery, setDraftQuery] = useState(savedMapsState.draftQuery ?? "");
+  const [searchEditing, setSearchEditing] = useState(savedMapsState.searchEditing ?? false);
+  const [recentSearches, setRecentSearches] = useState(loadRecentSearches);
+  const [searchOpen, setSearchOpen] = useState(savedMapsState.searchOpen ?? false);
+  const [visibleLimit, setVisibleLimit] = useState(savedMapsState.visibleLimit ?? 24);
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [view, setView] = useState<"places" | "plan">("places");
-  const [layersOpen, setLayersOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(savedMapsState.layersOpen ?? false);
   const [hiddenLayers, setHiddenLayers] = useState(loadHiddenImportLayers);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -131,11 +237,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
           setPlaces(storedPlaces);
           setGeometries(storedGeometries);
           setVisits(storedVisits);
+          setLibraryLoading(false);
         }
       })
       .catch(() => {
         if (active) {
           setError("Imported places could not be read from this device.");
+          setLibraryLoading(false);
         }
       });
 
@@ -153,6 +261,45 @@ export function ImportedPlacesPage(): React.JSX.Element {
       saveMapDestination(destination);
     }
   }, [destination]);
+
+  useEffect(() => {
+    if (!globalMaps) {
+      return;
+    }
+    try {
+      sessionStorage.setItem(
+        MAPS_STATE_KEY,
+        JSON.stringify({
+          draftQuery,
+          folder,
+          layersOpen,
+          query,
+          searchEditing,
+          searchOpen,
+          searchWasOpen: searchWasOpenRef.current,
+          selectedId,
+          sheetCollapsed,
+          sheetScrollTop: sheetScrollTopRef.current,
+          viewport,
+          visibleLimit,
+        } satisfies MapsState),
+      );
+    } catch {
+      // Keep the current Maps view usable when browser storage is unavailable.
+    }
+  }, [
+    draftQuery,
+    folder,
+    globalMaps,
+    layersOpen,
+    query,
+    searchEditing,
+    searchOpen,
+    selectedId,
+    sheetCollapsed,
+    viewport,
+    visibleLimit,
+  ]);
 
   function toggleLayer(key: string): void {
     setHiddenLayers((current) => {
@@ -188,6 +335,18 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [geometries, places],
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedDraft = draftQuery.trim().toLocaleLowerCase();
+  const suggestedPlaces = useMemo(
+    () =>
+      normalizedDraft === ""
+        ? []
+        : places
+            .filter((place) =>
+              `${place.name} ${place.folder}`.toLocaleLowerCase().includes(normalizedDraft),
+            )
+            .slice(0, 20),
+    [normalizedDraft, places],
+  );
   const visiblePlaces = useMemo(
     () =>
       places.filter(
@@ -220,6 +379,51 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
+  const sheetOpen = globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined);
+
+  useEffect(() => {
+    if (!globalMaps || sheetRef.current === null) {
+      return;
+    }
+    const sheet = sheetRef.current;
+    const observer = new ResizeObserver(() => setSheetHeight(sheet.getBoundingClientRect().height));
+    observer.observe(sheet);
+
+    return () => observer.disconnect();
+  }, [globalMaps, places.length, geometries.length]);
+
+  useEffect(() => {
+    if (!globalMaps || sheetRef.current === null) {
+      return;
+    }
+
+    return attachContentSheetDrag(sheetRef.current, {
+      onDrag: setSheetDragOffset,
+      onRelease: (delta, duration) => {
+        setSheetDragOffset(0);
+        if (delta > 90 || (delta > 35 && duration < 280)) {
+          if (selectedPlace !== undefined && !searchOpen) {
+            setSheetCollapsed(true);
+            sheetScrollTopRef.current = 0;
+            persistMapsSheetScroll(0);
+            if (sheetRef.current !== null) {
+              sheetRef.current.scrollTop = 0;
+            }
+          } else {
+            setSearchOpen(false);
+          }
+        }
+      },
+      onCancel: () => setSheetDragOffset(0),
+    });
+  }, [globalMaps, places.length, geometries.length, selectedPlace, searchOpen]);
+
+  useEffect(() => {
+    if (sheetOpen && sheetRef.current !== null && sheetScrollTopRef.current > 0) {
+      sheetRef.current.scrollTop = sheetScrollTopRef.current;
+    }
+    // Restore saved scroll once after the sheet becomes visible.
+  }, [sheetOpen]);
   const clusterAnchorPlaces = useMemo(
     () => toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces),
     [dayPlaces, view, visiblePlaces],
@@ -379,6 +583,41 @@ export function ImportedPlacesPage(): React.JSX.Element {
     }
   }
 
+  function closeSearchEditing(): void {
+    setDraftQuery(query);
+    setSearchEditing(false);
+    setSearchOpen(searchWasOpenRef.current);
+    searchInputRef.current?.blur();
+  }
+
+  function submitSearch(value = draftQuery): void {
+    const nextQuery = value.trim();
+    setDraftQuery(nextQuery);
+    setQuery(nextQuery);
+    setSearchEditing(false);
+    setSearchOpen(true);
+    setSelectedId(null);
+    setFocusSelectedId(null);
+    setSheetCollapsed(false);
+    setVisibleLimit(24);
+    searchInputRef.current?.blur();
+
+    if (nextQuery !== "") {
+      const nextRecent = [
+        nextQuery,
+        ...recentSearches.filter(
+          (previous) => previous.toLocaleLowerCase() !== nextQuery.toLocaleLowerCase(),
+        ),
+      ].slice(0, 6);
+      setRecentSearches(nextRecent);
+      try {
+        localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(nextRecent));
+      } catch {
+        // Search works for this session when storage is unavailable.
+      }
+    }
+  }
+
   const folderFilter = (
     <select
       aria-label="Filter by folder"
@@ -402,14 +641,34 @@ export function ImportedPlacesPage(): React.JSX.Element {
         <Search aria-hidden="true" size={19} />
         <input
           aria-label="Search imported places"
-          onFocus={() => globalMaps && setSearchOpen(true)}
+          onFocus={() => {
+            if (globalMaps && !searchEditing) {
+              searchWasOpenRef.current = searchOpen;
+              setDraftQuery(query);
+              setSearchEditing(true);
+              setSearchOpen(false);
+            }
+          }}
           onChange={(event) => {
-            setQuery(event.target.value);
+            if (globalMaps) {
+              setDraftQuery(event.target.value);
+            } else {
+              setQuery(event.target.value);
+            }
             setVisibleLimit(24);
           }}
+          onKeyDown={(event) => {
+            if (globalMaps && event.key === "Enter") {
+              event.preventDefault();
+              submitSearch();
+            } else if (globalMaps && event.key === "Escape") {
+              closeSearchEditing();
+            }
+          }}
           placeholder="Search all imported places"
+          ref={searchInputRef}
           type="search"
-          value={query}
+          value={globalMaps ? draftQuery : query}
         />
       </label>
       {!globalMaps ? folderFilter : null}
@@ -417,7 +676,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
   );
 
   return (
-    <section className={globalMaps ? "imported-page imported-page--maps" : "imported-page"}>
+    <section
+      className={
+        globalMaps
+          ? `imported-page imported-page--maps${searchEditing ? " imported-page--searching" : ""}`
+          : "imported-page"
+      }
+    >
       <header className="imported-page__header">
         {!globalMaps ? (
           <Link aria-label="Back to trips" to="/trips">
@@ -435,35 +700,113 @@ export function ImportedPlacesPage(): React.JSX.Element {
             <p>27 Sep–1 Oct 2026 · saved on this device</p>
           </div>
         )}
-        <button
-          aria-controls="import-map-layers"
-          aria-expanded={layersOpen}
-          aria-label="Map layers"
-          className="imported-page__layers-button"
-          disabled={places.length === 0 && geometries.length === 0}
-          onClick={() => setLayersOpen(true)}
-          ref={layersButtonRef}
-          type="button"
-        >
-          <Layers aria-hidden="true" size={21} />
-        </button>
-        <label className="imported-page__import-button">
-          <FileUp aria-hidden="true" size={21} />
-          <input
-            accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
-            aria-label="Choose KML or KMZ file"
-            className="imported-page__file-input"
-            disabled={busy}
-            id="import-kml-file"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              event.currentTarget.value = "";
-              void chooseFile(file);
-            }}
-            type="file"
-          />
-        </label>
+        {globalMaps && searchEditing ? (
+          <button
+            aria-label="Close search"
+            className="imported-page__search-back"
+            onClick={closeSearchEditing}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={21} />
+          </button>
+        ) : (
+          <button
+            aria-controls="import-map-layers"
+            aria-expanded={layersOpen}
+            aria-label="Map layers"
+            className="imported-page__layers-button"
+            disabled={places.length === 0 && geometries.length === 0}
+            onClick={() => setLayersOpen(true)}
+            ref={layersButtonRef}
+            type="button"
+          >
+            <Layers aria-hidden="true" size={21} />
+          </button>
+        )}
+        {globalMaps && searchEditing ? (
+          <button
+            aria-label="Show map results"
+            className="imported-page__search-submit"
+            onClick={() => submitSearch()}
+            type="button"
+          >
+            <Search aria-hidden="true" size={21} />
+          </button>
+        ) : (
+          <label className="imported-page__import-button">
+            <FileUp aria-hidden="true" size={21} />
+            <input
+              accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
+              aria-label="Choose KML or KMZ file"
+              className="imported-page__file-input"
+              disabled={busy}
+              id="import-kml-file"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                void chooseFile(file);
+              }}
+              type="file"
+            />
+          </label>
+        )}
       </header>
+
+      {globalMaps && searchEditing ? (
+        <section aria-label="Search suggestions" className="imported-page__search-screen">
+          {normalizedDraft === "" ? (
+            <>
+              <h2>Recent</h2>
+              {recentSearches.length === 0 ? (
+                <p className="imported-page__search-empty">
+                  Search your imported places. Recent searches will appear here.
+                </p>
+              ) : (
+                <div className="imported-page__search-list">
+                  {recentSearches.map((recent) => (
+                    <button key={recent} onClick={() => submitSearch(recent)} type="button">
+                      <Clock3 aria-hidden="true" size={20} />
+                      <span>{recent}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <h2>Places</h2>
+              <div className="imported-page__search-list">
+                <button onClick={() => submitSearch()} type="button">
+                  <Search aria-hidden="true" size={20} />
+                  <span>Search “{draftQuery.trim()}” on map</span>
+                </button>
+                {suggestedPlaces.map((point) => (
+                  <button
+                    key={point.id}
+                    onClick={() => {
+                      submitSearch(point.name);
+                      setSelectedId(point.id);
+                      setFocusSelectedId(point.id);
+                      setSheetCollapsed(false);
+                      setSearchOpen(false);
+                    }}
+                    type="button"
+                  >
+                    <MapPin aria-hidden="true" size={20} />
+                    <span>
+                      <strong>{point.name}</strong>
+                      <small>{point.folder}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {suggestedPlaces.length === 0 ? (
+                <p className="imported-page__search-empty">No matching imported places.</p>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
 
       <ImportLayerMenu
         hidden={hiddenLayers}
@@ -574,7 +917,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
         </section>
       )}
 
-      {places.length === 0 && geometries.length === 0 ? (
+      {globalMaps && libraryLoading ? (
+        <div className="imported-page__library-loading">
+          <MapLoading />
+        </div>
+      ) : places.length === 0 && geometries.length === 0 ? (
         <div className="imported-page__empty">
           <MapPin aria-hidden="true" size={30} />
           <h2>Bring your places onto the map</h2>
@@ -614,14 +961,29 @@ export function ImportedPlacesPage(): React.JSX.Element {
               {countLabel(areaCount, "area")} shown on map
             </p>
           ) : null}
-          <div className="imported-page__map">
+          <div
+            aria-hidden={globalMaps && searchEditing}
+            className="imported-page__map"
+            inert={globalMaps && searchEditing}
+          >
             <TripMap
+              bottomInset={sheetOpen ? sheetHeight : 0}
               clusterAnchorPlaces={clusterAnchorPlaces}
+              focusSelectedId={globalMaps ? focusSelectedId : null}
               frameKey={`${view}:${selectedDay}:${folder}:${normalizedQuery}:${places.length}:${geometries.length}`}
               geometry={mapGeometry}
+              initialViewport={globalMaps ? (savedMapsState.viewport ?? null) : null}
               onSelect={(id) => {
                 setSelectedId(id);
+                setFocusSelectedId(id);
+                setSheetCollapsed(false);
                 setSearchOpen(false);
+              }}
+              onViewportChange={(next) => {
+                setViewport(next);
+                if (globalMaps) {
+                  persistMapsViewport(next);
+                }
               }}
               orderPlaces={orderPlaces}
               places={mapPlaces}
@@ -632,8 +994,37 @@ export function ImportedPlacesPage(): React.JSX.Element {
             />
           </div>
           <div
-            className={`imported-page__content${globalMaps ? (searchOpen || selectedPlace !== undefined ? " imported-page__content--open" : " imported-page__content--closed") : ""}`}
+            className={`imported-page__content${globalMaps ? (sheetOpen ? " imported-page__content--open" : " imported-page__content--closed") : ""}${globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen ? " imported-page__content--collapsed" : ""}`}
+            onScroll={
+              globalMaps
+                ? (event) => {
+                    sheetScrollTopRef.current = event.currentTarget.scrollTop;
+                    persistMapsSheetScroll(event.currentTarget.scrollTop);
+                  }
+                : undefined
+            }
+            ref={sheetRef}
+            style={
+              globalMaps && sheetDragOffset > 0
+                ? { transform: `translateY(${sheetDragOffset}px)` }
+                : undefined
+            }
           >
+            {globalMaps && sheetOpen ? (
+              <div aria-hidden="true" className="imported-page__sheet-handle" />
+            ) : null}
+            {globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen ? (
+              <button
+                aria-label="Expand place details"
+                className="imported-page__sheet-peek"
+                onClick={() => setSheetCollapsed(false)}
+                type="button"
+              >
+                <MapPin aria-hidden="true" size={18} />
+                <span>{selectedPlace.name}</span>
+                <ChevronDown aria-hidden="true" size={17} />
+              </button>
+            ) : null}
             {!globalMaps && view === "places" ? placeFilters : null}
             {globalMaps && selectedPlace !== undefined && !searchOpen ? (
               <div className="imported-page__destination" aria-label="Add to plan destination">
@@ -717,7 +1108,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
                   <button
                     aria-label="Close place details"
                     className="imported-page__selected-close"
-                    onClick={() => setSelectedId(null)}
+                    onClick={() => {
+                      setSelectedId(null);
+                      setFocusSelectedId(null);
+                      setSheetCollapsed(false);
+                    }}
                     type="button"
                   >
                     <X aria-hidden="true" size={18} />
@@ -792,6 +1187,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
                           <button
                             onClick={() => {
                               setSelectedId(point.id);
+                              setFocusSelectedId(point.id);
+                              setSheetCollapsed(false);
                               setSearchOpen(false);
                             }}
                             type="button"
