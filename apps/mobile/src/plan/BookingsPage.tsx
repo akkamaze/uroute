@@ -469,23 +469,17 @@ export function BookingsPage(): React.JSX.Element {
                   <span>Sample booking</span>
                   <strong>Have a great trip!</strong>
                 </div>
-                <Plane aria-hidden="true" size={25} strokeWidth={1.5} />
+                <svg
+                  aria-hidden="true"
+                  width="27"
+                  height="27"
+                  viewBox="0 0 32 32"
+                  fill="currentColor"
+                >
+                  <path d="M28 14.4c2.8 0 2.8 3.2 0 3.2h-8.5l-6.1 12-2.8-.7 3.2-11.3H7l-3.5 4H1l2.2-5.6L1 10.4h2.5l3.5 4h6.8L10.6 3.1l2.8-.7 6.1 12Z" />
+                </svg>
               </footer>
-              <svg
-                aria-hidden="true"
-                className="booking-ticket__landscape"
-                preserveAspectRatio="none"
-                viewBox="0 0 360 88"
-              >
-                <path
-                  d="M0 75 38 69 74 58 108 61 147 46 188 57 221 37 261 53 302 49 337 61 360 58V88H0Z"
-                  fill="#e9f3ff"
-                />
-                <path
-                  d="M0 82 45 76 85 81 129 68 166 73 206 57 239 69 282 60 318 72 360 67V88H0Z"
-                  fill="#dcecff"
-                />
-              </svg>
+              <div aria-hidden="true" className="booking-ticket__landscape" />
             </article>
             <button
               className="booking-dialog__share"

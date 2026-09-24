@@ -520,35 +520,9 @@
   position: fixed;
   inset: 0;
   background:
-    radial-gradient(ellipse at 83% 20%, rgb(255 255 255 / 96%), transparent 32%),
-    radial-gradient(ellipse at 13% 35%, rgb(255 255 255 / 70%), transparent 27%),
-    linear-gradient(180deg, #eef7ff 0%, #dcecff 100%);
+    url("./share-sky.svg") center / 100% 100% no-repeat,
+    #dfedfc;
   content: "";
-  pointer-events: none;
-}
-
-.booking-dialog::after {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 24vh;
-  background: linear-gradient(180deg, #b9d8f8, #a6cdf4);
-  clip-path: polygon(
-    0 56%,
-    12% 42%,
-    22% 49%,
-    33% 28%,
-    46% 52%,
-    59% 19%,
-    73% 44%,
-    84% 30%,
-    100% 49%,
-    100% 100%,
-    0 100%
-  );
-  content: "";
-  opacity: 0.55;
   pointer-events: none;
 }
 
@@ -605,8 +579,12 @@
   width: min(100%, 380px);
   overflow: hidden;
   border-radius: 24px;
-  background: linear-gradient(180deg, #fff 0%, #fff 55%, #f4f9ff 100%);
+  background: linear-gradient(180deg, #fff 0%, #fff 72%, #fbfdff 100%);
   box-shadow: 0 18px 55px rgb(38 83 132 / 13%);
+  mask-image:
+    radial-gradient(circle 13px at 0 calc(100% - 100px), transparent 12px, #000 13px),
+    radial-gradient(circle 13px at 100% calc(100% - 100px), transparent 12px, #000 13px);
+  mask-composite: intersect;
 }
 
 .booking-ticket__header,
@@ -843,25 +821,6 @@
   border-top: 2px dashed #c9dff4;
 }
 
-.booking-ticket__perforation::before,
-.booking-ticket__perforation::after {
-  position: absolute;
-  top: -14px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: #dcecff;
-  content: "";
-}
-
-.booking-ticket__perforation::before {
-  left: -33px;
-}
-
-.booking-ticket__perforation::after {
-  right: -33px;
-}
-
 .booking-ticket__footer {
   position: relative;
   z-index: 1;
@@ -879,6 +838,7 @@
   left: 0;
   width: 100%;
   height: 72px;
+  background: url("./share-mountains.svg") center bottom / 100% 100% no-repeat;
   pointer-events: none;
 }
 
@@ -964,10 +924,6 @@
     min-height: 170px;
     padding-top: 1rem;
     padding-bottom: 1rem;
-  }
-
-  .booking-ticket__footer {
-    min-height: 85px;
   }
 
   .booking-dialog__share {

@@ -1,4 +1,6 @@
 import type { Booking } from "./bookings-data";
+import shareSkyUrl from "./share-sky.svg";
+import shareMountainsUrl from "./share-mountains.svg";
 
 type ShareResult = "shared" | "downloaded" | "cancelled";
 
@@ -48,7 +50,19 @@ function drawWrappedText(
   context.fillText(line, x, lineY);
 }
 
-function drawBookingCard(booking: Booking): HTMLCanvasElement {
+async function loadArtwork(url: string): Promise<HTMLImageElement> {
+  const image = new Image();
+  image.src = url;
+  await image.decode();
+
+  return image;
+}
+
+async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
+  const [skyArtwork, mountainArtwork] = await Promise.all([
+    loadArtwork(shareSkyUrl),
+    loadArtwork(shareMountainsUrl),
+  ]);
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1350;
@@ -60,35 +74,16 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   const primary =
     booking.id === "stay" ? "#f5f4f0" : booking.group === "tickets" ? "#eef5f1" : "#eff6ff";
 
-  const sky = context.createLinearGradient(0, 0, 0, 1350);
-  sky.addColorStop(0, "#eef7ff");
-  sky.addColorStop(1, "#dcecff");
-  context.fillStyle = sky;
-  context.fillRect(0, 0, 1080, 1350);
-  context.globalAlpha = 0.45;
-  context.fillStyle = "#ffffff";
-  context.beginPath();
-  context.ellipse(900, 210, 280, 180, 0, 0, Math.PI * 2);
-  context.fill();
-  context.beginPath();
-  context.ellipse(95, 450, 220, 150, 0, 0, Math.PI * 2);
-  context.fill();
-  context.globalAlpha = 1;
+  context.drawImage(skyArtwork, 0, 0, canvas.width, canvas.height);
 
-  context.fillStyle = "#c2ddf9";
-  context.beginPath();
-  context.moveTo(0, 1230);
-  context.lineTo(145, 1170);
-  context.lineTo(265, 1200);
-  context.lineTo(405, 1130);
-  context.lineTo(555, 1220);
-  context.lineTo(710, 1115);
-  context.lineTo(865, 1195);
-  context.lineTo(965, 1160);
-  context.lineTo(1080, 1210);
-  context.lineTo(1080, 1350);
-  context.lineTo(0, 1350);
-  context.fill();
+  const backdrop = document.createElement("canvas");
+  backdrop.width = canvas.width;
+  backdrop.height = canvas.height;
+  const backdropContext = backdrop.getContext("2d");
+  if (backdropContext === null) {
+    throw new Error("Image canvas is unavailable.");
+  }
+  backdropContext.drawImage(canvas, 0, 0);
 
   const x = 90;
   const y = 210;
@@ -96,8 +91,8 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   const height = 930;
   const ticketFill = context.createLinearGradient(0, y, 0, y + height);
   ticketFill.addColorStop(0, "#ffffff");
-  ticketFill.addColorStop(0.55, "#ffffff");
-  ticketFill.addColorStop(1, "#f4f9ff");
+  ticketFill.addColorStop(0.72, "#ffffff");
+  ticketFill.addColorStop(1, "#fbfdff");
   context.fillStyle = ticketFill;
   roundedRect(context, x, y, width, height, 38);
   context.fill();
@@ -108,31 +103,7 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   context.save();
   roundedRect(context, x, y, width, height, 38);
   context.clip();
-  context.fillStyle = "#e9f3ff";
-  context.beginPath();
-  context.moveTo(x, 1090);
-  context.lineTo(x + 100, 1074);
-  context.lineTo(x + 205, 1060);
-  context.lineTo(x + 365, 1083);
-  context.lineTo(x + 520, 1047);
-  context.lineTo(x + 670, 1073);
-  context.lineTo(x + 790, 1064);
-  context.lineTo(x + width, 1082);
-  context.lineTo(x + width, y + height);
-  context.lineTo(x, y + height);
-  context.fill();
-  context.fillStyle = "#dcecff";
-  context.beginPath();
-  context.moveTo(x, 1120);
-  context.lineTo(x + 145, 1095);
-  context.lineTo(x + 280, 1110);
-  context.lineTo(x + 450, 1077);
-  context.lineTo(x + 590, 1092);
-  context.lineTo(x + 750, 1081);
-  context.lineTo(x + width, 1100);
-  context.lineTo(x + width, y + height);
-  context.lineTo(x, y + height);
-  context.fill();
+  context.drawImage(mountainArtwork, x, y + height - 150, width, 150);
   context.restore();
 
   context.textBaseline = "alphabetic";
@@ -256,23 +227,30 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   context.stroke();
   context.setLineDash([]);
 
-  context.fillStyle = "#dcecff";
-  context.beginPath();
-  context.arc(x, 995, 27, 0, Math.PI * 2);
-  context.arc(x + width, 995, 27, 0, Math.PI * 2);
-  context.fill();
-
   context.fillStyle = "#607487";
   context.font = "600 24px Arial, sans-serif";
   context.fillText("Sample booking", 150, 1045);
   context.fillStyle = "#21394d";
   context.font = "600 30px Arial, sans-serif";
   context.fillText("Have a great trip!", 150, 1090);
+  context.save();
   context.fillStyle = "#b6d0ef";
-  context.font = "44px Arial, sans-serif";
-  context.textAlign = "right";
-  context.fillText("✈", 930, 1080);
-  context.textAlign = "left";
+  context.translate(874, 1027);
+  context.scale(1.75, 1.75);
+  context.fill(
+    new Path2D(
+      "M28 14.4c2.8 0 2.8 3.2 0 3.2h-8.5l-6.1 12-2.8-.7 3.2-11.3H7l-3.5 4H1l2.2-5.6L1 10.4h2.5l3.5 4h6.8L10.6 3.1l2.8-.7 6.1 12Z",
+    ),
+  );
+  context.restore();
+
+  context.save();
+  context.beginPath();
+  context.arc(x, 995, 27, 0, Math.PI * 2);
+  context.arc(x + width, 995, 27, 0, Math.PI * 2);
+  context.clip();
+  context.drawImage(backdrop, 0, 0);
+  context.restore();
 
   return canvas;
 }
@@ -290,7 +268,7 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 export async function shareBookingCard(booking: Booking): Promise<ShareResult> {
-  const canvas = drawBookingCard(booking);
+  const canvas = await drawBookingCard(booking);
   const blob = await canvasToBlob(canvas);
   const filename = `uroute-${booking.id}-card.png`;
   const file = new File([blob], filename, { type: "image/png" });
