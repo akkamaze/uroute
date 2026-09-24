@@ -90,6 +90,56 @@ function toMapPlaces(
   };
 }
 
+function SearchPlaceThumbnail({ point }: { point: ImportedPoint }): React.JSX.Element {
+  const imageUrl = displayImportedImageUrl(importedPlaceImages(point)[0]);
+  const elementRef = useRef<HTMLSpanElement>(null);
+  const [nearViewport, setNearViewport] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    if (imageUrl === undefined || nearViewport) {
+      return;
+    }
+    const element = elementRef.current;
+
+    if (element === null || typeof IntersectionObserver === "undefined") {
+      setNearViewport(true);
+
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setNearViewport(true);
+          observer.disconnect();
+        }
+      },
+      { root: element.closest(".imported-page__search-screen"), rootMargin: "64px 0px" },
+    );
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [imageUrl, nearViewport]);
+
+  return (
+    <span aria-hidden="true" className="imported-page__search-thumbnail" ref={elementRef}>
+      {imageUrl !== undefined && nearViewport && !imageFailed ? (
+        <img
+          alt=""
+          decoding="async"
+          fetchPriority="low"
+          loading="lazy"
+          onError={() => setImageFailed(true)}
+          src={imageUrl}
+        />
+      ) : (
+        <MapPin size={20} />
+      )}
+    </span>
+  );
+}
+
 function toMapGeometry(geometries: readonly ImportedGeometry[]): MapGeometryCollection {
   return {
     type: "FeatureCollection",
@@ -883,7 +933,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                     }}
                     type="button"
                   >
-                    <MapPin aria-hidden="true" size={20} />
+                    <SearchPlaceThumbnail point={point} />
                     <span>
                       <strong>{point.name}</strong>
                       <small>{point.folder}</small>

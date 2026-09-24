@@ -17,6 +17,51 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("Maps suggestions preview imported photos and keep a pin when no photo exists", async ({
+  page,
+}) => {
+  await page.route("https://example.com/market.jpg", (route) =>
+    route.fulfill({ path: "apps/mobile/public/images/kyoto.png", contentType: "image/png" }),
+  );
+  await page.goto("/maps");
+  if ((await page.locator(".imported-page__header .imported-page__file-input").count()) === 0) {
+    await page.getByRole("button", { name: "Map layers" }).click();
+  }
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "search-photos.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(`<kml><Document>
+      <Placemark><name>Market photo</name><description><![CDATA[<img src="https://example.com/market.jpg">]]></description><Point><coordinates>139.77,35.68</coordinates></Point></Placemark>
+      <Placemark><name>Market plain</name><Point><coordinates>139.78,35.69</coordinates></Point></Placemark>
+    </Document></kml>`),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 0 lines and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+
+  const suggestions = page.getByRole("region", { name: "Search suggestions" });
+  const photoRow = suggestions.getByRole("button", { name: "Market photo Unfiled" });
+  const plainRow = suggestions.getByRole("button", { name: "Market plain Unfiled" });
+  await expect(
+    photoRow.locator("img"),
+  ).toBeVisible();
+  const [photoThumbnail, plainThumbnail, photoTitle, plainTitle] = await Promise.all([
+    photoRow.locator(".imported-page__search-thumbnail").boundingBox(),
+    plainRow.locator(".imported-page__search-thumbnail").boundingBox(),
+    photoRow.locator("strong").boundingBox(),
+    plainRow.locator("strong").boundingBox(),
+  ]);
+  expect(photoThumbnail).not.toBeNull();
+  expect(plainThumbnail).not.toBeNull();
+  expect(photoTitle).not.toBeNull();
+  expect(plainTitle).not.toBeNull();
+  expect(Math.abs(photoThumbnail!.width - photoThumbnail!.height)).toBeLessThan(1);
+  expect(Math.abs(plainThumbnail!.width - plainThumbnail!.height)).toBeLessThan(1);
+  expect(Math.abs(photoThumbnail!.x - plainThumbnail!.x)).toBeLessThan(1);
+  expect(Math.abs(photoTitle!.x - plainTitle!.x)).toBeLessThan(1);
+  await expect(plainRow.locator("img")).toHaveCount(0);
+  await expect(plainRow.locator("svg")).toHaveCount(1);
+});
+
 test("opens the mobile file picker on first tap and accepts the same file again", async ({
   page,
 }) => {
