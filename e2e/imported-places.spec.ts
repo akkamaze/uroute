@@ -125,6 +125,10 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
   expect(
     await viewer.evaluate((dialog) => Math.abs(dialog.getBoundingClientRect().width - innerWidth)),
   ).toBeLessThan(1);
+  await page.setViewportSize({ width: 574, height: 844 });
+  expect(
+    await viewer.evaluate((dialog) => Math.abs(dialog.getBoundingClientRect().width - innerWidth)),
+  ).toBeLessThan(1);
   await viewer.getByRole("button", { name: "Previous photo" }).click();
   await expect(viewer).toContainText("4 / 5");
   await expect(viewer.getByRole("link", { name: "Open original photo" })).toHaveCount(0);

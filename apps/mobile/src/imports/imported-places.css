@@ -1035,8 +1035,9 @@
 }
 
 .imported-gallery__dialog {
-  width: min(100vw, 560px);
-  max-width: min(100vw, 560px);
+  box-sizing: border-box;
+  width: 100vw;
+  max-width: none;
   height: 100dvh;
   max-height: 100dvh;
   margin: auto;
