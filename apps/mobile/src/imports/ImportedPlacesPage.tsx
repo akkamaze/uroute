@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { attachContentSheetDrag } from "../places/content-sheet-drag";
+import "../places/map-search.css";
 import {
   getDragOffset,
   getSheetOffset,
@@ -1151,11 +1152,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
           {normalizedDraft === "" ? (
             <>
               <h2>Recent</h2>
-              {recentSearches.length === 0 ? (
-                <p className="imported-page__search-empty">
-                  Search your imported places. Recent searches will appear here.
-                </p>
-              ) : (
+              {recentSearches.length === 0 ? null : (
                 <div className="imported-page__search-list">
                   {recentSearches.map((recent) => (
                     <button key={recent} onClick={() => submitSearch(recent)} type="button">

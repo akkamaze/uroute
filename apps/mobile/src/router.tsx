@@ -17,7 +17,7 @@ interface LoginSearch {
 
 interface PlaceSearch {
   map?: "full";
-  search?: "open";
+  search?: "open" | "results";
   q?: string;
   day?: KyotoDay;
   add?: "open";
@@ -185,9 +185,9 @@ const placesRoute = createRoute({
         ? { add: "open" }
         : search.note === "open"
           ? { note: "open" }
-          : search.search === "open"
+          : search.search === "open" || search.search === "results"
             ? {
-                search: "open",
+                search: search.search,
                 ...(typeof search.q === "string" && search.q.trim() !== ""
                   ? { q: search.q.trim().slice(0, 120) }
                   : {}),

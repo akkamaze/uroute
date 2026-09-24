@@ -132,8 +132,44 @@ test("place search clears text with the same compact button as Maps", async ({ p
   await page.getByRole("button", { name: "Clear search text" }).click();
 
   await expect(searchInput).toHaveValue("");
-  await expect(searchInput).toBeFocused();
+  await expect(searchInput).not.toBeFocused();
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Clear search text" })).toHaveCount(0);
+});
+
+test("Plan search uses full-screen suggestions before submitting map results", async ({ page }) => {
+  await page.goto("/places?place=kiyomizu&day=13&search=open&q=nishiki");
+  const input = page.getByRole("searchbox", { name: "Search places" });
+  const suggestions = page.getByRole("region", { name: "Search suggestions" });
+  await expect(suggestions).toBeVisible();
+  await expect(suggestions.getByRole("button", { name: /Nishiki Market/ })).toBeVisible();
+  await expect(suggestions.locator("img").first()).toBeVisible();
+  await expect(page.locator(".place-sheet")).not.toBeVisible();
+  await expect(page.locator(".place-search__results")).toHaveCount(0);
+
+  await input.press("Enter");
+  await expect(suggestions).toHaveCount(0);
+  const results = page.getByRole("region", { name: "Search results", exact: true });
+  await expect(results).toBeVisible();
+  await expect(results.getByRole("button", { name: /Nishiki Market/ })).toBeVisible();
+  await results.getByRole("button", { name: /Nishiki Market/ }).click();
+  await expect(page.getByRole("heading", { name: "Nishiki Market", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to trip" })).toBeVisible();
+
+  await input.fill("no-matching-place");
+  await input.press("Enter");
+  await expect(page.getByText("No places match this search.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Done", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(page.locator(".place-sheet")).not.toBeVisible();
+  await expect(input).toHaveValue("no-matching-place");
+  await page.getByRole("button", { name: "Clear search text" }).click();
+  await expect(input).toHaveValue("");
+  await expect(suggestions).toHaveCount(0);
+  await expect(results).toHaveCount(0);
+  await input.click();
+  await expect(page.getByRole("heading", { name: "Recent" })).toBeVisible();
+  await expect(suggestions.getByRole("button", { name: "nishiki", exact: true })).toBeVisible();
 });
 
 test("visible place back returns to the originating plan", async ({ page }) => {

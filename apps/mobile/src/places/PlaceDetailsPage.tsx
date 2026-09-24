@@ -11,6 +11,7 @@ import {
   Bookmark,
   ChevronDown,
   Clock,
+  Clock3,
   CreditCard,
   ExternalLink,
   MapPin,
@@ -43,6 +44,7 @@ import {
 import { attachContentSheetDrag } from "./content-sheet-drag";
 import { VisitNotes } from "./VisitNotes";
 import "./places.css";
+import "./map-search.css";
 
 function getPlace(id: string | undefined): PlannedStop {
   const place = FRIDAY_STOPS.find((candidate) => candidate.id === id) ?? FRIDAY_STOPS[0];
@@ -69,6 +71,20 @@ const TRIP_DAYS = {
 } as const;
 
 type TripId = keyof typeof TRIP_DAYS;
+
+const RECENT_SEARCHES_KEY = "uroute-plan-searches:v1";
+
+function loadRecentSearches(): string[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) ?? "[]");
+
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string").slice(0, 6)
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 function subscribeWindowResize(listener: () => void): () => void {
   window.addEventListener("resize", listener);
@@ -101,6 +117,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [draftQuery, setDraftQuery] = useState(search.q ?? "");
   const submittedQuery = search.q ?? "";
   const searchActive = search.search === "open";
+  const [recentSearches, setRecentSearches] = useState(loadRecentSearches);
+  const [resultsOpen, setResultsOpen] = useState(true);
+  const searchResultsActive = search.search === "results" && resultsOpen;
+  const sheetHidden = mapExpanded || searchActive || (search.search === "results" && !resultsOpen);
   const savedIds = useSavedPlaceIds();
   const [notice, setNotice] = useState("");
   const [addedDay, setAddedDay] = useState<KyotoDay | null>(null);
@@ -143,9 +163,24 @@ export function PlaceDetailsPage(): React.JSX.Element {
         ? `${selectedPlace.name}, ${selectedPlace.address}, Kyoto, Japan`
         : `${destination[1]},${destination[0]}`,
   });
-  const results = FRIDAY_STOPS.filter((place) =>
-    place.name.toLowerCase().includes(submittedQuery.trim().toLowerCase()),
-  );
+  const matchesSearch = (place: PlannedStop, query: string): boolean =>
+    `${place.name} ${place.type} ${place.area}`
+      .toLocaleLowerCase()
+      .includes(query.trim().toLocaleLowerCase());
+  const results = FRIDAY_STOPS.filter((place) => matchesSearch(place, submittedQuery));
+  const suggestions = FRIDAY_STOPS.filter((place) => matchesSearch(place, draftQuery)).slice(0, 20);
+  const resultIds = new Set(results.map((place) => place.id));
+  const visiblePlaces =
+    search.search === "results"
+      ? {
+          ...places,
+          features: places.features.filter((place) => resultIds.has(place.properties.id)),
+        }
+      : places;
+
+  useEffect(() => {
+    setResultsOpen(true);
+  }, [search.search, submittedQuery]);
 
   useEffect(() => {
     if (mapExpanded) {
@@ -172,7 +207,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
     } else if (searchWasOpenRef.current) {
       searchWasOpenRef.current = false;
       searchOpenedHereRef.current = false;
-      setDraftQuery("");
+      setDraftQuery(submittedQuery);
       searchBarRef.current?.focus({ preventScroll: true });
     }
   }, [searchActive, submittedQuery]);
@@ -209,6 +244,10 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }
 
   function selectPlace(id: string): void {
+    if (searchActive || searchResultsActive) {
+      rememberSearch(getPlace(id).name);
+      setSheetSnap("middle");
+    }
     void navigate({
       replace: true,
       search: { place: id, ...(search.day === undefined ? {} : { day: search.day }) },
@@ -217,6 +256,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         ...current,
         placeSelectionEntry:
           searchActive ||
+          searchResultsActive ||
           mapExpanded ||
           ("placeSelectionEntry" in current && current.placeSelectionEntry === true),
       }),
@@ -237,15 +277,45 @@ export function PlaceDetailsPage(): React.JSX.Element {
     });
   }
 
-  function submitSearch(): void {
-    const query = draftQuery.trim().slice(0, 120);
+  function rememberSearch(value: string): void {
+    if (value === "") {
+      return;
+    }
+    const next = [
+      value,
+      ...recentSearches.filter((item) => item.toLocaleLowerCase() !== value.toLocaleLowerCase()),
+    ].slice(0, 6);
+    setRecentSearches(next);
+    try {
+      localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+    } catch {
+      // Search remains available when storage is full or disabled.
+    }
+  }
+
+  function clearSearch(): void {
+    setDraftQuery("");
+    searchInputRef.current?.blur();
+    void navigate({
+      to: "/places",
+      search: { place: selectedId, ...(search.day === undefined ? {} : { day: search.day }) },
+      replace: true,
+      resetScroll: false,
+    });
+  }
+
+  function submitSearch(value = draftQuery): void {
+    const query = value.trim().slice(0, 120);
+    rememberSearch(query);
+    setSheetSnap("middle");
+    setResultsOpen(true);
     void navigate({
       to: "/places",
       state: (current) => current,
       search: {
         place: selectedId,
         ...(search.day === undefined ? {} : { day: search.day }),
-        search: "open",
+        search: "results",
         ...(query === "" ? {} : { q: query }),
       },
       replace: true,
@@ -534,7 +604,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
 
   return (
     <main
-      className="places-page"
+      className={`places-page${searchActive ? " places-page--searching" : ""}`}
       data-swipe-back-ignore={
         addPanelOpen || searchActive || mapExpanded || selectionHistoryBoundary ? "true" : undefined
       }
@@ -563,17 +633,18 @@ export function PlaceDetailsPage(): React.JSX.Element {
       >
         <TripMap
           bottomInset={
-            mapExpanded || visibleSheetSnap === "expanded"
+            sheetHidden || visibleSheetSnap === "expanded"
               ? 0
               : getSheetVisibleHeight(visibleSheetSnap, layoutHeight)
           }
           expanded={mapExpanded}
           onExpandedChange={changeMapExpanded}
           onSelect={selectPlace}
-          places={places}
+          places={visiblePlaces}
+          focusSelectedId={selectedPlace.id}
           orderPlaces={orderPlaces}
           selectedId={selectedPlace.id}
-          showLocate={mapExpanded || visibleSheetSnap !== "expanded"}
+          showLocate={sheetHidden || visibleSheetSnap !== "expanded"}
           variant="discovery"
         />
 
@@ -593,7 +664,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
             onClick={searchActive ? cancelSearch : goBack}
             type="button"
           >
-            <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+            <ArrowLeft aria-hidden="true" size={21} strokeWidth={1.8} />
           </button>
 
           <form
@@ -603,7 +674,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
               submitSearch();
             }}
           >
-            <Search aria-hidden="true" size={20} strokeWidth={1.8} />
+            <Search aria-hidden="true" size={19} strokeWidth={1.8} />
             <input
               aria-label="Search places"
               enterKeyHint="search"
@@ -619,10 +690,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
               <button
                 aria-label="Clear search text"
                 className="place-search__clear"
-                onClick={() => {
-                  setDraftQuery("");
-                  searchInputRef.current?.focus();
-                }}
+                onClick={clearSearch}
                 type="button"
               >
                 <X aria-hidden="true" size={15} strokeWidth={2} />
@@ -630,27 +698,57 @@ export function PlaceDetailsPage(): React.JSX.Element {
             ) : null}
           </form>
         </div>
-
-        {submittedQuery === "" ? null : (
-          <div className="place-search__results">
-            {results.length === 0 ? (
-              <p>No places found.</p>
-            ) : (
-              results.map((place) => (
-                <button key={place.id} onClick={() => selectPlace(place.id)} type="button">
-                  <MapPin aria-hidden="true" size={18} strokeWidth={1.8} />
-                  <span>{place.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        )}
       </section>
 
+      {searchActive ? (
+        <section aria-label="Search suggestions" className="map-search__screen">
+          {draftQuery.trim() === "" ? (
+            <>
+              <h2>Recent</h2>
+              {recentSearches.length === 0 ? null : (
+                <div className="map-search__list">
+                  {recentSearches.map((recent) => (
+                    <button key={recent} onClick={() => submitSearch(recent)} type="button">
+                      <Clock3 aria-hidden="true" size={20} />
+                      <span>{recent}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="map-search__list">
+                <button onClick={() => submitSearch()} type="button">
+                  <Search aria-hidden="true" size={20} />
+                  <span>Search “{draftQuery.trim()}” on map</span>
+                </button>
+                {suggestions.map((place) => (
+                  <button key={place.id} onClick={() => selectPlace(place.id)} type="button">
+                    <span className="map-search__thumbnail">
+                      <img alt="" src={place.image} loading="lazy" />
+                    </span>
+                    <span>
+                      <strong>{place.name}</strong>
+                      <small>
+                        {place.type} · {place.area}
+                      </small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {suggestions.length === 0 ? (
+                <p className="map-search__empty">No matching places.</p>
+              ) : null}
+            </>
+          )}
+        </section>
+      ) : null}
+
       <section
-        aria-hidden={mapExpanded || undefined}
-        inert={mapExpanded}
-        aria-label="Place details"
+        aria-hidden={sheetHidden || undefined}
+        inert={sheetHidden}
+        aria-label={searchResultsActive ? "Search results" : "Place details"}
         className="place-sheet"
         data-dragging={dragOffset === 0 ? undefined : "true"}
         data-mode={addPanelOpen ? "add" : noteEditorOpen ? "note" : undefined}
@@ -661,6 +759,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         onPointerMove={moveSheet}
         onPointerUp={finishSheetDrag}
         style={{
+          visibility: sheetHidden ? "hidden" : undefined,
           transform: `translateY(${getSheetOffset(visibleSheetSnap, layoutHeight) + dragOffset}px)`,
         }}
       >
@@ -681,38 +780,70 @@ export function PlaceDetailsPage(): React.JSX.Element {
             <span aria-hidden="true" className="place-sheet__handle" />
           </button>
 
-          <header className="place-sheet__title">
-            <div>
-              <h1>{selectedPlace.name}</h1>
-              <p>
-                {selectedPlace.type} · {selectedPlace.area}
+          {searchResultsActive ? (
+            <header className="place-search__results-heading">
+              <h2>Search results</h2>
+              <span>{results.length}</span>
+              <button onClick={() => setResultsOpen(false)} type="button">
+                Done
+              </button>
+            </header>
+          ) : (
+            <>
+              <header className="place-sheet__title">
+                <div>
+                  <h1>{selectedPlace.name}</h1>
+                  <p>
+                    {selectedPlace.type} · {selectedPlace.area}
+                  </p>
+                </div>
+
+                <button
+                  aria-label={saved ? "Remove from saved places" : "Save place"}
+                  aria-pressed={saved}
+                  onClick={toggleSaved}
+                  type="button"
+                >
+                  <Bookmark
+                    aria-hidden="true"
+                    fill={saved ? "currentColor" : "none"}
+                    size={24}
+                    strokeWidth={1.8}
+                  />
+                </button>
+              </header>
+
+              <p className="place-sheet__rating">
+                <Star aria-hidden="true" fill="currentColor" size={17} strokeWidth={1.8} />
+                <strong>{selectedPlace.rating}</strong>
+                <span>({selectedPlace.reviews})</span>
               </p>
-            </div>
-
-            <button
-              aria-label={saved ? "Remove from saved places" : "Save place"}
-              aria-pressed={saved}
-              onClick={toggleSaved}
-              type="button"
-            >
-              <Bookmark
-                aria-hidden="true"
-                fill={saved ? "currentColor" : "none"}
-                size={24}
-                strokeWidth={1.8}
-              />
-            </button>
-          </header>
-
-          <p className="place-sheet__rating">
-            <Star aria-hidden="true" fill="currentColor" size={17} strokeWidth={1.8} />
-            <strong>{selectedPlace.rating}</strong>
-            <span>({selectedPlace.reviews})</span>
-          </p>
+            </>
+          )}
         </div>
 
         <div className="place-sheet__content" data-keyboard-scroll ref={sheetContentRef}>
-          {addPanelOpen ? (
+          {searchResultsActive ? (
+            results.length === 0 ? (
+              <p className="map-search__empty">No places match this search.</p>
+            ) : (
+              <div className="map-search__list">
+                {results.map((place) => (
+                  <button key={place.id} onClick={() => selectPlace(place.id)} type="button">
+                    <span className="map-search__thumbnail">
+                      <img alt="" src={place.image} loading="lazy" />
+                    </span>
+                    <span>
+                      <strong>{place.name}</strong>
+                      <small>
+                        {place.type} · {place.area}
+                      </small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )
+          ) : addPanelOpen ? (
             <form
               className="add-place-panel"
               onSubmit={(event) => {

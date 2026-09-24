@@ -93,48 +93,71 @@
   cursor: pointer;
 }
 
-.place-search__results {
-  max-height: max(
-    0px,
-    calc(var(--keyboard-viewport-height, 100dvh) - 5rem - env(safe-area-inset-top, 0px))
-  );
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  position: absolute;
-  z-index: 4;
-  top: calc(var(--keyboard-viewport-top, 0px) + 4.25rem + env(safe-area-inset-top, 0px));
-  right: 0.75rem;
-  left: 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 4px 16px rgb(32 33 36 / 18%);
+.places-page--searching .trip-map,
+.places-page--searching .place-sheet {
+  visibility: hidden;
 }
 
-.place-search[data-active="true"] + .place-search__results {
-  left: 4.25rem;
+.places-page--searching .place-search {
+  top: var(--keyboard-viewport-top, 0px);
+  right: 0;
+  left: 0;
+  width: auto;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  background: #fff;
+  box-shadow: 0 1px 0 #e8edf2;
 }
 
-.place-search__results button {
-  display: flex;
-  width: 100%;
-  min-height: 48px;
-  gap: 0.625rem;
-  align-items: center;
-  padding: 0.625rem 0.875rem;
-  color: var(--color-text);
+.places-page--searching .place-search__back,
+.places-page--searching .place-search__form {
+  min-height: 44px;
   border: 0;
-  border-bottom: 1px solid var(--color-border);
-  background: #ffffff;
-  font: inherit;
-  text-align: left;
+  box-shadow: none;
 }
 
-.place-search__results p {
+.places-page--searching .place-search__form {
+  grid-template-columns: 19px minmax(0, 1fr);
+  gap: 6px;
+  padding: 0 10px;
+  background: #f3f5f7;
+}
+
+.places-page--searching .place-search__form input {
+  height: 44px;
+  font-size: 14px;
+}
+
+.places-page .map-search__screen {
+  top: var(--keyboard-viewport-top, 0px);
+  height: var(--keyboard-viewport-height, 100dvh);
+}
+
+.place-search__results-heading {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+
+.place-search__results-heading h2 {
+  flex: 1;
   margin: 0;
-  padding: 1rem;
-  color: var(--color-muted);
-  font-size: var(--type-body-size);
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.place-search__results-heading > span {
+  color: #697482;
+  font-size: 12px;
+}
+
+.place-search__results-heading button {
+  min-height: 36px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #1769da;
+  font-weight: 600;
 }
 
 .place-sheet {
@@ -438,11 +461,6 @@
   .place-search {
     right: auto;
     width: min(360px, 44vw);
-  }
-
-  .place-search__results {
-    right: auto;
-    width: min(calc(360px - 1.5rem), calc(44vw - 1.5rem));
   }
 
   .place-sheet {
