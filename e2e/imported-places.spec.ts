@@ -17,6 +17,43 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("imported place category can be edited, persisted, and reset to the default pin", async ({
+  page,
+}) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "category-test.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await expect(
+    page.getByRole("button", { name: "Category: Unknown. Change category" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Category: Unknown. Change category" }).click();
+  await page
+    .getByRole("group", { name: "Choose place category" })
+    .getByRole("button", { name: "Coffee" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Category: Coffee. Change category" }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Category: Coffee. Change category" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Category: Coffee. Change category" }).click();
+  await page
+    .getByRole("group", { name: "Choose place category" })
+    .getByRole("button", { name: "Use imported map icon (Unknown)" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Category: Unknown. Change category" }),
+  ).toBeVisible();
+});
+
 test("Maps search keeps one submit path and offers a compact clear button", async ({ page }) => {
   await page.goto("/maps");
   const search = page.getByLabel("Search imported places");

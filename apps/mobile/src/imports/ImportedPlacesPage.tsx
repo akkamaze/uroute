@@ -2,6 +2,8 @@ import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
+  Check,
+  ChevronDown,
   Clock3,
   ExternalLink,
   FileUp,
@@ -15,6 +17,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { attachContentSheetDrag } from "../places/content-sheet-drag";
+import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
+import {
+  categoryFromKmlStyle,
+  effectivePlaceCategory,
+  PLACE_CATEGORIES,
+  PLACE_CATEGORY_LABELS,
+  type PlaceCategory,
+} from "../places/place-category";
 import "../places/map-search.css";
 import {
   MIN_VISIBLE_MAP_CONTROLS_TOP,
@@ -64,6 +74,7 @@ import {
   sameImportedGeometry,
   sameImportedPlace,
   saveImportedContent,
+  saveImportedPlaceCategory,
   type ImportedVisit,
   type KantoDay,
 } from "./place-library";
@@ -338,6 +349,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [notice, setNotice] = useState("");
   const [osmPhotoCache, setOsmPhotoCache] = useState(loadOsmPhotoCache);
   const [photoLookupLoading, setPhotoLookupLoading] = useState(false);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [categorySaving, setCategorySaving] = useState(false);
   const addSelectionRef = useRef(selectedId);
 
   useEffect(() => {
@@ -593,6 +606,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
+  const selectedCategory =
+    selectedPlace === undefined ? "unknown" : effectivePlaceCategory(selectedPlace);
   const savedPlaceIds = useSavedPlaceIds();
   const selectedHeading = selectedPlace === undefined ? null : importedPlaceHeading(selectedPlace);
   const sourceImages = selectedPlace === undefined ? [] : importedPlaceImages(selectedPlace);
@@ -878,7 +893,25 @@ export function ImportedPlacesPage(): React.JSX.Element {
       sheetRef.current?.scrollTo({ top: 0 });
     }
     previousSelectedIdRef.current = selectedId;
+    setCategoryPickerOpen(false);
   }, [globalMaps, selectedId]);
+
+  async function chooseCategory(categoryOverride: PlaceCategory | null): Promise<void> {
+    if (selectedPlace === undefined || categorySaving) {
+      return;
+    }
+    setCategorySaving(true);
+    setError("");
+    try {
+      const updated = await saveImportedPlaceCategory(selectedPlace.id, categoryOverride);
+      setPlaces((current) => current.map((point) => (point.id === updated.id ? updated : point)));
+      setCategoryPickerOpen(false);
+    } catch {
+      setError("This category could not be saved on this device.");
+    } finally {
+      setCategorySaving(false);
+    }
+  }
 
   async function chooseFile(file: File | undefined): Promise<void> {
     if (file === undefined) {
@@ -1613,6 +1646,71 @@ export function ImportedPlacesPage(): React.JSX.Element {
                         </a>
                       </p>
                     ) : null}
+                    <div className="imported-page__category">
+                      <button
+                        aria-expanded={categoryPickerOpen}
+                        aria-label={`Category: ${PLACE_CATEGORY_LABELS[selectedCategory]}. Change category`}
+                        className="imported-page__category-trigger"
+                        onClick={() => setCategoryPickerOpen((open) => !open)}
+                        type="button"
+                      >
+                        <span className={`timeline__icon timeline__icon--${selectedCategory}`}>
+                          <PlaceCategoryIcon category={selectedCategory} />
+                        </span>
+                        <span className="imported-page__category-copy">
+                          <span>Category</span>
+                          <strong>{PLACE_CATEGORY_LABELS[selectedCategory]}</strong>
+                        </span>
+                        <ChevronDown aria-hidden="true" size={18} />
+                      </button>
+                      {categoryPickerOpen ? (
+                        <div
+                          aria-label="Choose place category"
+                          className="imported-page__category-options"
+                          role="group"
+                        >
+                          {PLACE_CATEGORIES.map((category) => (
+                            <button
+                              aria-pressed={
+                                selectedCategory === category &&
+                                selectedPlace.categoryOverride === category
+                              }
+                              disabled={categorySaving}
+                              key={category}
+                              onClick={() => void chooseCategory(category)}
+                              type="button"
+                            >
+                              <span className={`timeline__icon timeline__icon--${category}`}>
+                                <PlaceCategoryIcon category={category} />
+                              </span>
+                              <span>{PLACE_CATEGORY_LABELS[category]}</span>
+                              {selectedCategory === category ? (
+                                <Check aria-hidden="true" size={17} />
+                              ) : null}
+                            </button>
+                          ))}
+                          {selectedPlace.categoryOverride !== undefined ? (
+                            <button
+                              className="imported-page__category-reset"
+                              disabled={categorySaving}
+                              onClick={() => void chooseCategory(null)}
+                              type="button"
+                            >
+                              Use imported map icon (
+                              {
+                                PLACE_CATEGORY_LABELS[
+                                  categoryFromKmlStyle(
+                                    selectedPlace.sourceKey,
+                                    selectedPlace.styleRef,
+                                  )
+                                ]
+                              }
+                              )
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                     {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
                       <p className="imported-page__selected-hidden">
                         Hidden on map. You can still use this place in your plan. Open Map layers to

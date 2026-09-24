@@ -312,11 +312,6 @@
   background: #e9f6ee;
 }
 
-.edit-plan__icon--unknown {
-  color: var(--color-muted);
-  background: var(--color-border);
-}
-
 .edit-plan__place {
   display: flex;
   min-width: 0;

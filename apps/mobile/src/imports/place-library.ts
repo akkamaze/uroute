@@ -1,4 +1,5 @@
 import type { ImportedGeometry, ImportedPoint } from "./parse-place-file";
+import type { PlaceCategory } from "../places/place-category";
 
 const DATABASE_NAME = "uroute-imported-places";
 const DATABASE_VERSION = 2;
@@ -100,6 +101,36 @@ export async function loadImportedPlaces(): Promise<ImportedPoint[]> {
       (left, right) =>
         left.folder.localeCompare(right.folder) || left.name.localeCompare(right.name),
     );
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveImportedPlaceCategory(
+  placeId: string,
+  categoryOverride: PlaceCategory | null,
+): Promise<ImportedPoint> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("places", "readwrite");
+    const done = complete(transaction);
+    const store = transaction.objectStore("places");
+    const point = await requestResult(store.get(placeId) as IDBRequest<ImportedPoint | undefined>);
+    if (point === undefined) {
+      await done;
+      throw new Error("This imported place is no longer on this device.");
+    }
+
+    const updated = { ...point };
+    if (categoryOverride === null) {
+      delete updated.categoryOverride;
+    } else {
+      updated.categoryOverride = categoryOverride;
+    }
+    store.put(updated);
+    await done;
+
+    return updated;
   } finally {
     database.close();
   }
@@ -333,7 +364,9 @@ export async function copyLegacyKantoVisits(tripId: string): Promise<number> {
 
         return existingIds.has(id) ? [] : [{ ...visit, id, tripId }];
       });
-    if (additions.length === 0) {return 0;}
+    if (additions.length === 0) {
+      return 0;
+    }
     const transaction = database.transaction("visits", "readwrite");
     const done = complete(transaction);
     const store = transaction.objectStore("visits");

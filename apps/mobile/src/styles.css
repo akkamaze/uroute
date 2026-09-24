@@ -1028,11 +1028,6 @@ a,
   background: #e9f6ee;
 }
 
-.timeline__icon--unknown {
-  color: var(--color-muted);
-  background: var(--color-border);
-}
-
 .timeline__info {
   display: flex;
   min-width: 0;
