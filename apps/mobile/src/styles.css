@@ -1003,7 +1003,7 @@ a,
   font-size: var(--type-body-size);
 }
 
-.day-plan__add {
+.floating-add-button {
   position: fixed;
   z-index: 5;
   right: max(1rem, calc((100vw - 414px) / 2 + 1rem));

@@ -7,6 +7,7 @@ import {
   Compass,
   Hotel,
   Plane,
+  Plus,
   Share,
   Ticket,
   TrainFront,
@@ -16,13 +17,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { trips } from "../trips/trips-data";
+import { AddBookingDialog } from "./AddBookingDialog";
+import { addManualBooking, useBookings } from "./booking-store";
 import {
   bookingsForTrip,
   groupBookingsByDay,
   splitBookingTimeline,
   type BookingFilter,
 } from "./booking-timeline";
-import { BOOKINGS, type Booking } from "./bookings-data";
+import type { Booking } from "./bookings-data";
 import { shareBookingCard } from "./share-booking-card";
 import { TripHeader } from "./TripHeader";
 import "./bookings.css";
@@ -98,6 +101,7 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
                     ) : null}
                     <button
                       className={`booking-timeline__card booking-timeline__card--${booking.category}`}
+                      id={`booking-card-${booking.id}`}
                       onClick={(event) => onOpen(booking, event.currentTarget)}
                       type="button"
                     >
@@ -196,10 +200,17 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
 function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
+  const bookingState = useBookings();
   const route = scope === "all" ? "/bookings" : "/plan/bookings";
-  const scopedBookings = scope === "all" ? BOOKINGS : bookingsForTrip(BOOKINGS, PLAN_TRIP);
+  const scopedBookings =
+    scope === "all" ? bookingState.bookings : bookingsForTrip(bookingState.bookings, PLAN_TRIP);
   const selectedBooking = scopedBookings.find((booking) => booking.id === search.booking);
+  const addOpen = search.add === "open";
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const addOpenedHereRef = useRef(false);
+  const addWasOpenRef = useRef(false);
+  const pendingRevealRef = useRef<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement>(null);
   const openedHereRef = useRef(false);
@@ -209,6 +220,7 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
   const [now, setNow] = useState(() => new Date());
   const [shareMessage, setShareMessage] = useState("");
   const [sharing, setSharing] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
   const { upcoming, past } = splitBookingTimeline(scopedBookings, filter, now);
   const pastOpen = pastPreference ?? upcoming.length === 0;
   const emptyLabel = FILTERS.find((option) => option.id === filter)?.emptyLabel ?? "bookings";
@@ -248,9 +260,74 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
     }
   }, [selectedBooking]);
 
+  useEffect(() => {
+    if (addOpen) {
+      addWasOpenRef.current = true;
+    } else if (addWasOpenRef.current) {
+      addButtonRef.current?.focus({ preventScroll: true });
+      addWasOpenRef.current = false;
+      addOpenedHereRef.current = false;
+    }
+  }, [addOpen]);
+
+  useEffect(() => {
+    const id = pendingRevealRef.current;
+    if (id === null || addOpen) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const card = document.getElementById(`booking-card-${id}`);
+      if (card !== null) {
+        card.scrollIntoView({ block: "center", behavior: "smooth" });
+        pendingRevealRef.current = null;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [addOpen, bookingState.bookings, filter, pastPreference]);
+
   function selectFilter(next: BookingFilter): void {
     setFilter(next);
     setPastPreference(null);
+  }
+
+  function openAdd(): void {
+    addOpenedHereRef.current = true;
+    setSaveMessage("");
+    void navigate({ to: route, search: { add: "open" }, resetScroll: false });
+  }
+
+  function closeAdd(): void {
+    if (addOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({ to: route, search: {}, replace: true, resetScroll: false });
+    }
+  }
+
+  function addBooking(booking: Booking): void {
+    const saveResult = addManualBooking(booking);
+    const inScope = scope === "all" || bookingsForTrip([booking], PLAN_TRIP).length > 0;
+    const visibleInFilter =
+      filter === "all" ||
+      (filter === "tickets" ? booking.group === "tickets" : booking.category === filter);
+    if (!visibleInFilter) {
+      setFilter("all");
+    }
+    if (Date.parse(booking.endExclusive) <= now.getTime()) {
+      setPastPreference(true);
+    }
+    if (inScope) {
+      pendingRevealRef.current = booking.id;
+    }
+    setSaveMessage(
+      saveResult === "session-only"
+        ? "Booking added for this session. Device storage is unavailable."
+        : inScope
+          ? "Booking added."
+          : "Booking added to All bookings. Its date is outside this trip.",
+    );
+    closeAdd();
   }
 
   function openBooking(booking: Booking, trigger: HTMLButtonElement): void {
@@ -322,6 +399,12 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
           ))}
         </nav>
 
+        {saveMessage ? (
+          <p className="booking-page__save-message" role="status">
+            {saveMessage}
+          </p>
+        ) : null}
+
         {past.length > 0 ? (
           <section aria-label="Past bookings" className="booking-past">
             <button
@@ -373,6 +456,16 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
           </div>
         )}
       </main>
+
+      <button
+        aria-label="Add booking"
+        className="floating-add-button"
+        onClick={openAdd}
+        ref={addButtonRef}
+        type="button"
+      >
+        <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
+      </button>
 
       <dialog
         aria-label={selectedBooking === undefined ? "Booking card" : selectedBooking.title}
@@ -505,7 +598,9 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
               <div aria-hidden="true" className="booking-ticket__perforation" />
               <footer className="booking-ticket__footer">
                 <div>
-                  <span>Sample booking</span>
+                  <span>
+                    {selectedBooking.origin === "manual" ? "Your booking" : "Sample booking"}
+                  </span>
                   <strong>Have a great trip!</strong>
                 </div>
                 <svg
@@ -537,6 +632,12 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
           </div>
         ) : null}
       </dialog>
+      <AddBookingDialog
+        onAdded={addBooking}
+        onClose={closeAdd}
+        open={addOpen}
+        trip={scope === "trip" ? PLAN_TRIP : undefined}
+      />
     </section>
   );
 }

@@ -78,6 +78,12 @@
   background: color-mix(in srgb, var(--color-active) 9%, white);
 }
 
+.booking-page__save-message {
+  margin: -0.375rem 0 0.875rem;
+  color: var(--color-muted);
+  font-size: var(--type-body-sm-size);
+}
+
 .booking-filters__chip:focus-visible,
 .booking-past__toggle:focus-visible,
 .booking-page__empty button:focus-visible {

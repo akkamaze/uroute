@@ -1,5 +1,6 @@
 export interface Booking {
   id: string;
+  origin?: "manual";
   tripId: string;
   category: "flight" | "stay" | "train" | "pass" | "ticket";
   group: "travel" | "tickets";
@@ -124,5 +125,5 @@ export const BOOKINGS: readonly Booking[] = [
 ];
 
 export function isBookingId(value: unknown): value is Booking["id"] {
-  return BOOKINGS.some((booking) => booking.id === value);
+  return typeof value === "string" && value.length > 0 && value.length <= 120;
 }

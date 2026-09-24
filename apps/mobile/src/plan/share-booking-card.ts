@@ -229,7 +229,7 @@ async function drawBookingCard(booking: Booking): Promise<HTMLCanvasElement> {
 
   context.fillStyle = "#607487";
   context.font = "600 24px Arial, sans-serif";
-  context.fillText("Sample booking", 150, 1045);
+  context.fillText(booking.origin === "manual" ? "Your booking" : "Sample booking", 150, 1045);
   context.fillStyle = "#21394d";
   context.font = "600 30px Arial, sans-serif";
   context.fillText("Have a great trip!", 150, 1090);

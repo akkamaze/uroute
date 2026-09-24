@@ -561,7 +561,7 @@ export function PlanPage(): React.JSX.Element {
         {removal === null && openSwipeId === null ? (
           <button
             aria-label={`Add a place to ${dayLabel}`}
-            className="day-plan__add"
+            className="floating-add-button"
             onClick={addPlace}
             type="button"
           >

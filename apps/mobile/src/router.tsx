@@ -122,8 +122,9 @@ const editPlanRoute = createRoute({
 const bookingsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/bookings",
-  validateSearch: (search: Record<string, unknown>): { booking?: Booking["id"] } => ({
+  validateSearch: (search: Record<string, unknown>): { booking?: Booking["id"]; add?: "open" } => ({
     ...(isBookingId(search.booking) ? { booking: search.booking } : {}),
+    ...(search.add === "open" ? { add: "open" } : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/BookingsPage"), "BookingsPage"),
 });
@@ -133,9 +134,10 @@ const tripBookingsRoute = createRoute({
   path: "/plan/bookings",
   validateSearch: (
     search: Record<string, unknown>,
-  ): { booking?: Booking["id"]; members?: "open" } => ({
+  ): { booking?: Booking["id"]; members?: "open"; add?: "open" } => ({
     ...(isBookingId(search.booking) ? { booking: search.booking } : {}),
     ...(search.members === "open" ? { members: "open" } : {}),
+    ...(search.add === "open" ? { add: "open" } : {}),
   }),
   component: lazyRouteComponent(() => import("./plan/BookingsPage"), "TripBookingsPage"),
 });

@@ -1,0 +1,274 @@
+.add-booking-dialog {
+  width: min(calc(100% - 24px), 430px);
+  max-width: none;
+  height: fit-content;
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: 0 20px 60px rgb(32 33 36 / 25%);
+}
+
+.add-booking-dialog::backdrop {
+  background: rgb(27 43 66 / 48%);
+}
+
+.add-booking-form {
+  height: auto;
+  max-height: inherit;
+}
+
+.add-booking-form > header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding: 1.25rem 1rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.add-booking-form > header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.add-booking-form > header h2,
+.add-booking-form > header p {
+  margin: 0;
+}
+
+.add-booking-form > header h2 {
+  font-size: var(--type-heading-lg-size);
+  line-height: 1.2;
+}
+
+.add-booking-form > header p {
+  margin-top: 0.25rem;
+  color: var(--color-muted);
+  font-size: var(--type-body-sm-size);
+}
+
+.add-booking__progress {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.375rem;
+  flex: none;
+  padding: 0.75rem 1rem 0;
+}
+
+.add-booking__progress span {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-border);
+}
+
+.add-booking__progress span.is-active {
+  background: var(--color-active);
+}
+
+.add-booking-form > header button {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin: -0.5rem -0.5rem 0 0;
+  padding: 0;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.add-booking-form__body {
+  padding: 1rem !important;
+  margin: 0 !important;
+}
+
+.add-booking__categories,
+.add-booking__ticket-kind {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.add-booking__categories legend,
+.add-booking__ticket-kind legend {
+  margin-bottom: 0.625rem;
+  font-size: var(--type-body-sm-size);
+  font-weight: 700;
+}
+
+.add-booking__categories > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.add-booking__type {
+  display: inline-flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.75rem;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-size: var(--type-body-size);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.add-booking__type.is-active {
+  color: var(--color-active);
+  border-color: var(--color-active);
+  background: color-mix(in srgb, var(--color-active) 9%, white);
+}
+
+.add-booking__field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: var(--type-body-sm-size);
+  font-weight: 600;
+}
+
+.add-booking__field em {
+  color: var(--color-active);
+  font-style: normal;
+}
+
+.add-booking__field input,
+.add-booking__field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0.625rem 0.75rem;
+  color: var(--color-text);
+  border: 1px solid #d9dee7;
+  border-radius: 11px;
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.add-booking__field input[aria-invalid="true"],
+.add-booking__field select[aria-invalid="true"] {
+  border-color: #b42318;
+}
+
+.add-booking__field small {
+  color: #b42318;
+  font-size: var(--type-caption-size);
+  font-weight: 500;
+}
+
+.add-booking__field input:focus-visible,
+.add-booking__field select:focus-visible,
+.add-booking-dialog button:focus-visible {
+  outline: 2px solid var(--color-active);
+  outline-offset: 2px;
+}
+
+.add-booking__paired {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.add-booking__paired--airport {
+  grid-template-columns: minmax(0, 1fr) 112px;
+}
+
+.add-booking__ticket-kind > div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add-booking__ticket-kind button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-booking__ticket-kind button[aria-pressed="true"] {
+  color: var(--color-active);
+  border-color: var(--color-active);
+  background: color-mix(in srgb, var(--color-active) 9%, white);
+}
+
+.add-booking__trip-context {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--color-text);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-active) 6%, white);
+  font-size: var(--type-body-sm-size);
+  font-weight: 700;
+}
+
+.add-booking__trip-context span {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.add-booking__privacy {
+  margin: 0 0 0.25rem;
+  color: var(--color-muted);
+  font-size: var(--type-caption-size);
+  line-height: 1.45;
+}
+
+.add-booking-form__footer {
+  display: flex;
+  flex: none;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem max(1rem, env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+}
+
+.add-booking-form__back,
+.add-booking-form__save {
+  min-height: 52px;
+  border-radius: 12px;
+  font-size: var(--type-body-size);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-booking-form__back {
+  min-width: 96px;
+  color: var(--color-active);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.add-booking-form__save {
+  flex: 1;
+  color: #fff;
+  border: 0;
+  background: var(--color-active);
+}
+
+@media (max-width: 359px) {
+  .add-booking__paired:not(.add-booking__paired--airport) {
+    grid-template-columns: 1fr;
+  }
+}
