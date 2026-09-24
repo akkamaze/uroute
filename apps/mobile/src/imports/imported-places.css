@@ -564,6 +564,14 @@
   font-size: 12px;
   line-height: 1.5;
 }
+.imported-page__selected .imported-page__photo-credit {
+  color: #738296;
+  font-size: 11px;
+}
+.imported-page__photo-credit a {
+  color: #1769da;
+  text-decoration: none;
+}
 .imported-page__selected .imported-page__selected-hidden {
   padding: 8px 10px;
   border-radius: 9px;

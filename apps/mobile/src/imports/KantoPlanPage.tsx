@@ -28,10 +28,13 @@ import {
 } from "./place-library";
 import { loadCreatedTrips, tripDays } from "../trips/trip-store";
 import { displayImportedImageUrl, importedPlaceImages } from "./import-media";
+import { loadOsmPhotoCache } from "./osm-photo";
 import type { ImportedPoint } from "./parse-place-file";
 import "./kanto-plan.css";
 
 function mappedPlaces(points: readonly ImportedPoint[]): PlaceCollection {
+  const linkedPhotos = loadOsmPhotoCache();
+
   return {
     type: "FeatureCollection",
     features: points.map((point, index) => ({
@@ -42,7 +45,9 @@ function mappedPlaces(points: readonly ImportedPoint[]): PlaceCollection {
         id: point.id,
         name: point.name,
         category: "Imported place",
-        image: displayImportedImageUrl(importedPlaceImages(point)[0]),
+        image: displayImportedImageUrl(
+          importedPlaceImages(point)[0] ?? linkedPhotos[point.id]?.photo?.imageUrl,
+        ),
         marker: `place-${index + 1}`,
         synthetic: false,
       },

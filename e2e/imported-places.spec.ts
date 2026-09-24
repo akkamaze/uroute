@@ -7,6 +7,16 @@ const sample = `<?xml version="1.0" encoding="UTF-8"?>
 <Placemark><name>River path</name><LineString><coordinates>139.770,35.680 139.771,35.681</coordinates></LineString></Placemark>
 </Folder></Document></kml>`;
 
+test.beforeEach(async ({ page }) => {
+  await page.route("https://nominatim.openstreetmap.org/search?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: "[]",
+    }),
+  );
+});
+
 test("opens the mobile file picker on first tap and accepts the same file again", async ({
   page,
 }) => {
@@ -55,6 +65,12 @@ test("shows the animated white uroute mark while map tiles load", async ({ page 
 });
 
 test("shows KML photos in a swipeable gallery and on the map marker", async ({ page }) => {
+  let osmRequests = 0;
+  await page.route("https://nominatim.openstreetmap.org/search?**", (route) => {
+    osmRequests += 1;
+
+    return route.abort();
+  });
   await page.route("**/_kml_images/**", (route) =>
     route.fulfill({
       path: "apps/mobile/public/images/kyoto.png",
@@ -112,6 +128,7 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
   );
   await viewer.getByRole("button", { name: "Close photos" }).click();
   await expect(viewer).not.toBeVisible();
+  expect(osmRequests).toBe(0);
 });
 
 test("clears the import notice and opens trip selection when Add has no destination", async ({
@@ -134,6 +151,136 @@ test("clears the import notice and opens trip selection when Add has no destinat
   await expect(trip).toBeFocused();
   await trip.selectOption("kyoto");
   await expect(page.getByRole("button", { name: /Add to Kyoto/ })).toBeVisible();
+});
+
+test("uses a matching OSM-linked Commons photo only after opening a place", async ({ page }) => {
+  let osmRequests = 0;
+  await page.route("https://nominatim.openstreetmap.org/search?**", (route) => {
+    osmRequests += 1;
+
+    return route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify([
+        {
+          lat: "35.680",
+          lon: "139.770",
+          namedetails: { name: "Photo Stop" },
+          extratags: { image: "File:Photo Stop.jpg" },
+          osm_type: "node",
+          osm_id: 123,
+        },
+      ]),
+    });
+  });
+  await page.route("https://commons.wikimedia.org/w/api.php?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        query: {
+          pages: [
+            {
+              imageinfo: [
+                {
+                  thumburl: "https://thumb.wikimedia.org/osm.jpg",
+                  descriptionurl: "https://commons.wikimedia.org/wiki/File:Photo_Stop.jpg",
+                  extmetadata: {
+                    Artist: { value: "A photographer" },
+                    LicenseShortName: { value: "CC BY 4.0" },
+                    LicenseUrl: { value: "https://creativecommons.org/licenses/by/4.0/" },
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    }),
+  );
+  await page.route("https://thumb.wikimedia.org/**", (route) =>
+    route.fulfill({
+      path: "apps/mobile/public/images/kyoto.png",
+      contentType: "image/png",
+      headers: { "access-control-allow-origin": "*" },
+    }),
+  );
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "photo-stop.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><Placemark><name>Photo Stop</name><Point><coordinates>139.770,35.680</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  expect(osmRequests).toBe(0);
+  await page.getByRole("button", { name: "Photo Stop Unfiled" }).click();
+  const gallery = page.getByRole("region", { name: "Photo Stop photos" });
+  await expect(gallery.getByRole("button", { name: "View photo 1 of 1" })).toBeVisible();
+  await expect(page.getByText("A photographer")).toBeVisible();
+  await expect(page.getByRole("link", { name: "CC BY 4.0" })).toBeVisible();
+  await expect
+    .poll(() => gallery.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth))
+    .toBeGreaterThan(0);
+  expect(osmRequests).toBe(1);
+  await page.getByRole("button", { name: "Close place details" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __urouteMapDiagnostics?: () => { renderedPhotoIds: string[] };
+            }
+          ).__urouteMapDiagnostics?.().renderedPhotoIds.length,
+      ),
+    )
+    .toBe(1);
+  await page.reload();
+  await page.getByLabel("Search imported places").click();
+  await page.getByLabel("Search imported places").press("Enter");
+  await page.getByRole("button", { name: "Photo Stop Unfiled" }).click();
+  await expect(gallery.getByRole("button", { name: "View photo 1 of 1" })).toBeVisible();
+  expect(osmRequests).toBe(1);
+});
+
+test("does not attach a nearby OSM photo when the place name differs", async ({ page }) => {
+  let commonsRequests = 0;
+  await page.route("https://nominatim.openstreetmap.org/search?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify([
+        {
+          lat: "35.680",
+          lon: "139.770",
+          namedetails: { name: "Different Cafe" },
+          extratags: { image: "File:Different Cafe.jpg" },
+          osm_type: "node",
+          osm_id: 456,
+        },
+      ]),
+    }),
+  );
+  await page.route("https://commons.wikimedia.org/w/api.php?**", (route) => {
+    commonsRequests += 1;
+
+    return route.abort();
+  });
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "photo-stop.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><Placemark><name>Photo Stop</name><Point><coordinates>139.770,35.680</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Photo Stop Unfiled" }).click();
+  await expect(page.getByText("Checking for a linked photo…")).toBeHidden();
+  await expect(page.getByRole("region", { name: "Photo Stop photos" })).toHaveCount(0);
+  expect(commonsRequests).toBe(0);
 });
 
 test("uses the KML map name instead of its file name for imported layers", async ({ page }) => {

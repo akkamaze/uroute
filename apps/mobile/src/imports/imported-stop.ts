@@ -1,6 +1,7 @@
 import type { PlannedStop } from "../plan/plan-data";
 import type { ImportedPoint } from "./parse-place-file";
 import { displayImportedImageUrl, importedPlaceImages } from "./import-media";
+import { loadOsmPhotoCache } from "./osm-photo";
 
 export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedStop {
   return {
@@ -10,7 +11,10 @@ export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedSto
     duration: "",
     hours: "",
     id: point.id,
-    image: displayImportedImageUrl(importedPlaceImages(point)[0]) ?? "",
+    image:
+      displayImportedImageUrl(
+        importedPlaceImages(point)[0] ?? loadOsmPhotoCache()[point.id]?.photo?.imageUrl,
+      ) ?? "",
     name: point.name,
     rating: "",
     reviews: "",

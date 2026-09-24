@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("https://nominatim.openstreetmap.org/search?**", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: "[]",
+    }),
+  );
+});
+
 test("creates a trip before using imported places and remembers the selected day", async ({
   page,
 }) => {

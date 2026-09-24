@@ -22,6 +22,12 @@ import { ImportLayerMenu } from "./ImportLayerMenu";
 import { ImportedPlaceGallery } from "./ImportedPlaceGallery";
 import { displayImportedImageUrl, importedPlaceImages, isImageMediaUrl } from "./import-media";
 import {
+  findLinkedOsmPhoto,
+  loadOsmPhotoCache,
+  saveOsmPhotoCache,
+  type OsmPhotoCache,
+} from "./osm-photo";
+import {
   availableDestinations,
   destinationDays,
   destinationLabel,
@@ -59,7 +65,11 @@ import {
 } from "./parse-place-file";
 import "./imported-places.css";
 
-function toMapPlaces(points: readonly ImportedPoint[], numbered = false): PlaceCollection {
+function toMapPlaces(
+  points: readonly ImportedPoint[],
+  numbered = false,
+  linkedPhotos: OsmPhotoCache = {},
+): PlaceCollection {
   return {
     type: "FeatureCollection",
     features: points.map((point, index) => ({
@@ -70,7 +80,9 @@ function toMapPlaces(points: readonly ImportedPoint[], numbered = false): PlaceC
         id: point.id,
         name: point.name,
         category: "Imported place",
-        image: displayImportedImageUrl(importedPlaceImages(point)[0]),
+        image: displayImportedImageUrl(
+          importedPlaceImages(point)[0] ?? linkedPhotos[point.id]?.photo?.imageUrl,
+        ),
         ...(numbered ? { marker: `place-${index + 1}` } : {}),
         synthetic: false,
       },
@@ -232,6 +244,12 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [osmPhotoCache, setOsmPhotoCache] = useState(loadOsmPhotoCache);
+  const [photoLookupLoading, setPhotoLookupLoading] = useState(false);
+
+  useEffect(() => {
+    saveOsmPhotoCache(osmPhotoCache);
+  }, [osmPhotoCache]);
 
   useEffect(() => {
     if (notice === "") {
@@ -392,11 +410,60 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
-  const selectedImages = selectedPlace === undefined ? [] : importedPlaceImages(selectedPlace);
+  const sourceImages = selectedPlace === undefined ? [] : importedPlaceImages(selectedPlace);
+  const selectedOsmPhoto =
+    selectedPlace === undefined || sourceImages.length > 0
+      ? null
+      : (osmPhotoCache[selectedPlace.id]?.photo ?? null);
+  const selectedImages =
+    sourceImages.length > 0
+      ? sourceImages
+      : selectedOsmPhoto === null
+        ? []
+        : [selectedOsmPhoto.imageUrl];
   const selectedSourceLinks = (selectedPlace?.mediaReferences ?? []).filter(
     (url) => !isImageMediaUrl(url),
   );
   const sheetOpen = globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined);
+
+  useEffect(() => {
+    if (
+      selectedPlace === undefined ||
+      importedPlaceImages(selectedPlace).length > 0 ||
+      Object.hasOwn(osmPhotoCache, selectedPlace.id)
+    ) {
+      setPhotoLookupLoading(false);
+
+      return;
+    }
+    const controller = new AbortController();
+    let active = true;
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    setPhotoLookupLoading(true);
+    void findLinkedOsmPhoto(selectedPlace, controller.signal)
+      .then((photo) => {
+        if (active && !controller.signal.aborted) {
+          setOsmPhotoCache((current) => ({
+            ...current,
+            [selectedPlace.id]: { checkedAt: Date.now(), photo },
+          }));
+        }
+      })
+      .catch(() => {
+        // Leave the normal marker in place; retry if this place is opened again.
+      })
+      .finally(() => {
+        if (active) {
+          setPhotoLookupLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [selectedPlace, osmPhotoCache]);
 
   useEffect(() => {
     if (!globalMaps || sheetRef.current === null) {
@@ -442,8 +509,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
     // Restore saved scroll once after the sheet becomes visible.
   }, [sheetOpen]);
   const clusterAnchorPlaces = useMemo(
-    () => toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces),
-    [dayPlaces, view, visiblePlaces],
+    () => toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces, false, osmPhotoCache),
+    [dayPlaces, osmPhotoCache, view, visiblePlaces],
   );
   const mapPlaces = useMemo(
     () =>
@@ -451,8 +518,10 @@ export function ImportedPlacesPage(): React.JSX.Element {
         (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
           isImportLayerVisible(point, hiddenLayers),
         ),
+        false,
+        osmPhotoCache,
       ),
-    [dayPlaces, hiddenLayers, view, visiblePlaces],
+    [dayPlaces, hiddenLayers, osmPhotoCache, view, visiblePlaces],
   );
   const mapGeometry = useMemo(
     () =>
@@ -468,8 +537,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
       toMapPlaces(
         dayPlaces.filter((point) => isImportLayerVisible(point, hiddenLayers)),
         true,
+        osmPhotoCache,
       ),
-    [dayPlaces, hiddenLayers],
+    [dayPlaces, hiddenLayers, osmPhotoCache],
   );
   const displayedPlaces = view === "plan" ? dayPlaces : visiblePlaces;
   const knownPreviewCount =
@@ -1147,6 +1217,25 @@ export function ImportedPlacesPage(): React.JSX.Element {
                   key={selectedPlace.id}
                   name={selectedPlace.name}
                 />
+                {photoLookupLoading && sourceImages.length === 0 ? (
+                  <p className="imported-page__photo-credit">Checking for a linked photo…</p>
+                ) : null}
+                {selectedOsmPhoto !== null ? (
+                  <p className="imported-page__photo-credit">
+                    Photo: {selectedOsmPhoto.artist} ·{" "}
+                    <a href={selectedOsmPhoto.licenseUrl} rel="noopener noreferrer" target="_blank">
+                      {selectedOsmPhoto.license}
+                    </a>
+                    {" · "}
+                    <a href={selectedOsmPhoto.pageUrl} rel="noopener noreferrer" target="_blank">
+                      Wikimedia Commons
+                    </a>
+                    {" · "}
+                    <a href={selectedOsmPhoto.osmUrl} rel="noopener noreferrer" target="_blank">
+                      OpenStreetMap
+                    </a>
+                  </p>
+                ) : null}
                 {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
                   <p className="imported-page__selected-hidden">
                     Hidden on map. You can still use this place in your plan. Open Map layers to
