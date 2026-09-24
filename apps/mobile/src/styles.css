@@ -1017,6 +1017,17 @@ a,
   background: #fff2e5;
 }
 
+.timeline__icon--shopping,
+.timeline__icon--sightseeing {
+  color: #8b56b0;
+  background: #f5edfa;
+}
+
+.timeline__icon--nature {
+  color: #287b4a;
+  background: #e9f6ee;
+}
+
 .timeline__icon--unknown {
   color: var(--color-muted);
   background: var(--color-border);

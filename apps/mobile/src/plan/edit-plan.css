@@ -301,6 +301,17 @@
   background: #fff3e4;
 }
 
+.edit-plan__icon--shopping,
+.edit-plan__icon--sightseeing {
+  color: #8b56b0;
+  background: #f5edfa;
+}
+
+.edit-plan__icon--nature {
+  color: #287b4a;
+  background: #e9f6ee;
+}
+
 .edit-plan__icon--unknown {
   color: var(--color-muted);
   background: var(--color-border);

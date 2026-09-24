@@ -12,21 +12,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  Coffee,
   FileText,
   GripVertical,
   History,
-  Landmark,
-  MapPin,
   Plus,
   Redo2,
   Trash2,
   Undo2,
-  Utensils,
   X,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isSwipeBackEdgeStart } from "../navigation/swipe-back";
+import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import { loadImportedPlaces } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
 import type { ImportedPoint } from "../imports/parse-place-file";
@@ -356,20 +353,6 @@ function formatVersionTime(savedAt: number): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(saved);
-}
-
-function renderStopIcon(category: string): React.JSX.Element {
-  if (category === "coffee") {
-    return <Coffee aria-hidden="true" size={19} strokeWidth={1.8} />;
-  }
-  if (category === "food") {
-    return <Utensils aria-hidden="true" size={19} strokeWidth={1.8} />;
-  }
-  if (category === "unknown") {
-    return <MapPin aria-hidden="true" size={19} strokeWidth={1.8} />;
-  }
-
-  return <Landmark aria-hidden="true" size={19} strokeWidth={1.8} />;
 }
 
 interface RestoreVersionDialogProps {
@@ -1350,7 +1333,7 @@ export function EditPlanPage(): React.JSX.Element {
           <span className="version-place__position">{placeDiff.position + 1}</span>
           <VisitTime className="version-place__time" time={placeDiff.visit.time} />
           <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
-            {renderStopIcon(stop.category)}
+            <PlaceCategoryIcon category={stop.category} />
           </span>
           <span className="edit-plan__place">
             <strong>{stop.name}</strong>
@@ -1900,7 +1883,7 @@ export function EditPlanPage(): React.JSX.Element {
                       </span>
                       <VisitTime className="edit-plan__time" time={visit.time} />
                       <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
-                        {renderStopIcon(stop.category)}
+                        <PlaceCategoryIcon category={stop.category} />
                       </span>
                       <span className="edit-plan__place">
                         <strong>{stop.name}</strong>
@@ -1936,7 +1919,7 @@ export function EditPlanPage(): React.JSX.Element {
                       </button>
                       <VisitTime className="edit-plan__time" time={visit.time} />
                       <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
-                        {renderStopIcon(stop.category)}
+                        <PlaceCategoryIcon category={stop.category} />
                       </span>
                       <span className="edit-plan__place">
                         <strong>{stop.name}</strong>

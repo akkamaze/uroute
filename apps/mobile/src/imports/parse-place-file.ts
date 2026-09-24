@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import type { PlaceCategory } from "../places/place-category";
 
 const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
 const MAX_KML_BYTES = 12 * 1024 * 1024;
@@ -15,6 +16,7 @@ export interface ImportedPoint {
   longitude: number;
   latitude: number;
   styleRef: string;
+  categoryOverride?: PlaceCategory;
   mediaReferences: string[];
 }
 

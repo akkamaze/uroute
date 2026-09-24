@@ -1,7 +1,9 @@
+import type { PlaceCategory } from "../places/place-category";
+
 export interface PlannedStop {
   address: string;
   area: string;
-  category: "coffee" | "food" | "temple" | "unknown";
+  category: PlaceCategory;
   duration: string;
   hours: string;
   id: string;

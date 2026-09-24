@@ -14,6 +14,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { TripMap } from "../plan/TripMap";
+import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
+import { effectivePlaceCategory, PLACE_CATEGORY_LABELS } from "../places/place-category";
 import type { PlaceCollection } from "../plan/map-data";
 import { VisitTime } from "../plan/VisitTime";
 import {
@@ -313,12 +315,16 @@ export function KantoPlanPage(): React.JSX.Element {
                 <div className="timeline__surface timeline__surface--plan">
                   <div className="timeline__stop kanto-plan__stop">
                     <VisitTime className="timeline__time" time={visit.time} />
-                    <span className="timeline__icon timeline__icon--temple">
-                      <MapPin aria-hidden="true" size={22} />
+                    <span
+                      className={`timeline__icon timeline__icon--${effectivePlaceCategory(point)}`}
+                    >
+                      <PlaceCategoryIcon category={effectivePlaceCategory(point)} />
                     </span>
                     <span className="timeline__info">
                       <strong>{point.name}</strong>
-                      <span>{point.folder} · Imported place</span>
+                      <span>
+                        {point.folder} · {PLACE_CATEGORY_LABELS[effectivePlaceCategory(point)]}
+                      </span>
                     </span>
                     <button
                       aria-label={`Remove ${point.name} from ${dayLabel}`}

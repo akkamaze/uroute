@@ -1,0 +1,70 @@
+export const PLACE_CATEGORIES = [
+  "unknown",
+  "coffee",
+  "food",
+  "shopping",
+  "temple",
+  "nature",
+  "sightseeing",
+  "lodging",
+  "transport",
+  "restroom",
+] as const;
+
+export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
+
+export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
+  unknown: "Unknown",
+  coffee: "Coffee",
+  food: "Food & drink",
+  shopping: "Shopping",
+  temple: "Temple / shrine",
+  nature: "Park / nature",
+  sightseeing: "Sightseeing",
+  lodging: "Lodging",
+  transport: "Transport",
+  restroom: "Restroom",
+};
+
+// These style IDs were checked against the embedded icon images in this exact KML document.
+// Style IDs are local to a document, so applying them to unrelated imports would misclassify places.
+const VERIFIED_KANTO_KML_HASH = "b3f7f5f9e05e114881231d5441c8c0448dea6a487e0314f209d9fde70a46b170";
+const VERIFIED_STYLE_CATEGORIES: Readonly<Record<string, PlaceCategory>> = {
+  "1504": "transport",
+  "1528": "temple",
+  "1534": "coffee",
+  "1535": "sightseeing",
+  "1567": "food",
+  "1577": "food",
+  "1578": "food",
+  "1602": "lodging",
+  "1646": "temple",
+  "1684": "shopping",
+  "1686": "shopping",
+  "1720": "nature",
+  "1733": "restroom",
+};
+
+export function isPlaceCategory(value: unknown): value is PlaceCategory {
+  return typeof value === "string" && PLACE_CATEGORIES.some((category) => category === value);
+}
+
+export function categoryFromKmlStyle(sourceKey: string, styleRef: string): PlaceCategory {
+  if (!sourceKey.startsWith(`${VERIFIED_KANTO_KML_HASH}:`)) {
+    return "unknown";
+  }
+
+  const styleId = /^#icon-(\d+)-[a-f\d]{6}(?:-nodesc)?$/i.exec(styleRef)?.[1];
+
+  return styleId === undefined ? "unknown" : (VERIFIED_STYLE_CATEGORIES[styleId] ?? "unknown");
+}
+
+export function effectivePlaceCategory(point: {
+  categoryOverride?: unknown;
+  sourceKey: string;
+  styleRef: string;
+}): PlaceCategory {
+  return isPlaceCategory(point.categoryOverride)
+    ? point.categoryOverride
+    : categoryFromKmlStyle(point.sourceKey, point.styleRef);
+}

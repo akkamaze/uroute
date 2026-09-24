@@ -1,27 +1,25 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   CloudSun,
-  Coffee,
   Footprints,
   Landmark,
   Map as MapIcon,
-  MapPin,
   Pencil,
   Plus,
   Trash2,
-  Utensils,
   X,
 } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
+import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import { loadImportedPlaces } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
 import type { ImportedPoint } from "../imports/parse-place-file";
 import { loadEditPlanDraft, visitsSignature } from "./edit-plan-store";
 import { MapLoading } from "./MapLoading";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
-import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
+import { FRIDAY_STOPS } from "./plan-data";
 import {
   removeKyotoVisits,
   restoreKyotoVisits,
@@ -389,20 +387,6 @@ export function PlanPage(): React.JSX.Element {
     }
   }
 
-  function renderStopIcon(stop: PlannedStop): React.JSX.Element {
-    if (stop.category === "coffee") {
-      return <Coffee aria-hidden="true" size={22} strokeWidth={1.8} />;
-    }
-    if (stop.category === "food") {
-      return <Utensils aria-hidden="true" size={22} strokeWidth={1.8} />;
-    }
-    if (stop.category === "unknown") {
-      return <MapPin aria-hidden="true" size={22} strokeWidth={1.8} />;
-    }
-
-    return <Landmark aria-hidden="true" size={22} strokeWidth={1.8} />;
-  }
-
   return (
     <section className={mapVisible ? "plan-page" : "plan-page plan-page--plan-only"}>
       <TripHeader active="plan" inactive={mapExpanded} />
@@ -600,7 +584,7 @@ export function PlanPage(): React.JSX.Element {
                       >
                         <VisitTime className="timeline__time" time={stop.time} />
                         <span className={`timeline__icon timeline__icon--${stop.category}`}>
-                          {renderStopIcon(stop)}
+                          <PlaceCategoryIcon category={stop.category} />
                         </span>
                         <span className="timeline__info">
                           <strong>{stop.name}</strong>
