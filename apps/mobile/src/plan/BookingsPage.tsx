@@ -16,7 +16,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { trips } from "../trips/trips-data";
-import { bookingsForTrip, splitBookingTimeline, type BookingFilter } from "./booking-timeline";
+import {
+  bookingsForTrip,
+  groupBookingsByDay,
+  splitBookingTimeline,
+  type BookingFilter,
+} from "./booking-timeline";
 import { BOOKINGS, type Booking } from "./bookings-data";
 import { shareBookingCard } from "./share-booking-card";
 import { TripHeader } from "./TripHeader";
@@ -48,137 +53,139 @@ interface BookingItemsProps {
 function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Element {
   return (
     <ol className="booking-timeline">
-      {bookings.map((booking) => {
-        const Icon = BOOKING_ICONS[booking.category];
-        const startDate = new Date(`${booking.startDay}T12:00:00Z`);
-        const day = new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "UTC" }).format(
-          startDate,
-        );
-        const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" })
-          .format(startDate)
-          .toUpperCase();
-        const journeyDate = new Intl.DateTimeFormat("en-GB", {
+      {groupBookingsByDay(bookings).map((day) => {
+        const firstBooking = day.bookings[0];
+        const leadingFlight = firstBooking?.category === "flight" ? firstBooking : undefined;
+        const dateLabel = new Intl.DateTimeFormat("en-GB", {
           weekday: "short",
           day: "numeric",
           month: "short",
           year: "numeric",
           timeZone: "UTC",
-        }).format(startDate);
-        const isFlight = booking.category === "flight";
+        }).format(new Date(`${day.startDay}T12:00:00Z`));
 
         return (
           <li
-            className={`booking-timeline__item${isFlight ? " booking-timeline__item--flight" : ""}`}
-            key={booking.id}
+            className={`booking-timeline__day${leadingFlight ? " booking-timeline__day--journey" : ""}`}
+            key={day.startDay}
           >
-            <span
-              aria-hidden="true"
-              className={`booking-timeline__date${isFlight ? " booking-timeline__date--journey" : ""}`}
-            >
-              {!isFlight ? (
-                <>
-                  <strong>{day}</strong>
-                  <span>{month}</span>
-                </>
-              ) : null}
-            </span>
-            {isFlight ? (
-              <div className="booking-timeline__journey">
+            {leadingFlight ? (
+              <div className="booking-timeline__journey-heading">
+                <span aria-hidden="true" className="booking-timeline__marker" />
                 <h4>
-                  {booking.fromName} to {booking.toName}
+                  {leadingFlight.fromName} to {leadingFlight.toName}
                 </h4>
-                <span>
-                  <CalendarDays aria-hidden="true" size={15} strokeWidth={1.8} />
-                  {journeyDate}
-                </span>
               </div>
             ) : null}
-            <button
-              className={`booking-timeline__card booking-timeline__card--${booking.category}`}
-              onClick={(event) => onOpen(booking, event.currentTarget)}
-              type="button"
-            >
-              {isFlight ? (
-                <>
-                  <span className="booking-timeline__topline">
-                    <span className="booking-timeline__kind">
-                      <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
-                      {booking.kind}
-                    </span>
-                    <span>{booking.service}</span>
-                  </span>
-                  <span className="booking-timeline__route">
-                    <span className="booking-timeline__airport">
-                      <strong>{booking.fromCode}</strong>
-                      <span>{booking.fromName}</span>
-                      <b>{booking.fromLocalTime}</b>
-                      <small>Local time</small>
-                    </span>
-                    <span aria-hidden="true" className="booking-timeline__route-arrow">
-                      →
-                    </span>
-                    <span className="booking-timeline__airport booking-timeline__airport--arrival">
-                      <strong>{booking.toCode}</strong>
-                      <span>{booking.toName}</span>
-                      <b>{booking.toLocalTime}</b>
-                      <small>Local time</small>
-                    </span>
-                  </span>
-                  <span className="booking-timeline__airline">
-                    <span aria-hidden="true" className="booking-timeline__airline-mark">
-                      {booking.airlineCode ?? <Plane size={17} strokeWidth={1.9} />}
-                      {booking.airlineLogoUrl !== undefined ? (
-                        <img
-                          alt=""
-                          onError={(event) => {
-                            event.currentTarget.hidden = true;
-                          }}
-                          src={booking.airlineLogoUrl}
-                        />
-                      ) : null}
-                    </span>
-                    <span>{booking.airlineName ?? booking.detail}</span>
-                    <span className="booking-timeline__view">
-                      View <ChevronRight aria-hidden="true" size={17} />
-                    </span>
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="booking-timeline__topline">
-                    <span className="booking-timeline__kind">
-                      <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
-                      {booking.kind}
-                    </span>
-                    <span>{booking.dateLabel}</span>
-                  </span>
-                  <span className="booking-timeline__secondary">
-                    <span aria-hidden="true" className="booking-timeline__art">
-                      <Icon size={25} strokeWidth={1.5} />
-                      {booking.coverImageUrl !== undefined ? (
-                        <img
-                          alt=""
-                          onError={(event) => {
-                            event.currentTarget.hidden = true;
-                          }}
-                          src={booking.coverImageUrl}
-                        />
-                      ) : null}
-                    </span>
-                    <span className="booking-timeline__secondary-copy">
-                      <strong>{booking.title}</strong>
-                      <span>{booking.timeLabel}</span>
-                      <small>{booking.detail}</small>
-                    </span>
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="booking-timeline__secondary-arrow"
-                      size={18}
-                    />
-                  </span>
-                </>
-              )}
-            </button>
+            <div className="booking-timeline__day-heading">
+              <span aria-hidden="true" className="booking-timeline__marker" />
+              <time dateTime={day.startDay}>
+                <CalendarDays aria-hidden="true" size={16} strokeWidth={1.8} />
+                {dateLabel}
+              </time>
+            </div>
+            <ol className="booking-timeline__day-items">
+              {day.bookings.map((booking) => {
+                const Icon = BOOKING_ICONS[booking.category];
+                const isFlight = booking.category === "flight";
+
+                return (
+                  <li className="booking-timeline__entry" key={booking.id}>
+                    {isFlight && booking !== leadingFlight ? (
+                      <h4 className="booking-timeline__journey">
+                        {booking.fromName} to {booking.toName}
+                      </h4>
+                    ) : null}
+                    <button
+                      className={`booking-timeline__card booking-timeline__card--${booking.category}`}
+                      onClick={(event) => onOpen(booking, event.currentTarget)}
+                      type="button"
+                    >
+                      {isFlight ? (
+                        <>
+                          <span className="booking-timeline__topline">
+                            <span className="booking-timeline__kind">
+                              <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
+                              {booking.kind}
+                            </span>
+                            <span>{booking.service}</span>
+                          </span>
+                          <span className="booking-timeline__route">
+                            <span className="booking-timeline__airport">
+                              <strong>{booking.fromCode}</strong>
+                              <span>{booking.fromName}</span>
+                              <b>{booking.fromLocalTime}</b>
+                              <small>Local time</small>
+                            </span>
+                            <span aria-hidden="true" className="booking-timeline__route-arrow">
+                              →
+                            </span>
+                            <span className="booking-timeline__airport booking-timeline__airport--arrival">
+                              <strong>{booking.toCode}</strong>
+                              <span>{booking.toName}</span>
+                              <b>{booking.toLocalTime}</b>
+                              <small>Local time</small>
+                            </span>
+                          </span>
+                          <span className="booking-timeline__airline">
+                            <span aria-hidden="true" className="booking-timeline__airline-mark">
+                              {booking.airlineCode ?? <Plane size={17} strokeWidth={1.9} />}
+                              {booking.airlineLogoUrl !== undefined ? (
+                                <img
+                                  alt=""
+                                  onError={(event) => {
+                                    event.currentTarget.hidden = true;
+                                  }}
+                                  src={booking.airlineLogoUrl}
+                                />
+                              ) : null}
+                            </span>
+                            <span>{booking.airlineName ?? booking.detail}</span>
+                            <span className="booking-timeline__view">
+                              View <ChevronRight aria-hidden="true" size={17} />
+                            </span>
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="booking-timeline__topline">
+                            <span className="booking-timeline__kind">
+                              <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
+                              {booking.kind}
+                            </span>
+                            <span>{booking.dateLabel}</span>
+                          </span>
+                          <span className="booking-timeline__secondary">
+                            <span aria-hidden="true" className="booking-timeline__art">
+                              <Icon size={25} strokeWidth={1.5} />
+                              {booking.coverImageUrl !== undefined ? (
+                                <img
+                                  alt=""
+                                  onError={(event) => {
+                                    event.currentTarget.hidden = true;
+                                  }}
+                                  src={booking.coverImageUrl}
+                                />
+                              ) : null}
+                            </span>
+                            <span className="booking-timeline__secondary-copy">
+                              <strong>{booking.title}</strong>
+                              <span>{booking.timeLabel}</span>
+                              <small>{booking.detail}</small>
+                            </span>
+                            <ChevronRight
+                              aria-hidden="true"
+                              className="booking-timeline__secondary-arrow"
+                              size={18}
+                            />
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
           </li>
         );
       })}

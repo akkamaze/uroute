@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 
 import { BOOKINGS } from "../src/plan/bookings-data.ts";
-import { bookingsForTrip, splitBookingTimeline } from "../src/plan/booking-timeline.ts";
+import {
+  bookingsForTrip,
+  groupBookingsByDay,
+  splitBookingTimeline,
+} from "../src/plan/booking-timeline.ts";
 import { trips } from "../src/trips/trips-data.ts";
 
 test("All shows one chronological timeline across booking kinds", () => {
@@ -38,14 +42,33 @@ test("all-past and category filters retain the right records", () => {
   expect(all.upcoming).toEqual([]);
   expect(all.past.map((booking) => booking.id)).toEqual([
     "da-nang-stay",
-    "stay",
     "train",
-    "pass",
     "ticket",
+    "pass",
     "flight",
+    "stay",
   ]);
-  expect(tickets.past.map((booking) => booking.id)).toEqual(["pass", "ticket"]);
+  expect(tickets.past.map((booking) => booking.id)).toEqual(["ticket", "pass"]);
   expect(splitBookingTimeline([], "all", now)).toEqual({ upcoming: [], past: [] });
+});
+
+test("multiple bookings on one date share one timeline day row", () => {
+  const { upcoming, past } = splitBookingTimeline(
+    BOOKINGS,
+    "all",
+    new Date("2026-09-24T00:00:00Z"),
+  );
+  const days = groupBookingsByDay(upcoming);
+
+  expect(days.map((day) => day.startDay)).toEqual([
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-16",
+    "2026-12-04",
+  ]);
+  expect(days[0].bookings.map((booking) => booking.id)).toEqual(["flight", "stay"]);
+  expect(groupBookingsByDay(past)).toEqual([]);
 });
 
 test("trip view reads the shared list but only shows bookings overlapping that trip", () => {

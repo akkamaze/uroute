@@ -42,7 +42,7 @@
 .booking-page__content {
   min-height: 0;
   flex: 1;
-  padding: 1.5rem var(--space-4) 6rem;
+  padding: 1.5rem var(--space-4) 1.25rem;
   overflow-y: auto;
   overscroll-behavior-y: contain;
 }
@@ -175,7 +175,7 @@
 .booking-timeline {
   position: relative;
   display: grid;
-  gap: 0.875rem;
+  gap: 1.25rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -184,92 +184,95 @@
 .booking-timeline::before {
   position: absolute;
   top: 8px;
-  bottom: 20px;
+  bottom: 4px;
   left: 20px;
   width: 1px;
   background: var(--color-border);
   content: "";
 }
 
-.booking-timeline__item {
-  position: relative;
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 0.625rem;
-  align-items: start;
-}
-
-.booking-timeline__item--flight {
-  row-gap: 0.875rem;
-}
-
-.booking-timeline__item--flight .booking-timeline__card {
-  grid-column: 2;
-}
-
-.booking-timeline__date {
-  z-index: 1;
-  display: flex;
-  min-height: 2.875rem;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.125rem;
-  padding: 0 0 0 0.125rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  font-size: var(--type-caption-size);
-  letter-spacing: 0.035em;
-}
-
-.booking-timeline__date strong {
-  font-size: var(--type-title-lg-size);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.booking-timeline__date::after {
+.booking-timeline::after {
   position: absolute;
-  top: 3rem;
-  left: 17px;
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--color-active);
+  bottom: 0;
+  left: 16px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: var(--color-surface);
+  background: #aeb8c2;
   content: "";
 }
 
-.booking-timeline__date--journey {
-  min-height: 1.5rem;
-}
-
-.booking-timeline__date--journey::after {
-  top: 0.35rem;
-  left: 15px;
-  width: 11px;
-  height: 11px;
-  border: 0;
-  background: var(--color-active);
-}
-
-.booking-timeline__journey {
+.booking-timeline__day {
+  position: relative;
   min-width: 0;
 }
 
-.booking-timeline__journey h4 {
+.booking-timeline__day-heading,
+.booking-timeline__journey-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.booking-timeline__journey-heading {
+  margin-bottom: 0.5rem;
+}
+
+.booking-timeline__journey-heading h4 {
   margin: 0;
   color: var(--color-text);
   font-size: var(--type-title-lg-size);
   line-height: 1.25;
 }
 
-.booking-timeline__journey > span {
+.booking-timeline__marker {
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  justify-self: center;
+  border-radius: 50%;
+  background: var(--color-active);
+}
+
+.booking-timeline__day--journey .booking-timeline__day-heading .booking-timeline__marker {
+  width: 7px;
+  height: 7px;
+  background: var(--color-border);
+}
+
+.booking-timeline__day-heading time {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.75rem;
-  color: var(--color-muted);
+  color: var(--color-text);
   font-size: var(--type-body-sm-size);
+  font-weight: 700;
+}
+
+.booking-timeline__day-heading time svg {
+  color: var(--color-active);
+}
+
+.booking-timeline__day-items {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 0 52px;
+  padding: 0;
+  list-style: none;
+}
+
+.booking-timeline__entry {
+  min-width: 0;
+}
+
+.booking-timeline__journey {
+  margin: 0 0 0.625rem;
+  color: var(--color-text);
+  font-size: var(--type-title-lg-size);
+  line-height: 1.25;
 }
 
 .booking-timeline__card {
