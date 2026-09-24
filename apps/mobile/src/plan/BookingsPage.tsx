@@ -6,7 +6,7 @@ import {
   Compass,
   Hotel,
   Plane,
-  Share2,
+  Share,
   Ticket,
   TrainFront,
   X,
@@ -354,16 +354,18 @@ export function BookingsPage(): React.JSX.Element {
       >
         {selectedBooking !== undefined ? (
           <div className="booking-dialog__layout">
-            <p className="booking-dialog__caption">Share your journey</p>
-            <button
-              aria-label="Close booking card"
-              className="booking-dialog__close"
-              onClick={closeBooking}
-              ref={closeButtonRef}
-              type="button"
-            >
-              <X aria-hidden="true" size={22} strokeWidth={1.8} />
-            </button>
+            <div className="booking-dialog__topbar">
+              <button
+                aria-label="Close booking card"
+                className="booking-dialog__close"
+                onClick={closeBooking}
+                ref={closeButtonRef}
+                type="button"
+              >
+                <X aria-hidden="true" size={22} strokeWidth={1.8} />
+              </button>
+              <p className="booking-dialog__caption">Share your journey</p>
+            </div>
             <article aria-label="Share preview" className="booking-ticket">
               <header className="booking-ticket__header">
                 <span className="booking-ticket__brand">
@@ -469,6 +471,21 @@ export function BookingsPage(): React.JSX.Element {
                 </div>
                 <Plane aria-hidden="true" size={25} strokeWidth={1.5} />
               </footer>
+              <svg
+                aria-hidden="true"
+                className="booking-ticket__landscape"
+                preserveAspectRatio="none"
+                viewBox="0 0 360 88"
+              >
+                <path
+                  d="M0 75 38 69 74 58 108 61 147 46 188 57 221 37 261 53 302 49 337 61 360 58V88H0Z"
+                  fill="#e9f3ff"
+                />
+                <path
+                  d="M0 82 45 76 85 81 129 68 166 73 206 57 239 69 282 60 318 72 360 67V88H0Z"
+                  fill="#dcecff"
+                />
+              </svg>
             </article>
             <button
               className="booking-dialog__share"
@@ -476,8 +493,8 @@ export function BookingsPage(): React.JSX.Element {
               onClick={() => void shareSelectedBooking()}
               type="button"
             >
-              <Share2 aria-hidden="true" size={19} strokeWidth={1.8} />
-              {sharing ? "Preparing image…" : "Share card"}
+              <Share aria-hidden="true" size={19} strokeWidth={1.8} />
+              {sharing ? "Preparing image…" : "Share booking"}
             </button>
             {shareMessage.length > 0 ? (
               <p className="booking-dialog__message" role="status">
