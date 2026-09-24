@@ -5,6 +5,7 @@ import {
   Footprints,
   Landmark,
   Map as MapIcon,
+  MapPin,
   Pencil,
   Plus,
   Trash2,
@@ -394,6 +395,9 @@ export function PlanPage(): React.JSX.Element {
     }
     if (stop.category === "food") {
       return <Utensils aria-hidden="true" size={22} strokeWidth={1.8} />;
+    }
+    if (stop.category === "unknown") {
+      return <MapPin aria-hidden="true" size={22} strokeWidth={1.8} />;
     }
 
     return <Landmark aria-hidden="true" size={22} strokeWidth={1.8} />;

@@ -7,7 +7,7 @@ export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedSto
   return {
     address: `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`,
     area: point.folder,
-    category: "temple",
+    category: "unknown",
     duration: "",
     hours: "",
     id: point.id,
@@ -20,6 +20,6 @@ export function importedPointAsStop(point: ImportedPoint, time = ""): PlannedSto
     reviews: "",
     secondImage: "",
     time,
-    type: "Imported place",
+    type: "Unknown",
   };
 }

@@ -1017,6 +1017,11 @@ a,
   background: #fff2e5;
 }
 
+.timeline__icon--unknown {
+  color: var(--color-muted);
+  background: var(--color-border);
+}
+
 .timeline__info {
   display: flex;
   min-width: 0;

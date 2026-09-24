@@ -1,7 +1,7 @@
 export interface PlannedStop {
   address: string;
   area: string;
-  category: "coffee" | "food" | "temple";
+  category: "coffee" | "food" | "temple" | "unknown";
   duration: string;
   hours: string;
   id: string;

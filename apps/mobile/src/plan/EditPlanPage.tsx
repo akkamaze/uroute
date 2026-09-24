@@ -17,6 +17,7 @@ import {
   GripVertical,
   History,
   Landmark,
+  MapPin,
   Plus,
   Redo2,
   Trash2,
@@ -363,6 +364,9 @@ function renderStopIcon(category: string): React.JSX.Element {
   }
   if (category === "food") {
     return <Utensils aria-hidden="true" size={19} strokeWidth={1.8} />;
+  }
+  if (category === "unknown") {
+    return <MapPin aria-hidden="true" size={19} strokeWidth={1.8} />;
   }
 
   return <Landmark aria-hidden="true" size={19} strokeWidth={1.8} />;
