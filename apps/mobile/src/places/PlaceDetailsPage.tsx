@@ -1,9 +1,4 @@
-import {
-  Link,
-  useNavigate,
-  useRouterState,
-  useSearch,
-} from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Bookmark,
@@ -34,6 +29,7 @@ import {
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 
 import {
+  MIN_VISIBLE_MAP_CONTROLS_TOP,
   getSheetVisibleHeight,
   getSheetOffset,
   getDragOffset,
@@ -129,6 +125,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
   const [tripId, setTripId] = useState<TripId>("kyoto");
   const [tripDay, setTripDay] = useState(`2026-11-${search.day ?? 13}`);
   const [dragOffset, setDragOffset] = useState(0);
+  const sheetTop = 72 + getSheetOffset(visibleSheetSnap, layoutHeight) + dragOffset;
+  const mapControlsVisible = sheetHidden || sheetTop >= MIN_VISIBLE_MAP_CONTROLS_TOP;
   const dragStartRef = useRef<number | null>(null);
   const dragStartTimeRef = useRef(0);
   const dragMovedRef = useRef(false);
@@ -620,6 +618,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
       <section
         aria-hidden={addPanelOpen || undefined}
         className="places-page__map"
+        data-sheet-dragging={dragOffset === 0 ? undefined : "true"}
         inert={addPanelOpen}
       >
         <TripMap
@@ -629,6 +628,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
               ? 0
               : getSheetVisibleHeight(visibleSheetSnap, layoutHeight)
           }
+          controlsBottomInset={sheetHidden ? 0 : Math.max(0, layoutHeight - sheetTop)}
           expanded={mapExpanded}
           onExpandedChange={changeMapExpanded}
           onSelect={selectPlace}
@@ -640,8 +640,8 @@ export function PlaceDetailsPage(): React.JSX.Element {
           orderPlaces={orderPlaces}
           searchResultsMode={search.search === "results"}
           selectedId={search.search === "results" ? null : selectedPlace.id}
-          showDayOrder={search.search !== "results"}
-          showLocate={sheetHidden || visibleSheetSnap !== "expanded"}
+          showDayOrder={search.search !== "results" && mapControlsVisible}
+          showLocate={mapControlsVisible}
           variant="discovery"
         />
 

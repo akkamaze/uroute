@@ -51,9 +51,7 @@ test("Maps suggestions preview imported photos and keep a pin when no photo exis
   const suggestions = page.getByRole("region", { name: "Search suggestions" });
   const photoRow = suggestions.getByRole("button", { name: "Market photo Unfiled" });
   const plainRow = suggestions.getByRole("button", { name: "Market plain Unfiled" });
-  await expect(
-    photoRow.locator("img"),
-  ).toBeVisible();
+  await expect(photoRow.locator("img")).toBeVisible();
   const [photoThumbnail, plainThumbnail, photoTitle, plainTitle] = await Promise.all([
     photoRow.locator(".imported-page__search-thumbnail").boundingBox(),
     plainRow.locator(".imported-page__search-thumbnail").boundingBox(),
@@ -136,6 +134,29 @@ test("Maps places filter on the lower left and recenter on the lower right", asy
   expect(recenter!.x).toBeGreaterThan(page.viewportSize()!.width / 2);
   expect(Math.abs(filter!.y - recenter!.y)).toBeLessThan(3);
   expect(filter!.y + filter!.height).toBeLessThan(sheet!.y);
+});
+
+test("Maps hides map controls when search results cover the map", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect(page.getByRole("button", { name: "Map layers" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recenter imported places" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect(page.locator(".imported-page__content--expanded")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Map layers" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Recenter imported places" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Collapse place details" }).click();
+  await expect(page.getByRole("button", { name: "Map layers" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Recenter imported places" })).toBeVisible();
 });
 
 test("Maps details obey the same expanded top boundary as Plan", async ({ page }) => {
@@ -1194,7 +1215,9 @@ test("system back from Maps Add to trip returns to the selected place", async ({
   await expect(page.getByRole("form", { name: "Add to plan" })).toHaveCount(0);
 });
 
-test("Maps search back closes the editor without stepping through older queries", async ({ page }) => {
+test("Maps search back closes the editor without stepping through older queries", async ({
+  page,
+}) => {
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
     name: "sample.kml",
@@ -1258,11 +1281,15 @@ test("fits distant name-search matches on Maps without clustering them", async (
 
 test("shows only nearby or dense map subsets in Maps search results", async ({ page }) => {
   const points = [
-    ...Array.from({ length: 120 }, (_, index) =>
-      `<Placemark><name>H Tokyo ${index}</name><Point><coordinates>${139.7 + (index % 12) * 0.005},${35.6 + Math.floor(index / 12) * 0.005}</coordinates></Point></Placemark>`,
+    ...Array.from(
+      { length: 120 },
+      (_, index) =>
+        `<Placemark><name>H Tokyo ${index}</name><Point><coordinates>${139.7 + (index % 12) * 0.005},${35.6 + Math.floor(index / 12) * 0.005}</coordinates></Point></Placemark>`,
     ),
-    ...Array.from({ length: 40 }, (_, index) =>
-      `<Placemark><name>H Kyoto ${index}</name><Point><coordinates>${135.7 + (index % 8) * 0.005},${35 + Math.floor(index / 8) * 0.005}</coordinates></Point></Placemark>`,
+    ...Array.from(
+      { length: 40 },
+      (_, index) =>
+        `<Placemark><name>H Kyoto ${index}</name><Point><coordinates>${135.7 + (index % 8) * 0.005},${35 + Math.floor(index / 8) * 0.005}</coordinates></Point></Placemark>`,
     ),
   ];
 
@@ -1284,12 +1311,13 @@ test("shows only nearby or dense map subsets in Maps search results", async ({ p
   await page.reload();
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        (
-          window as Window & {
-            __urouteMapDiagnostics?: () => { center: { longitude: number } };
-          }
-        ).__urouteMapDiagnostics?.().center.longitude,
+      page.evaluate(
+        () =>
+          (
+            window as Window & {
+              __urouteMapDiagnostics?: () => { center: { longitude: number } };
+            }
+          ).__urouteMapDiagnostics?.().center.longitude,
       ),
     )
     .toBeLessThan(136);

@@ -69,6 +69,7 @@ const EMPTY_MAP_GEOMETRY: MapGeometryCollection = {
 
 interface TripMapProps {
   bottomInset?: number;
+  controlsBottomInset?: number;
   clusterAnchorPlaces?: PlaceCollection;
   expanded?: boolean;
   focusSelectedId?: string | null;
@@ -331,6 +332,7 @@ function syncSelectedPlace(
 
 export function TripMap({
   bottomInset = 0,
+  controlsBottomInset = bottomInset,
   clusterAnchorPlaces,
   expanded: controlledExpanded,
   focusSelectedId = null,
@@ -1315,7 +1317,7 @@ export function TripMap({
       className={`trip-map trip-map--${variant}${expanded ? " trip-map--expanded" : ""}`}
       id={id}
       inert={inactive}
-      style={{ "--map-bottom-inset": `${bottomInset}px` } as React.CSSProperties}
+      style={{ "--map-bottom-inset": `${controlsBottomInset}px` } as React.CSSProperties}
     >
       <div className="trip-map__canvas" ref={containerRef} />
 

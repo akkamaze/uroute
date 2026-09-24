@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { attachContentSheetDrag } from "../places/content-sheet-drag";
 import "../places/map-search.css";
 import {
+  MIN_VISIBLE_MAP_CONTROLS_TOP,
   getDragOffset,
   getSheetOffset,
   resolveSheetSnap,
@@ -295,7 +296,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const previousSelectedIdRef = useRef(selectedId);
   const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
-  const [searchOrigin, setSearchOrigin] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
+  const [searchOrigin, setSearchOrigin] = useState<MapViewport | null>(
+    savedMapsState.viewport ?? null,
+  );
   const [searchDraftOrigin, setSearchDraftOrigin] = useState<MapViewport | null>(
     savedMapsState.viewport ?? null,
   );
@@ -611,6 +614,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const sheetSnap: SheetSnap = sheetCollapsed ? "collapsed" : sheetExpanded ? "expanded" : "middle";
   const visibleSheetSnap = destinationOpen ? "expanded" : sheetSnap;
   const sheetBaseOffset = sheetOpen ? getSheetOffset(visibleSheetSnap, sheetViewportHeight) : 0;
+  const mapControlsVisible =
+    !sheetOpen || 72 + sheetBaseOffset + sheetDragOffset >= MIN_VISIBLE_MAP_CONTROLS_TOP;
 
   const settleSheet = useCallback(
     (delta: number, duration: number): void => {
@@ -807,18 +812,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
         : toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces, false, osmPhotoCache),
     [dayPlaces, osmPhotoCache, searchResultsMode, view, visiblePlaces],
   );
-  const mapDisplayPoints = useMemo(
-    () => {
-      const points = (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
-        isImportLayerVisible(point, hiddenLayers),
-      );
+  const mapDisplayPoints = useMemo(() => {
+    const points = (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
+      isImportLayerVisible(point, hiddenLayers),
+    );
 
-      return searchResultsMode
-        ? selectSearchMapItems(points, searchOrigin, (point) => [point.longitude, point.latitude])
-        : points;
-    },
-    [dayPlaces, hiddenLayers, searchOrigin, searchResultsMode, view, visiblePlaces],
-  );
+    return searchResultsMode
+      ? selectSearchMapItems(points, searchOrigin, (point) => [point.longitude, point.latitude])
+      : points;
+  }, [dayPlaces, hiddenLayers, searchOrigin, searchResultsMode, view, visiblePlaces]);
   const mapPlaces = useMemo(
     () => toMapPlaces(mapDisplayPoints, false, osmPhotoCache),
     [mapDisplayPoints, osmPhotoCache],
@@ -1435,11 +1437,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
               recenterLabel={globalMaps ? "Recenter imported places" : "Recenter on Kyoto"}
               searchResultsMode={searchResultsMode}
               selectedId={searchResultsMode ? null : selectedId}
-              showLocate={globalMaps && !destinationOpen && !(detailSheet && sheetExpanded)}
+              showLocate={globalMaps && !destinationOpen && mapControlsVisible}
               showDayOrder={!globalMaps}
               variant="discovery"
             />
-            {globalMaps && !searchEditing && !destinationOpen && !(detailSheet && sheetExpanded)
+            {globalMaps && !searchEditing && !destinationOpen && mapControlsVisible
               ? layersButton
               : null}
           </div>
@@ -1678,47 +1680,47 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 ) : (
                   <div className="imported-page__list">
                     {listedPlaces.map((point, index) => (
-                        <article className="imported-page__row" key={point.id}>
+                      <article className="imported-page__row" key={point.id}>
+                        <button
+                          onClick={() => {
+                            setSelectedId(point.id);
+                            setFocusSelectedId(point.id);
+                            setSheetCollapsed(false);
+                            setSearchOpen(false);
+                          }}
+                          type="button"
+                        >
+                          <span>
+                            {view === "plan" ? (
+                              `${index + 1}.`
+                            ) : (
+                              <MapPin aria-hidden="true" size={17} />
+                            )}
+                          </span>
+                          <span>
+                            <strong>{point.name}</strong>
+                            <small>{point.folder}</small>
+                          </span>
+                        </button>
+                        {view === "plan" ? (
                           <button
-                            onClick={() => {
-                              setSelectedId(point.id);
-                              setFocusSelectedId(point.id);
-                              setSheetCollapsed(false);
-                              setSearchOpen(false);
-                            }}
+                            aria-label={`Remove ${point.name} from this day`}
+                            onClick={() => void removeFromPlan(point)}
                             type="button"
                           >
-                            <span>
-                              {view === "plan" ? (
-                                `${index + 1}.`
-                              ) : (
-                                <MapPin aria-hidden="true" size={17} />
-                              )}
-                            </span>
-                            <span>
-                              <strong>{point.name}</strong>
-                              <small>{point.folder}</small>
-                            </span>
+                            <Trash2 aria-hidden="true" size={18} />
                           </button>
-                          {view === "plan" ? (
-                            <button
-                              aria-label={`Remove ${point.name} from this day`}
-                              onClick={() => void removeFromPlan(point)}
-                              type="button"
-                            >
-                              <Trash2 aria-hidden="true" size={18} />
-                            </button>
-                          ) : globalMaps ? null : (
-                            <button
-                              aria-label={`Add ${point.name} to ${globalMaps ? (destination === null ? "selected plan day" : destinationLabel(destination)) : "this day"}`}
-                              onClick={() => void addToPlan(point)}
-                              type="button"
-                            >
-                              <Plus aria-hidden="true" size={18} />
-                            </button>
-                          )}
-                        </article>
-                      ))}
+                        ) : globalMaps ? null : (
+                          <button
+                            aria-label={`Add ${point.name} to ${globalMaps ? (destination === null ? "selected plan day" : destinationLabel(destination)) : "this day"}`}
+                            onClick={() => void addToPlan(point)}
+                            type="button"
+                          >
+                            <Plus aria-hidden="true" size={18} />
+                          </button>
+                        )}
+                      </article>
+                    ))}
                     {globalMaps && !searchResultsMode && displayedPlaces.length > visibleLimit ? (
                       <button
                         className="imported-page__show-more"
