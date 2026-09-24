@@ -74,7 +74,7 @@ export function createCategoryMarker(category: string): ImageData {
   }
   context.scale(2, 2);
   context.beginPath();
-  context.arc(18, 18, 12, 0, Math.PI * 2);
+  context.arc(18, 18, 14, 0, Math.PI * 2);
   context.fillStyle =
     category === "coffee" ? "#98653b" : category === "food" ? "#cf7736" : "#4679a8";
   context.shadowColor = "rgba(15, 42, 77, 0.22)";
