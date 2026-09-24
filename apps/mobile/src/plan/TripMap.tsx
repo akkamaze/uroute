@@ -83,6 +83,7 @@ interface TripMapProps {
   places: PlaceCollection;
   orderPlaces: PlaceCollection;
   recenterLabel?: string;
+  searchResultsMode?: boolean;
   selectedId: string | null;
   showLocate?: boolean;
   showDayOrder?: boolean;
@@ -344,12 +345,14 @@ export function TripMap({
   places: allPlaces,
   orderPlaces,
   recenterLabel = "Recenter on Kyoto",
+  searchResultsMode = false,
   selectedId,
   showLocate = true,
   showDayOrder = true,
   variant = "planner",
 }: TripMapProps): React.JSX.Element {
-  const [markerMode, setMarkerMode] = useState<"places" | "order">("places");
+  const [selectedMarkerMode, setMarkerMode] = useState<"places" | "order">("places");
+  const markerMode = searchResultsMode ? "places" : selectedMarkerMode;
   const places = markerMode === "order" ? orderPlaces : allPlaces;
   const anchored = clusterAnchorPlaces !== undefined && markerMode === "places";
   const containerRef = useRef<HTMLDivElement>(null);
@@ -701,7 +704,9 @@ export function TripMap({
           continue;
         }
         const photo = document.createElement("img");
-        photo.className = "trip-map__external-photo";
+        photo.className = searchResultsMode
+          ? "trip-map__external-photo trip-map__external-photo--search-result"
+          : "trip-map__external-photo";
         photo.src = image;
         photo.alt = "";
         photo.draggable = false;
@@ -886,7 +891,7 @@ export function TripMap({
         activeMap.addSource(POINT_SOURCE_ID, {
           type: "geojson",
           data: { type: "FeatureCollection", features: [] },
-          cluster: markerMode === "places",
+          cluster: markerMode === "places" && !searchResultsMode,
           clusterMaxZoom: 14,
           clusterRadius: 24,
           ...(anchored ? { clusterProperties: { visible_count: ["+", ["get", "visible"]] } } : {}),
@@ -1004,7 +1009,10 @@ export function TripMap({
           .then(() => {
             if (!disposed) {
               applySelection();
-              if (initialViewportRef.current === null) {
+              if (
+                initialViewportRef.current === null &&
+                (!searchResultsMode || placesRef.current.features.length > 0)
+              ) {
                 framePlaces(
                   activeMap,
                   placesRef.current,
@@ -1057,6 +1065,7 @@ export function TripMap({
         place.properties.image,
         markerMode === "order" ? place.properties.marker?.slice(6) : undefined,
         selected,
+        searchResultsMode,
       );
       if (!disposed && !activeMap.hasImage(imageId)) {
         activeMap.addImage(imageId, sprite, { pixelRatio: 2 });
@@ -1130,7 +1139,7 @@ export function TripMap({
       }
       activeMap.remove();
     };
-  }, [retryCount, markerMode, anchored]);
+  }, [retryCount, markerMode, anchored, searchResultsMode]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1164,7 +1173,9 @@ export function TripMap({
           ) {
             skippedRestoredFrameRef.current = true;
           } else if (shouldFrame) {
-            framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+            if (!searchResultsMode || places.features.length > 0) {
+              framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+            }
           }
           if (shouldFrame) {
             focusMapPlace(map, places, focusSelectedIdRef.current, bottomInsetRef.current, true);
@@ -1178,7 +1189,7 @@ export function TripMap({
           setStatus("error");
         }
       });
-  }, [clusterAnchorPlaces, frameKey, markerMode, places]);
+  }, [clusterAnchorPlaces, frameKey, markerMode, places, searchResultsMode]);
 
   useEffect(() => {
     const map = mapRef.current;

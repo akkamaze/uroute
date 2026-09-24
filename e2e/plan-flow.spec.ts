@@ -172,6 +172,51 @@ test("Plan search uses full-screen suggestions before submitting map results", a
   await expect(suggestions.getByRole("button", { name: "nishiki", exact: true })).toBeVisible();
 });
 
+test("Plan name search frames individual result pins instead of clusters", async ({ page }) => {
+  await page.goto("/places?place=kiyomizu&day=13&search=open&q=sh");
+  await page.getByRole("searchbox", { name: "Search places" }).press("Enter");
+  await expect(page.getByRole("region", { name: "Search results", exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              clusteringEnabled: boolean;
+              featureCount: number | null;
+              renderedClusterCount: number;
+              zoom: number;
+            };
+          }
+        ).__urouteMapDiagnostics?.(),
+      ),
+    )
+    .toMatchObject({
+      clusteringEnabled: false,
+      renderedClusterCount: 0,
+      featureCount: expect.any(Number),
+      zoom: expect.any(Number),
+    });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const snapshot = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              featureCount: number | null;
+              renderedPlaces: { id: string }[];
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return snapshot !== undefined && snapshot.featureCount !== null && snapshot.featureCount > 1
+          ? new Set(snapshot.renderedPlaces.map((place) => place.id)).size
+          : 0;
+      }),
+    )
+    .toBeGreaterThan(1);
+});
+
 test("visible place back returns to the originating plan", async ({ page }) => {
   await page.goto("/plan?day=13");
   await page.locator('[data-stop-id="nishiki"]').click();

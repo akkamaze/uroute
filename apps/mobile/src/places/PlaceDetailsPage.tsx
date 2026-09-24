@@ -25,6 +25,7 @@ import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces, createOrderedPlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
+import { selectSearchMapPlaces } from "../plan/search-map-places";
 import {
   addPlaceToKyotoDay,
   getKyotoPlan,
@@ -632,6 +633,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
         inert={addPanelOpen}
       >
         <TripMap
+          key={search.search === "results" ? "plan-search-map" : "plan-map"}
           bottomInset={
             sheetHidden || visibleSheetSnap === "expanded"
               ? 0
@@ -640,10 +642,15 @@ export function PlaceDetailsPage(): React.JSX.Element {
           expanded={mapExpanded}
           onExpandedChange={changeMapExpanded}
           onSelect={selectPlace}
-          places={visiblePlaces}
-          focusSelectedId={selectedPlace.id}
+          places={
+            search.search === "results" ? selectSearchMapPlaces(visiblePlaces, null) : visiblePlaces
+          }
+          focusSelectedId={search.search === "results" ? null : selectedPlace.id}
+          frameKey={search.search === "results" ? `plan-search:${submittedQuery}` : "plan-default"}
           orderPlaces={orderPlaces}
-          selectedId={selectedPlace.id}
+          searchResultsMode={search.search === "results"}
+          selectedId={search.search === "results" ? null : selectedPlace.id}
+          showDayOrder={search.search !== "results"}
           showLocate={sheetHidden || visibleSheetSnap !== "expanded"}
           variant="discovery"
         />

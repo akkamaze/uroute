@@ -1125,6 +1125,25 @@ test("searches imported places by name and folder", async ({ page }) => {
   await page.getByLabel("Search imported places").press("Enter");
   await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
   await expect.poll(mapPlaceCount).toBe(2);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              clusteringEnabled: boolean;
+              renderedClusterCount: number;
+              renderedPlaces: { id: string }[];
+            };
+          }
+        ).__urouteMapDiagnostics?.(),
+      ),
+    )
+    .toMatchObject({
+      clusteringEnabled: false,
+      renderedClusterCount: 0,
+      renderedPlaces: expect.arrayContaining([expect.any(Object), expect.any(Object)]),
+    });
   await expect(page.getByLabel("Filter by folder")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
   await page.getByLabel("Search imported places").fill("");
@@ -1132,6 +1151,165 @@ test("searches imported places by name and folder", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Tokyo" })).toBeVisible();
   await page.getByRole("button", { name: "Close search" }).click();
   await expect(page.getByLabel("Search imported places")).toHaveValue("Tokyo");
+});
+
+test("closing a place opened from Maps search restores the result sheet", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Tokyo");
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  await expect(page.locator(".imported-page__list-heading span")).toHaveCount(0);
+  await expect(page.locator(".imported-page__row")).toHaveCount(2);
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  await page.getByRole("button", { name: "Close place details" }).click();
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  await expect(page.locator(".imported-page__row")).toHaveCount(2);
+  await expect(page.getByLabel("Search imported places")).toHaveValue("Tokyo");
+});
+
+test("fits distant name-search matches on Maps without clustering them", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "distant-search.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(`<kml><Document><Folder><name>Wide</name>
+      <Placemark><name>Wide Tokyo</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark>
+      <Placemark><name>Wide Kyoto</name><Point><coordinates>135.77,35.01</coordinates></Point></Placemark>
+    </Folder></Document></kml>`),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 0 lines and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Wide");
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const snapshot = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              clusteringEnabled: boolean;
+              renderedPlaces: { id: string }[];
+              zoom: number;
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return snapshot === undefined
+          ? null
+          : {
+              clusteringEnabled: snapshot.clusteringEnabled,
+              markerCount: new Set(snapshot.renderedPlaces.map((place) => place.id)).size,
+              zoomedOut: snapshot.zoom < 8,
+            };
+      }),
+    )
+    .toEqual({ clusteringEnabled: false, markerCount: 2, zoomedOut: true });
+});
+
+test("shows only nearby or dense map subsets in Maps search results", async ({ page }) => {
+  const points = [
+    ...Array.from({ length: 120 }, (_, index) =>
+      `<Placemark><name>H Tokyo ${index}</name><Point><coordinates>${139.7 + (index % 12) * 0.005},${35.6 + Math.floor(index / 12) * 0.005}</coordinates></Point></Placemark>`,
+    ),
+    ...Array.from({ length: 40 }, (_, index) =>
+      `<Placemark><name>H Kyoto ${index}</name><Point><coordinates>${135.7 + (index % 8) * 0.005},${35 + Math.floor(index / 8) * 0.005}</coordinates></Point></Placemark>`,
+    ),
+  ];
+
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "broad-search.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(`<kml><Document>${points.join("")}</Document></kml>`),
+  });
+  await page.getByRole("button", { name: "Import 160 places, 0 lines and 0 areas" }).click();
+  await page.evaluate(() => {
+    const saved: unknown = JSON.parse(sessionStorage.getItem("uroute-maps-state:v1") ?? "{}");
+    const state = saved !== null && typeof saved === "object" ? saved : {};
+    sessionStorage.setItem(
+      "uroute-maps-state:v1",
+      JSON.stringify({ ...state, viewport: { latitude: 35.01, longitude: 135.77, zoom: 12 } }),
+    );
+  });
+  await page.reload();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as Window & {
+            __urouteMapDiagnostics?: () => { center: { longitude: number } };
+          }
+        ).__urouteMapDiagnostics?.().center.longitude,
+      ),
+    )
+    .toBeLessThan(136);
+  await page.getByLabel("Search imported places").fill("H");
+  await page.getByLabel("Search imported places").press("Enter");
+  await expect(page.locator(".imported-page__list-heading span")).toHaveCount(0);
+  await expect(page.locator(".imported-page__row")).toHaveCount(40);
+  await expect(page.getByRole("button", { name: "Show more places" })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const snapshot = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              clusteringEnabled: boolean;
+              featureCount: number | null;
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return snapshot === undefined
+          ? null
+          : {
+              clustered: snapshot.clusteringEnabled,
+              count: snapshot.featureCount,
+            };
+      }),
+    )
+    .toEqual({ clustered: false, count: 40 });
+
+  await page.evaluate(() => {
+    const saved: unknown = JSON.parse(sessionStorage.getItem("uroute-maps-state:v1") ?? "{}");
+    const state = saved !== null && typeof saved === "object" ? saved : {};
+    sessionStorage.setItem(
+      "uroute-maps-state:v1",
+      JSON.stringify({ ...state, viewport: { latitude: -33.87, longitude: 151.2, zoom: 10 } }),
+    );
+  });
+  await page.reload();
+  await expect(page.locator(".imported-page__row")).toHaveCount(48);
+  await expect(page.getByRole("button", { name: "Show more places" })).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const snapshot = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              center: { longitude: number };
+              clusteringEnabled: boolean;
+              featureCount: number | null;
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return snapshot === undefined
+          ? null
+          : {
+              clustered: snapshot.clusteringEnabled,
+              count: snapshot.featureCount,
+              nearTokyo: snapshot.center.longitude > 139,
+            };
+      }),
+    )
+    .toEqual({ clustered: false, count: 48, nearTokyo: true });
 });
 
 test("keeps Maps view across tabs, centers a selected place above its sheet, and swipes the sheet down", async ({

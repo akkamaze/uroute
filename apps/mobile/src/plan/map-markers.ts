@@ -247,6 +247,7 @@ export async function createPlaceHead(
   imageUrl: string | undefined,
   number: string | undefined,
   selected: boolean,
+  searchResult = false,
 ): Promise<ImageData> {
   // My Maps images lack CORS headers; TripMap displays them as DOM photo overlays instead.
   const photo =
@@ -303,11 +304,11 @@ export async function createPlaceHead(
     context.lineWidth = 2;
     context.stroke();
   }
-  if (selected) {
+  if (selected || searchResult) {
     context.beginPath();
     context.arc(20, 20, 16.5, 0, Math.PI * 2);
-    context.strokeStyle = "#1677ff";
-    context.lineWidth = 1.5;
+    context.strokeStyle = searchResult ? "#f59e0b" : "#1677ff";
+    context.lineWidth = searchResult ? 2.5 : 1.5;
     context.stroke();
   }
 

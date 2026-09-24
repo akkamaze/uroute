@@ -25,6 +25,7 @@ import {
 import type { MapGeometryCollection, PlaceCollection } from "../plan/map-data";
 import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
+import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
@@ -294,6 +295,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const previousSelectedIdRef = useRef(selectedId);
   const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
+  const [searchOrigin, setSearchOrigin] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [sheetViewportHeight, setSheetViewportHeight] = useState(window.innerHeight);
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
@@ -789,20 +791,30 @@ export function ImportedPlacesPage(): React.JSX.Element {
     }
     // Restore saved scroll once after the sheet becomes visible.
   }, [sheetOpen]);
+  const searchResultsMode =
+    globalMaps && normalizedQuery !== "" && !searchEditing && selectedId === null;
   const clusterAnchorPlaces = useMemo(
-    () => toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces, false, osmPhotoCache),
-    [dayPlaces, osmPhotoCache, view, visiblePlaces],
+    () =>
+      searchResultsMode
+        ? null
+        : toMapPlaces(view === "plan" ? dayPlaces : visiblePlaces, false, osmPhotoCache),
+    [dayPlaces, osmPhotoCache, searchResultsMode, view, visiblePlaces],
+  );
+  const mapDisplayPoints = useMemo(
+    () => {
+      const points = (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
+        isImportLayerVisible(point, hiddenLayers),
+      );
+
+      return searchResultsMode
+        ? selectSearchMapItems(points, searchOrigin, (point) => [point.longitude, point.latitude])
+        : points;
+    },
+    [dayPlaces, hiddenLayers, searchOrigin, searchResultsMode, view, visiblePlaces],
   );
   const mapPlaces = useMemo(
-    () =>
-      toMapPlaces(
-        (view === "plan" ? dayPlaces : visiblePlaces).filter((point) =>
-          isImportLayerVisible(point, hiddenLayers),
-        ),
-        false,
-        osmPhotoCache,
-      ),
-    [dayPlaces, hiddenLayers, osmPhotoCache, view, visiblePlaces],
+    () => toMapPlaces(mapDisplayPoints, false, osmPhotoCache),
+    [mapDisplayPoints, osmPhotoCache],
   );
   const mapGeometry = useMemo(
     () =>
@@ -822,7 +834,12 @@ export function ImportedPlacesPage(): React.JSX.Element {
       ),
     [dayPlaces, hiddenLayers, osmPhotoCache],
   );
-  const displayedPlaces = view === "plan" ? dayPlaces : visiblePlaces;
+  const displayedPlaces =
+    view === "plan" ? dayPlaces : searchResultsMode ? mapDisplayPoints : visiblePlaces;
+  const listedPlaces =
+    globalMaps && searchResultsMode
+      ? displayedPlaces
+      : displayedPlaces.slice(0, view === "places" ? (globalMaps ? visibleLimit : 100) : undefined);
   const knownPreviewCount =
     preview?.points.filter((point) => places.some((place) => sameImportedPlace(point, place)))
       .length ?? 0;
@@ -970,6 +987,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
   function submitSearch(value = draftQuery): void {
     const nextQuery = value.trim();
+    setSearchOrigin(viewport);
     setDraftQuery(nextQuery);
     setQuery(nextQuery);
     setSearchEditing(false);
@@ -1379,12 +1397,19 @@ export function ImportedPlacesPage(): React.JSX.Element {
             }
           >
             <TripMap
+              key={searchResultsMode ? "maps-search-map" : "maps-map"}
               bottomInset={sheetOpen ? Math.max(0, sheetHeight - sheetBaseOffset) : 0}
-              clusterAnchorPlaces={clusterAnchorPlaces}
-              focusSelectedId={globalMaps ? focusSelectedId : null}
+              {...(clusterAnchorPlaces === null ? {} : { clusterAnchorPlaces })}
+              focusSelectedId={searchResultsMode ? null : globalMaps ? focusSelectedId : null}
               frameKey={`${view}:${selectedDay}:${folder}:${normalizedQuery}:${places.length}:${geometries.length}`}
               geometry={mapGeometry}
-              initialViewport={globalMaps ? (savedMapsState.viewport ?? null) : null}
+              initialViewport={
+                globalMaps
+                  ? searchResultsMode && mapPlaces.features.length > 0
+                    ? null
+                    : viewport
+                  : null
+              }
               onSelect={(id) => {
                 setSelectedId(id);
                 setFocusSelectedId(id);
@@ -1400,7 +1425,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
               orderPlaces={orderPlaces}
               places={mapPlaces}
               recenterLabel={globalMaps ? "Recenter imported places" : "Recenter on Kyoto"}
-              selectedId={selectedId}
+              searchResultsMode={searchResultsMode}
+              selectedId={searchResultsMode ? null : selectedId}
               showLocate={globalMaps && !destinationOpen && !(detailSheet && sheetExpanded)}
               showDayOrder={!globalMaps}
               variant="discovery"
@@ -1501,6 +1527,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
                           setSelectedId(null);
                           setFocusSelectedId(null);
                           setSheetCollapsed(false);
+                          if (globalMaps && normalizedQuery !== "") {
+                            setSearchOpen(true);
+                          }
                         }}
                         type="button"
                       >
@@ -1625,7 +1654,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                         : "Imported places"
                       : `Plan · ${KANTO_DAYS.find((day) => day.date === selectedDay)?.label}`}
                   </h2>
-                  <span>{displayedPlaces.length}</span>
+                  {searchResultsMode ? null : <span>{displayedPlaces.length}</span>}
                   {globalMaps ? (
                     <button onClick={() => setSearchOpen(false)} type="button">
                       Done
@@ -1640,9 +1669,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                   </p>
                 ) : (
                   <div className="imported-page__list">
-                    {displayedPlaces
-                      .slice(0, view === "places" ? (globalMaps ? visibleLimit : 100) : undefined)
-                      .map((point, index) => (
+                    {listedPlaces.map((point, index) => (
                         <article className="imported-page__row" key={point.id}>
                           <button
                             onClick={() => {
@@ -1684,7 +1711,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                           )}
                         </article>
                       ))}
-                    {globalMaps && displayedPlaces.length > visibleLimit ? (
+                    {globalMaps && !searchResultsMode && displayedPlaces.length > visibleLimit ? (
                       <button
                         className="imported-page__show-more"
                         onClick={() => setVisibleLimit((limit) => limit + 24)}

@@ -631,6 +631,10 @@ a {
   pointer-events: none;
 }
 
+.trip-map__external-photo--search-result {
+  border: 3px solid #f59e0b;
+}
+
 .trip-map__controls {
   position: absolute;
   z-index: 2;
