@@ -300,6 +300,11 @@ export function BookingsPage(): React.JSX.Element {
                     <div>
                       <strong>{selectedBooking.fromCode}</strong>
                       <span>{selectedBooking.fromName}</span>
+                      {selectedBooking.fromLocalTime !== undefined ? (
+                        <time className="booking-ticket__local-time">
+                          {selectedBooking.fromLocalTime} <small>local</small>
+                        </time>
+                      ) : null}
                     </div>
                     <span aria-hidden="true" className="booking-ticket__route-line">
                       {selectedBooking.id === "flight" ? (
@@ -311,6 +316,11 @@ export function BookingsPage(): React.JSX.Element {
                     <div>
                       <strong>{selectedBooking.toCode}</strong>
                       <span>{selectedBooking.toName}</span>
+                      {selectedBooking.toLocalTime !== undefined ? (
+                        <time className="booking-ticket__local-time">
+                          {selectedBooking.toLocalTime} <small>local</small>
+                        </time>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -320,14 +330,12 @@ export function BookingsPage(): React.JSX.Element {
                   <span>DATE</span>
                   <strong>{selectedBooking.dateLabel}</strong>
                 </div>
-                <div>
-                  <span>{selectedBooking.fromCode === undefined ? "DETAILS" : "LOCAL TIMES"}</span>
-                  <strong>
-                    {selectedBooking.fromCode === undefined
-                      ? selectedBooking.detail
-                      : selectedBooking.timeLabel}
-                  </strong>
-                </div>
+                {selectedBooking.fromCode === undefined ? (
+                  <div>
+                    <span>DETAILS</span>
+                    <strong>{selectedBooking.detail}</strong>
+                  </div>
+                ) : null}
                 <div>
                   <span>
                     {selectedBooking.id === "flight"

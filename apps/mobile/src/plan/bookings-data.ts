@@ -15,6 +15,8 @@ export interface Booking {
   toCode?: string;
   fromName?: string;
   toName?: string;
+  fromLocalTime?: string;
+  toLocalTime?: string;
   service?: string;
 }
 
@@ -34,6 +36,8 @@ export const BOOKINGS: readonly Booking[] = [
     toCode: "KIX",
     fromName: "Bangkok",
     toName: "Osaka",
+    fromLocalTime: "08:30",
+    toLocalTime: "15:55",
     service: "TG672",
   },
   {

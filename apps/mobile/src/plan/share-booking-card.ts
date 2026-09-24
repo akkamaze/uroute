@@ -139,6 +139,14 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
     context.textAlign = "right";
     context.fillText(booking.toName ?? "", 935, 632);
     context.textAlign = "left";
+    if (booking.fromLocalTime !== undefined && booking.toLocalTime !== undefined) {
+      context.fillStyle = "#17344b";
+      context.font = "700 34px Arial, sans-serif";
+      context.fillText(`${booking.fromLocalTime} local`, 145, 677);
+      context.textAlign = "right";
+      context.fillText(`${booking.toLocalTime} local`, 935, 677);
+      context.textAlign = "left";
+    }
   } else {
     context.fillStyle = "#17344b";
     context.font = "700 52px Arial, sans-serif";
@@ -151,25 +159,29 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
   context.fillStyle = "#607487";
   context.font = "700 23px Arial, sans-serif";
   context.fillText("DATE", 145, 750);
-  context.fillText(booking.fromCode === undefined ? "DETAILS" : "LOCAL TIMES", 555, 750);
+  if (booking.fromCode === undefined) {
+    context.fillText("DETAILS", 555, 750);
+  }
   context.fillText(
     booking.id === "flight" ? "FLIGHT" : booking.id === "train" ? "SERVICE" : "TYPE",
-    145,
-    865,
+    booking.fromCode === undefined ? 145 : 555,
+    booking.fromCode === undefined ? 865 : 750,
   );
 
   context.fillStyle = "#21394d";
   context.font = "600 31px Arial, sans-serif";
   context.fillText(booking.dateLabel, 145, 794);
+  if (booking.fromCode === undefined) {
+    drawWrappedText(context, booking.detail, 555, 794, 360, 37);
+  }
   drawWrappedText(
     context,
-    booking.fromCode === undefined ? booking.detail : booking.timeLabel,
-    555,
-    794,
-    360,
+    booking.service ?? booking.kind,
+    booking.fromCode === undefined ? 145 : 555,
+    booking.fromCode === undefined ? 909 : 794,
+    booking.fromCode === undefined ? 760 : 360,
     37,
   );
-  drawWrappedText(context, booking.service ?? booking.kind, 145, 909, 760, 37);
 
   context.strokeStyle = "#c9d6df";
   context.lineWidth = 2;

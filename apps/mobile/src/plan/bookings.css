@@ -481,6 +481,20 @@
   line-height: 1.25;
 }
 
+.booking-ticket__local-time {
+  margin-top: 0.875rem;
+  color: #17344b;
+  font-size: var(--type-heading-size);
+  font-weight: 750;
+  line-height: 1;
+}
+
+.booking-ticket__local-time small {
+  color: #607487;
+  font-size: var(--type-caption-size);
+  font-weight: 600;
+}
+
 .booking-ticket__route-line {
   display: flex;
   align-items: center;
