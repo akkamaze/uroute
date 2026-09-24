@@ -57,54 +57,45 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
     throw new Error("Image canvas is unavailable.");
   }
 
-  const background = {
-    flight: "#315d7c",
-    stay: "#594e43",
-    train: "#30545b",
-    pass: "#465c64",
-    ticket: "#465c64",
-  }[booking.id];
+  const background = "#eaf4ff";
   const primary =
-    booking.id === "stay" ? "#f5f1eb" : booking.group === "tickets" ? "#edf3f0" : "#eef5fa";
+    booking.id === "stay" ? "#f5f4f0" : booking.group === "tickets" ? "#eef5f1" : "#eff6ff";
 
   context.fillStyle = background;
   context.fillRect(0, 0, 1080, 1350);
-  context.globalAlpha = 0.11;
+  context.globalAlpha = 0.5;
   context.fillStyle = "#ffffff";
   context.beginPath();
   context.arc(965, 215, 290, 0, Math.PI * 2);
   context.fill();
   context.beginPath();
-  context.arc(80, 1200, 360, 0, Math.PI * 2);
+  context.arc(80, 1200, 310, 0, Math.PI * 2);
   context.fill();
   context.globalAlpha = 1;
 
   const x = 90;
-  const y = 278;
+  const y = 210;
   const width = 900;
-  const height = 800;
+  const height = 930;
   context.fillStyle = "#ffffff";
   roundedRect(context, x, y, width, height, 38);
   context.fill();
-  context.save();
-  roundedRect(context, x, y, width, height, 38);
-  context.clip();
   context.fillStyle = primary;
-  context.fillRect(x, y + 126, width, 285);
-  context.restore();
+  roundedRect(context, x + 30, y + 155, width - 60, 390, 30);
+  context.fill();
 
   context.textBaseline = "alphabetic";
   context.fillStyle = "#183a57";
-  context.font = "800 44px Arial, sans-serif";
-  context.fillText("uroute.", 145, 360);
+  context.font = "800 52px Arial, sans-serif";
+  context.fillText("uroute.", 150, 318);
   context.fillStyle = "#607487";
-  context.font = "600 26px Arial, sans-serif";
+  context.font = "700 21px Arial, sans-serif";
   context.textAlign = "right";
-  context.fillText(`${booking.kind} summary`, 930, 357);
+  context.fillText("TRAVEL BRINGS US CLOSER", 930, 310);
   context.textAlign = "left";
 
   context.fillStyle = "#607487";
-  context.font = "700 23px Arial, sans-serif";
+  context.font = "700 21px Arial, sans-serif";
   context.fillText(
     booking.group === "tickets"
       ? "TICKETS & PASSES"
@@ -113,95 +104,114 @@ function drawBookingCard(booking: Booking): HTMLCanvasElement {
         : booking.id === "flight"
           ? "FLIGHT TO OSAKA"
           : "TRAIN TO THE AIRPORT",
-    145,
-    470,
+    155,
+    430,
   );
 
   if (booking.fromCode !== undefined && booking.toCode !== undefined) {
     context.fillStyle = "#17344b";
-    context.font = "750 100px Arial, sans-serif";
-    context.fillText(booking.fromCode, 145, 586);
+    context.font = "750 90px Arial, sans-serif";
+    context.fillText(booking.fromCode, 155, 565);
     context.textAlign = "right";
-    context.fillText(booking.toCode, 935, 586);
+    context.fillText(booking.toCode, 925, 565);
     context.textAlign = "left";
     context.strokeStyle = "#a8c8dc";
     context.lineWidth = 3;
     context.beginPath();
-    context.moveTo(446, 551);
-    context.lineTo(633, 551);
+    context.moveTo(485, 530);
+    context.lineTo(595, 530);
     context.stroke();
     context.fillStyle = "#1677ff";
-    context.font = "700 40px Arial, sans-serif";
-    context.fillText(booking.id === "flight" ? "✈" : "→", 530, 566);
+    context.font = "700 32px Arial, sans-serif";
+    context.fillText(booking.id === "flight" ? "✈" : "→", 525, 544);
     context.fillStyle = "#4e6170";
-    context.font = "30px Arial, sans-serif";
-    context.fillText(booking.fromName ?? "", 145, 632);
+    context.font = "28px Arial, sans-serif";
+    context.fillText(booking.fromName ?? "", 155, 610);
     context.textAlign = "right";
-    context.fillText(booking.toName ?? "", 935, 632);
+    context.fillText(booking.toName ?? "", 925, 610);
     context.textAlign = "left";
     if (booking.fromLocalTime !== undefined && booking.toLocalTime !== undefined) {
       context.fillStyle = "#17344b";
-      context.font = "700 34px Arial, sans-serif";
-      context.fillText(`${booking.fromLocalTime} local`, 145, 677);
+      context.font = "700 48px Arial, sans-serif";
+      context.fillText(booking.fromLocalTime, 155, 693);
       context.textAlign = "right";
-      context.fillText(`${booking.toLocalTime} local`, 935, 677);
+      context.fillText(booking.toLocalTime, 925, 693);
+      context.textAlign = "left";
+      context.fillStyle = "#607487";
+      context.font = "24px Arial, sans-serif";
+      context.fillText("Local time", 155, 725);
+      context.textAlign = "right";
+      context.fillText("Local time", 925, 725);
       context.textAlign = "left";
     }
   } else {
     context.fillStyle = "#17344b";
-    context.font = "700 52px Arial, sans-serif";
-    drawWrappedText(context, booking.title, 145, 550, 780, 61);
+    context.font = "700 50px Arial, sans-serif";
+    drawWrappedText(context, booking.title, 155, 545, 760, 61);
     context.fillStyle = "#4e6170";
     context.font = "32px Arial, sans-serif";
-    context.fillText(booking.timeLabel, 145, 640);
+    context.fillText(booking.timeLabel, 155, 680);
   }
 
   context.fillStyle = "#607487";
   context.font = "700 23px Arial, sans-serif";
-  context.fillText("DATE", 145, 750);
+  context.fillText("DATE", 150, 815);
   if (booking.fromCode === undefined) {
-    context.fillText("DETAILS", 555, 750);
+    context.fillText("DETAILS", 555, 815);
   }
-  context.fillText(
-    booking.id === "flight" ? "FLIGHT" : booking.id === "train" ? "SERVICE" : "TYPE",
-    booking.fromCode === undefined ? 145 : 555,
-    booking.fromCode === undefined ? 865 : 750,
-  );
+  if (booking.id !== "flight") {
+    context.fillText(booking.fromCode === undefined ? "TYPE" : "SERVICE", 555, 815);
+  }
 
   context.fillStyle = "#21394d";
-  context.font = "600 31px Arial, sans-serif";
-  context.fillText(booking.dateLabel, 145, 794);
+  context.font = "600 32px Arial, sans-serif";
+  context.fillText(booking.dateLabel, 150, 858);
   if (booking.fromCode === undefined) {
-    drawWrappedText(context, booking.detail, 555, 794, 360, 37);
+    drawWrappedText(context, booking.detail, 555, 858, 350, 37);
   }
-  drawWrappedText(
-    context,
-    booking.service ?? booking.kind,
-    booking.fromCode === undefined ? 145 : 555,
-    booking.fromCode === undefined ? 909 : 794,
-    booking.fromCode === undefined ? 760 : 360,
-    37,
-  );
+  if (booking.id === "flight") {
+    context.fillStyle = "#eaf3ff";
+    roundedRect(context, 555, 794, 65, 65, 14);
+    context.fill();
+    context.fillStyle = "#173e70";
+    context.font = "700 28px Arial, sans-serif";
+    context.fillText(booking.airlineCode ?? "✈", 568, 837);
+    context.fillStyle = "#21394d";
+    context.font = "600 28px Arial, sans-serif";
+    context.fillText(booking.airlineName ?? booking.kind, 640, 821);
+    context.fillStyle = "#607487";
+    context.font = "24px Arial, sans-serif";
+    context.fillText(booking.service ?? "", 640, 852);
+  } else if (booking.fromCode !== undefined) {
+    drawWrappedText(context, booking.service ?? booking.kind, 555, 858, 350, 37);
+  } else {
+    context.fillStyle = "#607487";
+    context.font = "700 23px Arial, sans-serif";
+    context.fillText("TYPE", 150, 928);
+    context.fillStyle = "#21394d";
+    context.font = "600 31px Arial, sans-serif";
+    context.fillText(booking.service ?? booking.kind, 150, 970);
+  }
 
   context.strokeStyle = "#c9d6df";
   context.lineWidth = 2;
   context.setLineDash([10, 10]);
   context.beginPath();
-  context.moveTo(145, 960);
-  context.lineTo(935, 960);
+  context.moveTo(150, 995);
+  context.lineTo(930, 995);
   context.stroke();
   context.setLineDash([]);
 
   context.fillStyle = "#607487";
-  context.font = "700 22px Arial, sans-serif";
-  context.fillText("TRIP TO KYOTO", 145, 1010);
+  context.font = "600 24px Arial, sans-serif";
+  context.fillText("Sample booking", 150, 1045);
   context.fillStyle = "#21394d";
-  context.font = "600 28px Arial, sans-serif";
-  context.fillText("Keep every journey together.", 145, 1052);
-  context.fillStyle = "#607487";
-  context.font = "24px Arial, sans-serif";
+  context.font = "600 30px Arial, sans-serif";
+  context.fillText("Have a great trip!", 150, 1090);
+  context.fillStyle = "#b6d0ef";
+  context.font = "44px Arial, sans-serif";
   context.textAlign = "right";
-  context.fillText("Sample booking", 935, 1035);
+  context.fillText("✈", 930, 1080);
   context.textAlign = "left";
 
   return canvas;

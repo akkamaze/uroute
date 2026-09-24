@@ -18,6 +18,10 @@ export interface Booking {
   fromLocalTime?: string;
   toLocalTime?: string;
   service?: string;
+  airlineName?: string;
+  airlineCode?: string;
+  airlineLogoUrl?: string;
+  coverImageUrl?: string;
 }
 
 export const BOOKINGS: readonly Booking[] = [
@@ -39,6 +43,8 @@ export const BOOKINGS: readonly Booking[] = [
     fromLocalTime: "08:30",
     toLocalTime: "15:55",
     service: "TG672",
+    airlineName: "Thai Airways",
+    airlineCode: "TG",
   },
   {
     id: "stay",

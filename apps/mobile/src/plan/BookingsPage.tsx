@@ -46,24 +46,107 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
     <ol className="booking-timeline">
       {bookings.map((booking) => {
         const Icon = BOOKING_ICONS[booking.id];
+        const startDate = new Date(`${booking.startDay}T12:00:00Z`);
+        const day = new Intl.DateTimeFormat("en", { day: "2-digit", timeZone: "UTC" }).format(
+          startDate,
+        );
+        const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" })
+          .format(startDate)
+          .toUpperCase();
 
         return (
           <li className="booking-timeline__item" key={booking.id}>
-            <span aria-hidden="true" className="booking-timeline__marker">
-              <Icon size={19} strokeWidth={1.8} />
+            <span aria-hidden="true" className="booking-timeline__date">
+              <strong>{day}</strong>
+              <span>{month}</span>
             </span>
             <button
-              className="booking-timeline__card"
+              className={`booking-timeline__card booking-timeline__card--${booking.id}`}
               onClick={(event) => onOpen(booking, event.currentTarget)}
               type="button"
             >
-              <span className="booking-timeline__meta">
-                {booking.kind} · {booking.dateLabel}
-              </span>
-              <strong>{booking.title}</strong>
-              <span className="booking-timeline__time">{booking.timeLabel}</span>
-              <span className="booking-timeline__detail">{booking.detail}</span>
-              <ChevronRight aria-hidden="true" className="booking-timeline__chevron" size={18} />
+              {booking.id === "flight" ? (
+                <>
+                  <span className="booking-timeline__topline">
+                    <span className="booking-timeline__kind">
+                      <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
+                      {booking.kind}
+                    </span>
+                    <span>
+                      {booking.dateLabel} · {booking.service}
+                    </span>
+                  </span>
+                  <span className="booking-timeline__route">
+                    <span className="booking-timeline__airport">
+                      <strong>{booking.fromCode}</strong>
+                      <span>{booking.fromName}</span>
+                      <b>{booking.fromLocalTime}</b>
+                      <small>Local time</small>
+                    </span>
+                    <span aria-hidden="true" className="booking-timeline__route-arrow">
+                      →
+                    </span>
+                    <span className="booking-timeline__airport booking-timeline__airport--arrival">
+                      <strong>{booking.toCode}</strong>
+                      <span>{booking.toName}</span>
+                      <b>{booking.toLocalTime}</b>
+                      <small>Local time</small>
+                    </span>
+                  </span>
+                  <span className="booking-timeline__airline">
+                    <span aria-hidden="true" className="booking-timeline__airline-mark">
+                      {booking.airlineCode ?? <Plane size={17} strokeWidth={1.9} />}
+                      {booking.airlineLogoUrl !== undefined ? (
+                        <img
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                          src={booking.airlineLogoUrl}
+                        />
+                      ) : null}
+                    </span>
+                    <span>{booking.airlineName ?? booking.detail}</span>
+                    <span className="booking-timeline__view">
+                      View <ChevronRight aria-hidden="true" size={17} />
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="booking-timeline__topline">
+                    <span className="booking-timeline__kind">
+                      <Icon aria-hidden="true" size={16} strokeWidth={1.9} />
+                      {booking.kind}
+                    </span>
+                    <span>{booking.dateLabel}</span>
+                  </span>
+                  <span className="booking-timeline__secondary">
+                    <span aria-hidden="true" className="booking-timeline__art">
+                      <Icon size={25} strokeWidth={1.5} />
+                      {booking.coverImageUrl !== undefined ? (
+                        <img
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                          src={booking.coverImageUrl}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="booking-timeline__secondary-copy">
+                      <strong>{booking.title}</strong>
+                      <span>{booking.timeLabel}</span>
+                      <small>{booking.detail}</small>
+                    </span>
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="booking-timeline__secondary-arrow"
+                      size={18}
+                    />
+                  </span>
+                </>
+              )}
             </button>
           </li>
         );
@@ -179,8 +262,8 @@ export function BookingsPage(): React.JSX.Element {
       <main className="booking-page__content">
         <div className="booking-page__intro">
           <p className="booking-page__eyebrow">KYOTO · 12–16 NOV</p>
-          <h2>Travel details</h2>
-          <p>Your reservations, tickets, and passes in one place.</p>
+          <h2>Your bookings</h2>
+          <p>Reservations, tickets, and passes in one place.</p>
           <span className="booking-page__sample">Sample bookings</span>
         </div>
 
@@ -227,7 +310,15 @@ export function BookingsPage(): React.JSX.Element {
         ) : null}
 
         {upcoming.length > 0 ? (
-          <BookingItems bookings={upcoming} onOpen={openBooking} />
+          <section aria-label="Upcoming bookings" className="booking-upcoming">
+            <div className="booking-upcoming__heading">
+              <h3>Upcoming</h3>
+              <span>
+                {upcoming.length} {upcoming.length === 1 ? "booking" : "bookings"}
+              </span>
+            </div>
+            <BookingItems bookings={upcoming} onOpen={openBooking} />
+          </section>
         ) : past.length > 0 ? (
           !pastOpen ? (
             <p className="booking-page__empty">No upcoming bookings.</p>
@@ -263,6 +354,7 @@ export function BookingsPage(): React.JSX.Element {
       >
         {selectedBooking !== undefined ? (
           <div className="booking-dialog__layout">
+            <p className="booking-dialog__caption">Share your journey</p>
             <button
               aria-label="Close booking card"
               className="booking-dialog__close"
@@ -277,7 +369,7 @@ export function BookingsPage(): React.JSX.Element {
                 <span className="booking-ticket__brand">
                   uroute<span>.</span>
                 </span>
-                <span>{selectedBooking.kind} summary</span>
+                <span className="booking-ticket__tagline">Travel brings us closer</span>
               </header>
               {selectedBooking.fromCode === undefined ? (
                 <div className="booking-ticket__primary booking-ticket__primary--feature">
@@ -302,7 +394,8 @@ export function BookingsPage(): React.JSX.Element {
                       <span>{selectedBooking.fromName}</span>
                       {selectedBooking.fromLocalTime !== undefined ? (
                         <time className="booking-ticket__local-time">
-                          {selectedBooking.fromLocalTime} <small>local</small>
+                          {selectedBooking.fromLocalTime}
+                          <small>Local time</small>
                         </time>
                       ) : null}
                     </div>
@@ -318,7 +411,8 @@ export function BookingsPage(): React.JSX.Element {
                       <span>{selectedBooking.toName}</span>
                       {selectedBooking.toLocalTime !== undefined ? (
                         <time className="booking-ticket__local-time">
-                          {selectedBooking.toLocalTime} <small>local</small>
+                          {selectedBooking.toLocalTime}
+                          <small>Local time</small>
                         </time>
                       ) : null}
                     </div>
@@ -330,30 +424,50 @@ export function BookingsPage(): React.JSX.Element {
                   <span>DATE</span>
                   <strong>{selectedBooking.dateLabel}</strong>
                 </div>
-                {selectedBooking.fromCode === undefined ? (
+                {selectedBooking.id === "flight" ? (
+                  <div className="booking-ticket__operator">
+                    <span aria-hidden="true" className="booking-ticket__operator-mark">
+                      {selectedBooking.airlineCode ?? <Plane size={17} strokeWidth={1.8} />}
+                      {selectedBooking.airlineLogoUrl !== undefined ? (
+                        <img
+                          alt=""
+                          onError={(event) => {
+                            event.currentTarget.hidden = true;
+                          }}
+                          src={selectedBooking.airlineLogoUrl}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="booking-ticket__operator-name">
+                      <strong>{selectedBooking.airlineName ?? selectedBooking.kind}</strong>
+                      <small>{selectedBooking.service}</small>
+                    </span>
+                  </div>
+                ) : selectedBooking.fromCode === undefined ? (
                   <div>
                     <span>DETAILS</span>
                     <strong>{selectedBooking.detail}</strong>
                   </div>
+                ) : (
+                  <div>
+                    <span>SERVICE</span>
+                    <strong>{selectedBooking.service ?? selectedBooking.kind}</strong>
+                  </div>
+                )}
+                {selectedBooking.fromCode === undefined ? (
+                  <div>
+                    <span>TYPE</span>
+                    <strong>{selectedBooking.service ?? selectedBooking.kind}</strong>
+                  </div>
                 ) : null}
-                <div>
-                  <span>
-                    {selectedBooking.id === "flight"
-                      ? "FLIGHT"
-                      : selectedBooking.id === "train"
-                        ? "SERVICE"
-                        : "TYPE"}
-                  </span>
-                  <strong>{selectedBooking.service ?? selectedBooking.kind}</strong>
-                </div>
               </div>
               <div aria-hidden="true" className="booking-ticket__perforation" />
               <footer className="booking-ticket__footer">
                 <div>
-                  <span>TRIP TO KYOTO</span>
-                  <strong>Keep every journey together.</strong>
+                  <span>Sample booking</span>
+                  <strong>Have a great trip!</strong>
                 </div>
-                <span>Sample booking</span>
+                <Plane aria-hidden="true" size={25} strokeWidth={1.5} />
               </footer>
             </article>
             <button
