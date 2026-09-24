@@ -19,10 +19,8 @@ test("creates a trip before using imported places and remembers the selected day
   await dialog.getByLabel("Destination").fill("Kanto");
   await dialog.getByLabel("Start date").fill("2027-01-10");
   await dialog.getByLabel("End date").fill("2027-01-11");
-  await dialog.getByRole("button", { name: "Create draft trip" }).click();
-  const card = page.getByRole("link", { name: /Kanto.*10–11 Jan 2027/ });
-  await expect(card).toBeVisible();
-  await card.click();
+  await dialog.getByRole("button", { name: "Create trip" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
   await expect(page.getByRole("heading", { name: "Kanto" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Trip days" })).toContainText("11");
   await page.getByRole("link", { name: /Add a place/ }).click();
@@ -55,7 +53,7 @@ test("creates a trip before using imported places and remembers the selected day
     "Sunday, 10 January",
   );
   await page.goto("/trips");
-  await page.getByRole("link", { name: /Kanto.*10–11 Jan 2027/ }).click();
+  await page.getByRole("link", { name: "Open Kanto trip plan" }).click();
   await expect(page.getByLabel(/Sun 10 Jan itinerary/)).toContainText("Market");
   await page.getByRole("button", { name: "Edit plan for Sun 10 Jan" }).click();
   await page.getByLabel("Time for Market").fill("14:30");
@@ -111,8 +109,8 @@ test("offers to copy previous Kanto day selections into a newly created Kanto tr
   await dialog.getByLabel("Destination").fill("Kanto");
   await dialog.getByLabel("Start date").fill("2026-09-27");
   await dialog.getByLabel("End date").fill("2026-10-01");
-  await dialog.getByRole("button", { name: "Create draft trip" }).click();
-  await page.getByRole("link", { name: /Kanto.*27 Sep–1 Oct 2026/ }).click();
+  await dialog.getByRole("button", { name: "Create trip" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
   await page.getByRole("button", { name: "Copy to this trip" }).click();
   await expect(page.getByLabel(/Sun 27 Sep itinerary/)).toContainText("Station");
   await expect(page.getByLabel(/Sun 27 Sep itinerary/)).toContainText("09:30");

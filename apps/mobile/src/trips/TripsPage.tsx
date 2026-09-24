@@ -3,7 +3,7 @@ import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import "../keyboard/keyboard-dialog.css";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
-import { ChevronRight, ClipboardCheck, Plus, Search, Tickets, X } from "lucide-react";
+import { ChevronRight, ClipboardCheck, MapPin, Plus, Search, Tickets, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { PackingListDialog } from "./PackingListDialog";
@@ -68,9 +68,49 @@ function FeaturedTrip({ trip }: TripCardProps): React.JSX.Element {
   );
 }
 
-function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
+function CreatedFeaturedTrip({ trip }: { trip: CreatedTrip }): React.JSX.Element {
+  const days =
+    Math.round(
+      (Date.parse(`${trip.endDate}T12:00:00Z`) - Date.parse(`${trip.startDate}T12:00:00Z`)) /
+        86_400_000,
+    ) + 1;
+  const dates = formatDateRange(
+    new Date(`${trip.startDate}T12:00:00Z`),
+    new Date(`${trip.endDate}T12:00:00Z`),
+  );
+
   return (
-    <article className="compact-trip">
+    <article className="featured-trip">
+      <div aria-hidden="true" className="featured-trip__created-cover">
+        <MapPin size={42} strokeWidth={1.4} />
+      </div>
+      <Link
+        aria-label={`Open ${trip.name} trip plan`}
+        className="featured-trip__summary"
+        params={{ tripId: trip.id }}
+        to="/plan/trip/$tripId"
+      >
+        <div className="featured-trip__title">
+          <h2>{trip.name}</h2>
+          <ChevronRight aria-hidden="true" size={20} strokeWidth={1.8} />
+        </div>
+        <p>
+          {dates} · {days} {days === 1 ? "day" : "days"}
+        </p>
+      </Link>
+      <div className="featured-trip__members">
+        <span>Your plan</span>
+        <Link params={{ tripId: trip.id }} to="/plan/trip/$tripId">
+          Open plan
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
+  const content = (
+    <>
       <img alt={trip.imageAlt} src={trip.imageSrc} />
 
       <div>
@@ -79,14 +119,24 @@ function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
           {trip.dateLabel} · {trip.durationLabel}
         </p>
       </div>
-    </article>
+    </>
+  );
+
+  return trip.id === "kyoto" ? (
+    <Link className="compact-trip" to="/plan">
+      {content}
+    </Link>
+  ) : (
+    <article className="compact-trip">{content}</article>
   );
 }
 
 function BeforeYouGo({
   onOpenPacking,
+  tripName,
 }: {
   onOpenPacking: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  tripName: string;
 }): React.JSX.Element {
   return (
     <section className="before-you-go">
@@ -108,7 +158,7 @@ function BeforeYouGo({
         />
         <span className="preparation-row__copy">
           <strong>Packing list</strong>
-          <span>Get ready for Kyoto</span>
+          <span>Get ready for {tripName}</span>
         </span>
         <ChevronRight aria-hidden="true" size={18} strokeWidth={1.8} />
       </button>
@@ -248,8 +298,10 @@ export function TripsPage(): React.JSX.Element {
       return;
     }
 
+    let createdTrip: CreatedTrip;
     try {
       const trip = createTrip(name, startDate, endDate);
+      createdTrip = trip;
       setCreatedTrips((current) => [...current, trip]);
     } catch (error) {
       setFormMessage(error instanceof Error ? error.message : "Could not create this trip.");
@@ -259,7 +311,11 @@ export function TripsPage(): React.JSX.Element {
     setDestination("");
     setPeriod(endDate >= new Date().toISOString().slice(0, 10) ? "upcoming" : "past");
     setQuery("");
-    closeNewTrip();
+    void navigate({
+      to: "/plan/trip/$tripId",
+      params: { tripId: createdTrip.id },
+      replace: true,
+    });
   }
 
   return (
@@ -327,7 +383,10 @@ export function TripsPage(): React.JSX.Element {
         ref={resultsScrollRef}
       >
         <div aria-live="polite" className="trip-results">
-          {visibleCreatedTrips.map((trip) => {
+          {[...visibleCreatedTrips].reverse().map((trip, index) => {
+            if (index === 0 && period === "upcoming" && normalizedQuery.length === 0) {
+              return <CreatedFeaturedTrip key={trip.id} trip={trip} />;
+            }
             const start = new Date(`${trip.startDate}T12:00:00Z`);
             const end = new Date(`${trip.endDate}T12:00:00Z`);
             const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
@@ -364,7 +423,7 @@ export function TripsPage(): React.JSX.Element {
             </div>
           ) : (
             visibleTrips.map((trip) =>
-              trip.featured ? (
+              trip.featured && visibleCreatedTrips.length === 0 ? (
                 <FeaturedTrip key={trip.name} trip={trip} />
               ) : (
                 <CompactTrip key={trip.name} trip={trip} />
@@ -374,7 +433,10 @@ export function TripsPage(): React.JSX.Element {
         </div>
 
         {period === "upcoming" && normalizedQuery.length === 0 ? (
-          <BeforeYouGo onOpenPacking={openPacking} />
+          <BeforeYouGo
+            onOpenPacking={openPacking}
+            tripName={createdTrips.at(-1)?.name ?? "Kyoto"}
+          />
         ) : null}
       </div>
 
@@ -451,7 +513,7 @@ export function TripsPage(): React.JSX.Element {
             ) : null}
           </div>
           <button className="new-trip-form__save" type="submit">
-            Create draft trip
+            Create trip
           </button>
         </form>
       </dialog>

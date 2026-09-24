@@ -3,6 +3,7 @@ export interface CreatedTrip {
   name: string;
   startDate: string;
   endDate: string;
+  dayOptions?: Record<string, string>;
 }
 
 const STORAGE_KEY = "uroute.created-trips.v1";
@@ -46,6 +47,44 @@ export function createTrip(name: string, startDate: string, endDate: string): Cr
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...loadCreatedTrips(), trip]));
 
   return trip;
+}
+
+export function updateTrip(
+  id: string,
+  name: string,
+  startDate: string,
+  endDate: string,
+): CreatedTrip {
+  const trips = loadCreatedTrips();
+  const existing = trips.find((trip) => trip.id === id);
+  if (!existing) {
+    throw new Error("Trip not found on this device.");
+  }
+  const updated = { ...existing, name: name.trim(), startDate, endDate };
+  if (!isTrip(updated) || tripDays(updated).length === 0 || tripDays(updated).length > 60) {
+    throw new Error("Choose a destination and a date range of up to 60 days.");
+  }
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
+  );
+
+  return updated;
+}
+
+export function setTripDayOption(id: string, day: string, option: string): CreatedTrip {
+  const trips = loadCreatedTrips();
+  const existing = trips.find((trip) => trip.id === id);
+  if (!existing || day < existing.startDate || day > existing.endDate || !/^[A-Z]$/.test(option)) {
+    throw new Error("Could not save this itinerary option.");
+  }
+  const updated = { ...existing, dayOptions: { ...existing.dayOptions, [day]: option } };
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
+  );
+
+  return updated;
 }
 
 export function tripDays(trip: CreatedTrip): { day: string; label: string }[] {
