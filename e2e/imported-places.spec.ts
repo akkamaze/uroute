@@ -17,6 +17,16 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("Maps search keeps one submit path and offers a compact clear button", async ({ page }) => {
+  await page.goto("/maps");
+  const search = page.getByLabel("Search imported places");
+  await search.fill("hi");
+  await expect(page.getByRole("button", { name: "Show map results" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Places", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Clear search text" }).click();
+  await expect(search).toHaveValue("");
+});
+
 test("Maps suggestions preview imported photos and keep a pin when no photo exists", async ({
   page,
 }) => {
@@ -62,25 +72,283 @@ test("Maps suggestions preview imported photos and keep a pin when no photo exis
   await expect(plainRow.locator("svg")).toHaveCount(1);
 });
 
-test("opens the mobile file picker on first tap and accepts the same file again", async ({
+test("empty Maps results keep the sheet anchored while dragging", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "single.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      "<kml><Placemark><name>Market</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></kml>",
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  const search = page.getByLabel("Search imported places");
+  await search.fill("nothing-matches-this-place");
+  await search.press("Enter");
+
+  await expect(page.getByText("No places match this search.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  await expect(page.locator(".imported-page__list-heading")).toContainText("0");
+  await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
+  await expect(page.getByLabel("Filter by folder")).toHaveCount(0);
+
+  const sheet = page.locator(".imported-page__content--open");
+  const handle = page.getByRole("button", { name: "Expand place details" });
+  const handleBox = await handle.boundingBox();
+  expect(handleBox).not.toBeNull();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y + handleBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, handleBox!.y - 100, { steps: 6 });
+
+  const draggingBox = await sheet.boundingBox();
+  expect(draggingBox).not.toBeNull();
+  expect(draggingBox!.y + draggingBox!.height).toBeGreaterThanOrEqual(
+    page.viewportSize()!.height - 1,
+  );
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "Clear search text" }).click();
+  await expect(search).toHaveValue("");
+  await expect(page.locator(".imported-page__content--open")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Search suggestions" })).toHaveCount(0);
+});
+
+test("Maps places filter on the lower left and recenter on the lower right", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "single.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      "<kml><Placemark><name>Market</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></kml>",
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Unfiled" }).click();
+  const filter = await page.getByRole("button", { name: "Map layers" }).boundingBox();
+  const recenter = await page
+    .getByRole("button", { name: "Recenter imported places" })
+    .boundingBox();
+  const sheet = await page.locator(".imported-page__content--open").boundingBox();
+  expect(filter).not.toBeNull();
+  expect(recenter).not.toBeNull();
+  expect(sheet).not.toBeNull();
+  expect(filter!.x).toBeLessThan(page.viewportSize()!.width / 2);
+  expect(recenter!.x).toBeGreaterThan(page.viewportSize()!.width / 2);
+  expect(Math.abs(filter!.y - recenter!.y)).toBeLessThan(3);
+  expect(filter!.y + filter!.height).toBeLessThan(sheet!.y);
+});
+
+test("Maps details obey the same expanded top boundary as Plan", async ({ page }) => {
+  await page.goto("/places?place=kiyomizu&day=13");
+  const planTransition = await page.locator(".place-sheet").evaluate((sheet) => ({
+    duration: getComputedStyle(sheet).transitionDuration,
+    timing: getComputedStyle(sheet).transitionTimingFunction,
+  }));
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect
+    .poll(() => page.locator(".place-sheet").evaluate((sheet) => sheet.getBoundingClientRect().top))
+    .toBe(72);
+  const planTop = await page
+    .locator(".place-sheet")
+    .evaluate((sheet) => sheet.getBoundingClientRect().top);
+
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  const mapsTransition = await page.locator(".imported-page__content--open").evaluate((sheet) => ({
+    duration: getComputedStyle(sheet).transitionDuration,
+    timing: getComputedStyle(sheet).transitionTimingFunction,
+  }));
+  expect(mapsTransition).toEqual(planTransition);
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect
+    .poll(() =>
+      page
+        .locator(".imported-page__content--open")
+        .evaluate((sheet) => sheet.getBoundingClientRect().top),
+    )
+    .toBe(72);
+  const mapsTop = await page
+    .locator(".imported-page__content--open")
+    .evaluate((sheet) => sheet.getBoundingClientRect().top);
+  expect(Math.abs(mapsTop - planTop), `Maps ${mapsTop}px vs Plan ${planTop}px`).toBeLessThan(2);
+});
+
+test("Maps sheet fills behind content throughout an upward drag", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "single.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      "<kml><Placemark><name>Market</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></kml>",
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Unfiled" }).click();
+  const sheet = page.locator(".imported-page__content--open");
+  const handle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  expect(handle).not.toBeNull();
+  const start = await sheet.evaluate((element) => element.getBoundingClientRect().top);
+  const x = handle!.x + handle!.width / 2;
+  const y = handle!.y + handle!.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 100, { steps: 8 });
+  const during = await sheet.evaluate((element) => ({
+    top: element.getBoundingClientRect().top,
+    bottom: element.getBoundingClientRect().bottom,
+    containerBottom: element.parentElement!.getBoundingClientRect().bottom,
+  }));
+  expect(during.top).toBeLessThan(start - 50);
+  expect(
+    during.bottom,
+    "sheet must cover the map down to the bottom while moving",
+  ).toBeGreaterThanOrEqual(during.containerBottom - 2);
+  await page.mouse.up();
+});
+
+test("Maps sheet follows an Android-style touch drag without a map gap", async ({ page }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "single.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      "<kml><Placemark><name>Market</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></kml>",
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Unfiled" }).click();
+  const sheet = page.locator(".imported-page__content--open");
+  const handle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  expect(handle).not.toBeNull();
+  const x = handle!.x + handle!.width / 2;
+  const y = handle!.y + handle!.height / 2;
+  const client = await page.context().newCDPSession(page);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y, id: 1 }],
+  });
+  for (let step = 1; step <= 8; step += 1) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: y - step * 12.5, id: 1 }],
+    });
+  }
+  const during = await sheet.evaluate((element) => ({
+    bottom: element.getBoundingClientRect().bottom,
+    containerBottom: element.parentElement!.getBoundingClientRect().bottom,
+  }));
+  expect(during.bottom).toBeGreaterThanOrEqual(during.containerBottom - 2);
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(sheet).toHaveClass(/imported-page__content--expanded/);
+  const expandedHandle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  expect(expandedHandle).not.toBeNull();
+  const downX = expandedHandle!.x + expandedHandle!.width / 2;
+  const downY = expandedHandle!.y + expandedHandle!.height / 2;
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: downX, y: downY, id: 2 }],
+  });
+  for (let step = 1; step <= 8; step += 1) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: downX, y: downY + step * 20, id: 2 }],
+    });
+  }
+  const downTop = await sheet.evaluate((element) => element.getBoundingClientRect().top);
+  expect(downTop).toBeGreaterThan(72);
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(sheet).not.toHaveClass(/imported-page__content--expanded/);
+  await client.detach();
+});
+
+test("imported place bookmark appears in Saved and returns to the same map place", async ({
   page,
 }) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  const save = page.getByRole("button", { name: "Save place" });
+  await expect(save).toBeVisible();
+  await save.click();
+  await expect(page.getByRole("button", { name: "Remove from saved places" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close place details" })).toHaveCSS(
+    "background-color",
+    "rgb(241, 244, 247)",
+  );
+  await page.goto("/saved");
+  await expect(page.getByRole("link", { name: "Open Market" })).toBeVisible();
+  await page.getByRole("link", { name: "Open Market" }).click();
+  await expect(page.locator(".imported-page__selected-header")).toContainText("Market");
+});
+
+test("Maps Add to trip uses Plan form sizing and spacing", async ({ page }) => {
+  const metrics = async (): Promise<{
+    gap: string;
+    headingFont: string;
+    headingMarginTop: string;
+    selectHeight: number;
+    selectRadius: string;
+    buttonHeight: number;
+    buttonRadius: string;
+  }> =>
+    page.locator(".add-place-panel").evaluate((form) => {
+      const heading = form.querySelector(".add-place-panel__heading h2")!;
+      const select = form.querySelector("select")!;
+      const button = form.querySelector(".add-place-panel__confirm")!;
+
+      return {
+        gap: getComputedStyle(form).gap,
+        headingFont: getComputedStyle(heading).fontSize,
+        headingMarginTop: getComputedStyle(heading).marginTop,
+        selectHeight: select.getBoundingClientRect().height,
+        selectRadius: getComputedStyle(select).borderRadius,
+        buttonHeight: button.getBoundingClientRect().height,
+        buttonRadius: getComputedStyle(button).borderRadius,
+      };
+    });
+  await page.goto("/places?place=kiyomizu&day=13");
+  await page.getByRole("button", { name: "Add to trip" }).click();
+  const plan = await metrics();
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await page.getByRole("button", { name: "Add to plan" }).click();
+  expect(await metrics()).toEqual(plan);
+});
+
+test("imports from Map layers on first tap and accepts the same file again", async ({ page }) => {
   const file = {
     name: "sample.kml",
     mimeType: "application/vnd.google-earth.kml+xml",
     buffer: Buffer.from(sample),
   };
   await page.goto("/maps");
+  await expect(page.locator(".imported-page__header .imported-page__import-button")).toHaveCount(0);
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.getByRole("button", { name: "Open map layers" }).click();
+    await expect(page.getByRole("dialog", { name: "Map layers" })).toBeVisible();
     const picker = page.waitForEvent("filechooser");
-    if (attempt === 0) {
-      await page.locator(".imported-page__import-button").tap();
-    } else {
-      await page.getByText("Choose a file", { exact: true }).tap();
-    }
+    await page.locator(".imported-page__layers-import").tap();
     await (await picker).setFiles(file);
     const review = page.getByRole("region", { name: "Import review" });
     await expect(review).toContainText("2 points · 1 line · 0 areas");
+    await expect(page.getByRole("dialog", { name: "Map layers" })).not.toBeVisible();
     await review.getByRole("button", { name: "Cancel" }).click();
   }
 });
@@ -212,11 +480,128 @@ test("clears the import notice and opens trip selection when Add has no destinat
   await expect(notice).toBeHidden({ timeout: 6_000 });
   await page.getByRole("button", { name: "Market Tokyo" }).click();
   await page.getByRole("button", { name: "Add to plan" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a trip and day" })).toBeVisible();
+  await expect(page.getByRole("form", { name: "Add to plan" })).toContainText("Add to trip");
   const trip = page.getByLabel("Destination trip");
   await expect(trip).toBeVisible();
-  await expect(trip).toBeFocused();
-  await trip.selectOption("kyoto");
-  await expect(page.getByRole("button", { name: /Add to Kyoto/ })).toBeVisible();
+  await expect(page.locator(".imported-page__selected select")).toHaveCount(2);
+  await expect(trip.locator("option:checked")).toHaveText("Kyoto · 12–16 Nov 2026");
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Friday, 13 November",
+  );
+  await expect(page.getByRole("button", { name: "Add to plan", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Back to place details" }).click();
+  await expect(page.getByRole("form", { name: "Add to plan" })).toBeHidden();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Friday, 13 November",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("form", { name: "Add to plan" })).toBeHidden();
+});
+
+test("keeps the title visible while expanded details scroll and restores details on browser back", async ({
+  page,
+}) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "long-place.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><Placemark><name>Long place</name><description>${"A long description of the place. ".repeat(100)}</description><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Long place" }).click();
+  const sheet = page.locator(".imported-page__content--open");
+  const header = page.locator(".imported-page__selected-header");
+  await page.getByRole("button", { name: "Expand place details" }).click();
+  await expect(sheet).toHaveClass(/imported-page__content--expanded/);
+  const initial = await header.boundingBox();
+  await sheet.evaluate((element) => {
+    element.scrollTop = 120;
+  });
+  const first = await header.boundingBox();
+  await sheet.evaluate((element) => {
+    element.scrollTop = 240;
+  });
+  const second = await header.boundingBox();
+  expect(initial).not.toBeNull();
+  expect(first).not.toBeNull();
+  expect(second).not.toBeNull();
+  expect(Math.abs(initial!.y - first!.y), `${initial!.y} → ${first!.y}`).toBeLessThan(1);
+  expect(Math.abs(first!.y - second!.y)).toBeLessThan(1);
+  expect(await sheet.evaluate((element) => element.scrollTop)).toBe(240);
+  await expect(header.getByRole("button", { name: "Close place details" })).toBeInViewport();
+  await sheet.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const add = page.getByRole("button", { name: "Add to plan", exact: true });
+  await add.click();
+  await expect(page).toHaveURL(/add=open/);
+  await expect(page.getByRole("form", { name: "Add to plan" })).toBeVisible();
+  await expect(page.getByText(/A long description of the place/)).toHaveCount(0);
+  await page.goBack();
+  await expect(page).not.toHaveURL(/add=open/);
+  await expect(page.getByText(/A long description of the place/)).toBeVisible();
+});
+
+test("shows imported map labels with plan-style place details and a close sheet handle", async ({
+  page,
+}) => {
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "labeled.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><Folder><name>South Tokyo</name><Placemark><name>[ View ] Shimbashi Station</name><Point><coordinates>139.77,35.68</coordinates></Point></Placemark></Folder></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: /Shimbashi Station/ }).click();
+
+  const header = page.locator(".imported-page__selected-header");
+  await expect(header.getByRole("heading", { name: "Shimbashi Station" })).toBeVisible();
+  await expect(header).toContainText("View · South Tokyo");
+  await expect(header).not.toContainText("[ View ]");
+  await expect(page.getByRole("button", { name: "Add to plan" })).toContainText("Add to trip");
+  await expect(
+    page.getByRole("link", { name: /Directions to .* Shimbashi Station/ }),
+  ).toBeVisible();
+  await expect(page.getByText(/Coordinates from/)).toBeVisible();
+
+  const handle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  const heading = await header.getByRole("heading").boundingBox();
+  expect(handle).not.toBeNull();
+  expect(heading).not.toBeNull();
+  expect(heading!.y - (handle!.y + handle!.height)).toBeLessThan(30);
+
+  const titleX = heading!.x + heading!.width / 2;
+  const titleY = heading!.y + heading!.height / 2;
+  await page.mouse.move(titleX, titleY);
+  await page.mouse.down();
+  await page.mouse.move(titleX, titleY - 150, { steps: 8 });
+  const duringUpwardDrag = await page.locator(".imported-page__content--open").boundingBox();
+  expect(duringUpwardDrag).not.toBeNull();
+  expect(duringUpwardDrag!.y).toBeGreaterThanOrEqual(70);
+  expect(duringUpwardDrag!.y).toBeLessThan(titleY);
+  await page.mouse.up();
+  await expect(page.locator(".imported-page__content--expanded")).toBeVisible();
+  expect(
+    (await page.locator(".imported-page__content--expanded").boundingBox())!.y,
+  ).toBeGreaterThanOrEqual(70);
+  const expandedHandle = await page.locator(".imported-page__sheet-handle").boundingBox();
+  expect(expandedHandle).not.toBeNull();
+  const handleX = expandedHandle!.x + expandedHandle!.width / 2;
+  const handleY = expandedHandle!.y + expandedHandle!.height / 2;
+  await page.mouse.move(handleX, handleY);
+  await page.mouse.down();
+  await page.mouse.move(handleX, handleY + 220, { steps: 12 });
+  const duringDownwardDrag = await page.locator(".imported-page__content--expanded").boundingBox();
+  expect(duringDownwardDrag).not.toBeNull();
+  expect(duringDownwardDrag!.y).toBeGreaterThanOrEqual(70);
+  await page.mouse.up();
+  await expect(page.locator(".imported-page__content--expanded")).toHaveCount(0);
 });
 
 test("uses a matching OSM-linked Commons photo only after opening a place", async ({ page }) => {
@@ -422,10 +807,9 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
 
   await page.getByRole("button", { name: "Market Tokyo" }).click();
-  await page.getByRole("button", { name: /Add places to/ }).click();
-  await page.getByLabel("Destination trip").selectOption("kyoto");
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await page.getByLabel("Destination day").selectOption("2026-11-12");
-  await page.getByRole("button", { name: "Add to Kyoto · Thu 12 Nov" }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Market added to Kyoto · Thu 12 Nov");
   await page.goto("/plan?day=12");
   await expect(page.getByRole("heading", { name: "Kyoto" })).toBeVisible();
@@ -435,14 +819,25 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await expect(page.getByRole("link", { name: "Back to trips" })).toHaveCount(0);
   await page.getByLabel("Search imported places").fill("Market");
   await page.getByRole("button", { name: "Market Tokyo" }).click();
-  await page.getByRole("button", { name: /Add places to Kyoto/ }).click();
-  await expect(page.getByLabel("Destination trip")).toHaveValue("kyoto");
-  await expect(page.getByLabel("Destination day")).toHaveValue("2026-11-12");
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.getByLabel("Destination trip").locator("option:checked")).toContainText(
+    "Kyoto",
+  );
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Thursday, 12 November",
+  );
   await page.reload();
+  await expect(page.getByRole("form", { name: "Add to plan" })).toBeVisible();
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Thursday, 12 November",
+  );
+  await page.getByRole("button", { name: "Back to place details" }).click();
   await page.getByLabel("Search imported places").fill("Market");
   await page.getByRole("button", { name: "Market Tokyo" }).click();
-  await page.getByRole("button", { name: /Add places to Kyoto/ }).click();
-  await expect(page.getByLabel("Destination day")).toHaveValue("2026-11-12");
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Thursday, 12 November",
+  );
 
   await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
   await expect(review).toContainText("2 points already on this device");
@@ -730,7 +1125,7 @@ test("searches imported places by name and folder", async ({ page }) => {
   await page.getByLabel("Search imported places").press("Enter");
   await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
   await expect.poll(mapPlaceCount).toBe(2);
-  await page.getByLabel("Filter by folder").selectOption("Tokyo");
+  await expect(page.getByLabel("Filter by folder")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Bridge Tokyo" })).toBeVisible();
   await page.getByLabel("Search imported places").fill("");
   await expect(page.getByRole("heading", { name: "Recent" })).toBeVisible();
@@ -802,15 +1197,29 @@ test("keeps Maps view across tabs, centers a selected place above its sheet, and
   expect(handle).not.toBeNull();
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 160, { steps: 8 });
+  await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + 300, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByRole("button", { name: "Expand place details" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Close place details" })).toBeHidden();
+  await expect(page.locator(".imported-page__content--collapsed")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
   await page.getByRole("link", { name: "Trips" }).click();
   await page.getByRole("link", { name: "Maps" }).click();
-  await expect(page.getByRole("button", { name: "Expand place details" })).toBeVisible();
-  await page.getByRole("button", { name: "Expand place details" }).click();
-  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  await expect(page.locator(".imported-page__content--collapsed")).toBeVisible();
+  async function dragHandle(delta: number): Promise<void> {
+    const bounds = await page.locator(".imported-page__sheet-handle").boundingBox();
+    expect(bounds).not.toBeNull();
+    const x = bounds!.x + bounds!.width / 2;
+    const y = bounds!.y + bounds!.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + delta, { steps: 8 });
+    await page.mouse.up();
+  }
+  await dragHandle(-140);
+  await expect(page.locator(".imported-page__content--collapsed")).toHaveCount(0);
+  await dragHandle(-140);
+  await expect(page.locator(".imported-page__content--expanded")).toBeVisible();
+  await dragHandle(140);
+  await expect(page.locator(".imported-page__content--expanded")).toHaveCount(0);
 
   await page.getByLabel("Search imported places").fill("Brid");
   await expect(page.getByRole("region", { name: "Search suggestions" })).toBeVisible();

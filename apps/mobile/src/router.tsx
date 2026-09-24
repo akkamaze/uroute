@@ -113,6 +113,7 @@ const mapsRoute = createRoute({
     trip?: ImportDestinationTrip;
     day?: string;
     place?: string;
+    add?: "open";
   } => ({
     ...(isMapDestination({ trip: search.trip, day: search.day })
       ? { trip: search.trip as ImportDestinationTrip, day: search.day as string }
@@ -120,6 +121,7 @@ const mapsRoute = createRoute({
     ...(typeof search.place === "string" && search.place.length < 200
       ? { place: search.place }
       : {}),
+    ...(search.add === "open" ? { add: "open" as const } : {}),
   }),
   component: lazyRouteComponent(() => import("./imports/ImportedPlacesPage"), "ImportedPlacesPage"),
 });

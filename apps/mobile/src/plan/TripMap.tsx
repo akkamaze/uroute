@@ -82,6 +82,7 @@ interface TripMapProps {
   onSelect: (id: string) => void;
   places: PlaceCollection;
   orderPlaces: PlaceCollection;
+  recenterLabel?: string;
   selectedId: string | null;
   showLocate?: boolean;
   showDayOrder?: boolean;
@@ -342,6 +343,7 @@ export function TripMap({
   onSelect,
   places: allPlaces,
   orderPlaces,
+  recenterLabel = "Recenter on Kyoto",
   selectedId,
   showLocate = true,
   showDayOrder = true,
@@ -1332,7 +1334,7 @@ export function TripMap({
       <div aria-label="Map controls" className="trip-map__controls" role="group">
         {showLocate ? (
           <button
-            aria-label="Recenter on Kyoto"
+            aria-label={recenterLabel}
             className="trip-map__locate"
             onClick={recenter}
             type="button"

@@ -35,11 +35,14 @@ test("creates a trip before using imported places and remembers the selected day
   });
   await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
   await page.getByRole("button", { name: "Market" }).click();
-  await expect(page.getByRole("button", { name: /Add places to Kanto/ })).toBeVisible();
-  await page.getByRole("button", { name: /Add places to Kanto/ }).click();
-  await expect(page.getByLabel("Destination trip")).not.toHaveValue("");
-  await expect(page.getByLabel("Destination day")).toHaveValue("2027-01-10");
-  await page.getByRole("button", { name: /Add to Kanto/ }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.getByLabel("Destination trip").locator("option:checked")).toContainText(
+    "Kanto",
+  );
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Sunday, 10 January",
+  );
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Market added to Kanto");
   await page.reload();
   await page.getByLabel("Search imported places").fill("Market");
@@ -47,8 +50,10 @@ test("creates a trip before using imported places and remembers the selected day
     .getByRole("region", { name: "Search suggestions" })
     .getByRole("button", { name: "Market Unfiled" })
     .click();
-  await page.getByRole("button", { name: /Add places to Kanto/ }).click();
-  await expect(page.getByLabel("Destination day")).toHaveValue("2027-01-10");
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
+    "Sunday, 10 January",
+  );
   await page.goto("/trips");
   await page.getByRole("link", { name: /Kanto.*10–11 Jan 2027/ }).click();
   await expect(page.getByLabel(/Sun 10 Jan itinerary/)).toContainText("Market");

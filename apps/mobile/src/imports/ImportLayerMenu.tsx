@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { FileUp, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
@@ -14,6 +14,7 @@ interface ImportLayerMenuProps {
   hidden: ReadonlySet<string>;
   onClose: () => void;
   onHideAll: () => void;
+  onImportFile?: ((file: File) => void) | undefined;
   onShowAll: () => void;
   onShowAllSource: (source: ImportLayerSource) => void;
   onToggle: (key: string) => void;
@@ -39,6 +40,7 @@ export function ImportLayerMenu({
   hidden,
   onClose,
   onHideAll,
+  onImportFile,
   onShowAll,
   onShowAllSource,
   onToggle,
@@ -100,136 +102,164 @@ export function ImportLayerMenu({
             <X aria-hidden="true" size={20} />
           </button>
         </header>
-        <div className="imported-page__layers-actions">
-          <span>Visibility for this trip</span>
-          <button onClick={onShowAll} type="button">
-            Show all
-          </button>
-          <button onClick={onHideAll} type="button">
-            Hide all
-          </button>
-        </div>
-        <div className="imported-page__layers-list">
-          <p className="imported-page__layers-explainer">
-            A file, type and folder must all be on. Counts here ignore search and day filters;
-            turning a file back on keeps your choices.
-          </p>
-          {sources.map((source) => {
-            const sourceHidden = hidden.has(sourceLayerKey(source.id));
-            const shown = sourceShown(source);
-            const total = sourceTotal(source);
-            const status = sourceHidden
-              ? "File off"
-              : shown === total
-                ? "All enabled"
-                : shown === 0
-                  ? "No items enabled"
-                  : "Partly enabled";
+        {onImportFile ? (
+          <label className="imported-page__layers-import">
+            <FileUp aria-hidden="true" size={19} />
+            <span>Import KML or KMZ</span>
+            <input
+              accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
+              aria-label="Choose KML or KMZ file"
+              className="imported-page__file-input"
+              id="import-kml-file"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = "";
+                if (file !== undefined) {
+                  onImportFile(file);
+                }
+              }}
+              type="file"
+            />
+          </label>
+        ) : null}
+        {sources.length === 0 ? (
+          <p className="imported-page__layers-empty-state">Import a file to choose its layers.</p>
+        ) : null}
+        {sources.length > 0 ? (
+          <div className="imported-page__layers-actions">
+            <span>Visibility for this trip</span>
+            <button onClick={onShowAll} type="button">
+              Show all
+            </button>
+            <button onClick={onHideAll} type="button">
+              Hide all
+            </button>
+          </div>
+        ) : null}
+        {sources.length > 0 ? (
+          <div className="imported-page__layers-list">
+            <p className="imported-page__layers-explainer">
+              A file, type and folder must all be on. Counts here ignore search and day filters;
+              turning a file back on keeps your choices.
+            </p>
+            {sources.map((source) => {
+              const sourceHidden = hidden.has(sourceLayerKey(source.id));
+              const shown = sourceShown(source);
+              const total = sourceTotal(source);
+              const status = sourceHidden
+                ? "File off"
+                : shown === total
+                  ? "All enabled"
+                  : shown === 0
+                    ? "No items enabled"
+                    : "Partly enabled";
 
-            return (
-              <section
-                aria-label={source.label}
-                className="imported-page__layer-source"
-                key={source.id}
-              >
-                <label className="imported-page__layer-row imported-page__layer-row--source">
-                  <span>
-                    <strong>{source.label}</strong>
-                    <small>
-                      {source.counts.point} places · {source.counts.line} lines ·{" "}
-                      {source.counts.area} areas
-                    </small>
-                  </span>
-                  <input
-                    aria-label={`Show ${source.label}`}
-                    checked={!sourceHidden}
-                    onChange={() => onToggle(sourceLayerKey(source.id))}
-                    role="switch"
-                    type="checkbox"
-                  />
-                </label>
-                <p className="imported-page__layer-status">
-                  {status} · {shown} of {total} enabled
-                </p>
-                {shown === total ? null : (
-                  <button
-                    className="imported-page__layer-reset"
-                    onClick={() => onShowAllSource(source)}
-                    type="button"
-                  >
-                    Show all in this file
-                  </button>
-                )}
-                <div
-                  aria-label={`Types in ${source.label}`}
-                  className="imported-page__layer-types"
-                  role="group"
+              return (
+                <section
+                  aria-label={source.label}
+                  className="imported-page__layer-source"
+                  key={source.id}
                 >
-                  {KIND_LABELS.filter(({ kind }) => source.counts[kind] > 0).map(
-                    ({ kind, label }) => (
-                      <label className="imported-page__layer-row" key={kind}>
-                        <span>
-                          {label}
-                          <small>
-                            {source.shownCounts[kind]} / {source.counts[kind]} enabled
-                            {sourceHidden ? " · File is off" : ""}
-                          </small>
-                        </span>
-                        <input
-                          aria-label={`Show ${label.toLowerCase()} in ${source.label}`}
-                          checked={!hidden.has(kindLayerKey(source.id, kind))}
-                          disabled={sourceHidden}
-                          onChange={() => onToggle(kindLayerKey(source.id, kind))}
-                          role="switch"
-                          type="checkbox"
-                        />
-                      </label>
-                    ),
-                  )}
-                </div>
-                {source.counts.line === 0 && source.counts.area === 0 ? (
-                  <p className="imported-page__layer-hint">
-                    Missing lines or areas from an older import? Import this file again to add them.
+                  <label className="imported-page__layer-row imported-page__layer-row--source">
+                    <span>
+                      <strong>{source.label}</strong>
+                      <small>
+                        {source.counts.point} places · {source.counts.line} lines ·{" "}
+                        {source.counts.area} areas
+                      </small>
+                    </span>
+                    <input
+                      aria-label={`Show ${source.label}`}
+                      checked={!sourceHidden}
+                      onChange={() => onToggle(sourceLayerKey(source.id))}
+                      role="switch"
+                      type="checkbox"
+                    />
+                  </label>
+                  <p className="imported-page__layer-status">
+                    {status} · {shown} of {total} enabled
                   </p>
-                ) : null}
-                <details className="imported-page__layer-folders">
-                  <summary>Folders from this file ({source.folders.length})</summary>
-                  {source.folders.map((folder) => {
-                    const folderHidden = hidden.has(folderLayerKey(source.id, folder.name));
-                    const kindsOff = (Object.keys(folder.counts) as ImportLayerKind[]).some(
-                      (kind) =>
-                        folder.counts[kind] > 0 && hidden.has(kindLayerKey(source.id, kind)),
-                    );
+                  {shown === total ? null : (
+                    <button
+                      className="imported-page__layer-reset"
+                      onClick={() => onShowAllSource(source)}
+                      type="button"
+                    >
+                      Show all in this file
+                    </button>
+                  )}
+                  <div
+                    aria-label={`Types in ${source.label}`}
+                    className="imported-page__layer-types"
+                    role="group"
+                  >
+                    {KIND_LABELS.filter(({ kind }) => source.counts[kind] > 0).map(
+                      ({ kind, label }) => (
+                        <label className="imported-page__layer-row" key={kind}>
+                          <span>
+                            {label}
+                            <small>
+                              {source.shownCounts[kind]} / {source.counts[kind]} enabled
+                              {sourceHidden ? " · File is off" : ""}
+                            </small>
+                          </span>
+                          <input
+                            aria-label={`Show ${label.toLowerCase()} in ${source.label}`}
+                            checked={!hidden.has(kindLayerKey(source.id, kind))}
+                            disabled={sourceHidden}
+                            onChange={() => onToggle(kindLayerKey(source.id, kind))}
+                            role="switch"
+                            type="checkbox"
+                          />
+                        </label>
+                      ),
+                    )}
+                  </div>
+                  {source.counts.line === 0 && source.counts.area === 0 ? (
+                    <p className="imported-page__layer-hint">
+                      Missing lines or areas from an older import? Import this file again to add
+                      them.
+                    </p>
+                  ) : null}
+                  <details className="imported-page__layer-folders">
+                    <summary>Folders from this file ({source.folders.length})</summary>
+                    {source.folders.map((folder) => {
+                      const folderHidden = hidden.has(folderLayerKey(source.id, folder.name));
+                      const kindsOff = (Object.keys(folder.counts) as ImportLayerKind[]).some(
+                        (kind) =>
+                          folder.counts[kind] > 0 && hidden.has(kindLayerKey(source.id, kind)),
+                      );
 
-                    return (
-                      <label className="imported-page__layer-row" key={folder.name}>
-                        <span>
-                          {folder.name}
-                          <small>
-                            {folder.shownCount} / {folder.count} enabled
-                            {sourceHidden
-                              ? " · File is off"
-                              : !folderHidden && kindsOff
-                                ? " · Some types are off"
-                                : ""}
-                          </small>
-                        </span>
-                        <input
-                          aria-label={`Show ${folder.name} in ${source.label}`}
-                          checked={!folderHidden}
-                          disabled={sourceHidden}
-                          onChange={() => onToggle(folderLayerKey(source.id, folder.name))}
-                          role="switch"
-                          type="checkbox"
-                        />
-                      </label>
-                    );
-                  })}
-                </details>
-              </section>
-            );
-          })}
-        </div>
+                      return (
+                        <label className="imported-page__layer-row" key={folder.name}>
+                          <span>
+                            {folder.name}
+                            <small>
+                              {folder.shownCount} / {folder.count} enabled
+                              {sourceHidden
+                                ? " · File is off"
+                                : !folderHidden && kindsOff
+                                  ? " · Some types are off"
+                                  : ""}
+                            </small>
+                          </span>
+                          <input
+                            aria-label={`Show ${folder.name} in ${source.label}`}
+                            checked={!folderHidden}
+                            disabled={sourceHidden}
+                            onChange={() => onToggle(folderLayerKey(source.id, folder.name))}
+                            role="switch"
+                            type="checkbox"
+                          />
+                        </label>
+                      );
+                    })}
+                  </details>
+                </section>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
     </dialog>
   );

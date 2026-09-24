@@ -16,6 +16,7 @@ import {
   MapPin,
   Search,
   Star,
+  X,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
@@ -614,6 +615,19 @@ export function PlaceDetailsPage(): React.JSX.Element {
               type="search"
               value={draftQuery}
             />
+            {draftQuery !== "" ? (
+              <button
+                aria-label="Clear search text"
+                className="place-search__clear"
+                onClick={() => {
+                  setDraftQuery("");
+                  searchInputRef.current?.focus();
+                }}
+                type="button"
+              >
+                <X aria-hidden="true" size={15} strokeWidth={2} />
+              </button>
+            ) : null}
           </form>
         </div>
 

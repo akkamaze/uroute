@@ -124,6 +124,18 @@ test("browser back and forward safely restore place search query UI", async ({ p
   await expect(page).toHaveURL(/\/places\?place=nishiki&day=13$/);
 });
 
+test("place search clears text with the same compact button as Maps", async ({ page }) => {
+  await page.goto("/places?place=nishiki&day=13");
+  const searchInput = page.getByRole("searchbox", { name: "Search places" });
+
+  await searchInput.fill("temple");
+  await page.getByRole("button", { name: "Clear search text" }).click();
+
+  await expect(searchInput).toHaveValue("");
+  await expect(searchInput).toBeFocused();
+  await expect(page.getByRole("button", { name: "Clear search text" })).toHaveCount(0);
+});
+
 test("visible place back returns to the originating plan", async ({ page }) => {
   await page.goto("/plan?day=13");
   await page.locator('[data-stop-id="nishiki"]').click();

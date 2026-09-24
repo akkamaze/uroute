@@ -1,8 +1,9 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  ChevronDown,
+  Bookmark,
   Clock3,
+  ExternalLink,
   FileUp,
   Layers,
   MapPin,
@@ -11,15 +12,23 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { attachContentSheetDrag } from "../places/content-sheet-drag";
+import {
+  getDragOffset,
+  getSheetOffset,
+  resolveSheetSnap,
+  type SheetSnap,
+} from "../places/place-sheet-geometry";
 import type { MapGeometryCollection, PlaceCollection } from "../plan/map-data";
 import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
+import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
 import { ImportedPlaceGallery } from "./ImportedPlaceGallery";
+import { MapPlanForm } from "./MapPlanForm";
 import { displayImportedImageUrl, importedPlaceImages, isImageMediaUrl } from "./import-media";
 import {
   findLinkedOsmPhoto,
@@ -28,8 +37,6 @@ import {
   type OsmPhotoCache,
 } from "./osm-photo";
 import {
-  availableDestinations,
-  destinationDays,
   destinationLabel,
   isMapDestination,
   loadMapDestination,
@@ -163,6 +170,16 @@ function countLabel(count: number, singular: string): string {
   return `${count} ${count === 1 ? singular : `${singular}s`}`;
 }
 
+function importedPlaceHeading(point: ImportedPoint): { title: string; subtitle: string } {
+  const match = /^\s*\[\s*([^\]]+?)\s*\]\s*(.+)$/.exec(point.name);
+  const folder = point.folder.trim();
+
+  return {
+    title: match?.[2] ?? point.name,
+    subtitle: [match?.[1], folder === "Unfiled" ? "" : folder].filter(Boolean).join(" · "),
+  };
+}
+
 const RECENT_SEARCHES_KEY = "uroute-map-searches:v1";
 const MAPS_STATE_KEY = "uroute-maps-state:v1";
 
@@ -176,6 +193,7 @@ interface MapsState {
   searchWasOpen: boolean;
   selectedId: string | null;
   sheetCollapsed: boolean;
+  sheetExpanded: boolean;
   sheetScrollTop: number;
   viewport: MapViewport | null;
   visibleLimit: number;
@@ -200,6 +218,7 @@ function loadMapsState(): Partial<MapsState> {
       searchWasOpen: state.searchWasOpen === true,
       selectedId: typeof state.selectedId === "string" ? state.selectedId : null,
       sheetCollapsed: state.sheetCollapsed === true,
+      sheetExpanded: state.sheetExpanded === true && state.sheetCollapsed !== true,
       sheetScrollTop: typeof state.sheetScrollTop === "number" ? state.sheetScrollTop : 0,
       viewport:
         viewport !== null &&
@@ -251,13 +270,16 @@ function loadRecentSearches(): string[] {
 }
 
 export function ImportedPlacesPage(): React.JSX.Element {
+  const navigate = useNavigate();
+  const addRouteOpen = useRouterState({
+    select: (state) => state.location.pathname === "/maps" && state.location.search.add === "open",
+  });
   const globalMaps = window.location.pathname === "/maps";
   const requested = new URLSearchParams(window.location.search);
   const [savedMapsState] = useState<Partial<MapsState>>(() => (globalMaps ? loadMapsState() : {}));
   const layersButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const destinationTripRef = useRef<HTMLSelectElement>(null);
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [places, setPlaces] = useState<ImportedPoint[]>([]);
@@ -268,11 +290,21 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(
     requested.get("place") ?? savedMapsState.selectedId ?? null,
   );
+  const previousSelectedIdRef = useRef(selectedId);
   const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
   const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
   const [sheetHeight, setSheetHeight] = useState(0);
+  const [sheetViewportHeight, setSheetViewportHeight] = useState(window.innerHeight);
   const [sheetDragOffset, setSheetDragOffset] = useState(0);
+  const sheetDragMovedRef = useRef(false);
+  const sheetDragStartRef = useRef<number | null>(null);
+  const sheetDragStartedAtRef = useRef(0);
+  const addOpenedHereRef = useRef(false);
+  const addWasOpenRef = useRef(false);
+  const addPreviousScrollRef = useRef(0);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
   const [sheetCollapsed, setSheetCollapsed] = useState(savedMapsState.sheetCollapsed ?? false);
+  const [sheetExpanded, setSheetExpanded] = useState(savedMapsState.sheetExpanded ?? false);
   const sheetScrollTopRef = useRef(savedMapsState.sheetScrollTop ?? 0);
   const [destination, setDestination] = useState<MapDestination | null>(() => {
     const requestedDestination = { trip: requested.get("trip"), day: requested.get("day") };
@@ -288,6 +320,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [searchOpen, setSearchOpen] = useState(savedMapsState.searchOpen ?? false);
   const [visibleLimit, setVisibleLimit] = useState(savedMapsState.visibleLimit ?? 24);
   const [destinationOpen, setDestinationOpen] = useState(false);
+  const [addingToPlan, setAddingToPlan] = useState(false);
   const [view, setView] = useState<"places" | "plan">("places");
   const [layersOpen, setLayersOpen] = useState(savedMapsState.layersOpen ?? false);
   const [hiddenLayers, setHiddenLayers] = useState(loadHiddenImportLayers);
@@ -296,6 +329,91 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [notice, setNotice] = useState("");
   const [osmPhotoCache, setOsmPhotoCache] = useState(loadOsmPhotoCache);
   const [photoLookupLoading, setPhotoLookupLoading] = useState(false);
+  const addSelectionRef = useRef(selectedId);
+
+  useEffect(() => {
+    if (addSelectionRef.current === selectedId) {
+      return;
+    }
+    addSelectionRef.current = selectedId;
+    setDestinationOpen(false);
+    if (globalMaps && addRouteOpen) {
+      void navigate({
+        to: "/maps",
+        search: {
+          ...(destination === null ? {} : { trip: destination.trip, day: destination.day }),
+          ...(selectedId === null ? {} : { place: selectedId }),
+        },
+        replace: true,
+        resetScroll: false,
+      });
+    }
+    // Selection changes close the add mode; opening add mode does not change selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (globalMaps) {
+      setDestinationOpen(addRouteOpen);
+      if (!addRouteOpen) {
+        addOpenedHereRef.current = false;
+      }
+    }
+  }, [addRouteOpen, globalMaps]);
+
+  useEffect(() => {
+    if (destinationOpen) {
+      addWasOpenRef.current = true;
+    } else if (addWasOpenRef.current) {
+      addWasOpenRef.current = false;
+      window.requestAnimationFrame(() => {
+        sheetRef.current?.scrollTo({ top: addPreviousScrollRef.current });
+        addButtonRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, [destinationOpen]);
+
+  function openAddPanel(): void {
+    addPreviousScrollRef.current = sheetRef.current?.scrollTop ?? 0;
+    if (destination === null) {
+      setDestination({ trip: "kyoto", day: "2026-11-13" });
+    }
+    setDestinationOpen(true);
+    setSheetCollapsed(false);
+    sheetRef.current?.scrollTo({ top: 0 });
+    if (globalMaps && !addRouteOpen) {
+      addOpenedHereRef.current = true;
+      void navigate({
+        to: "/maps",
+        search: {
+          ...(destination === null ? {} : { trip: destination.trip, day: destination.day }),
+          ...(selectedId === null ? {} : { place: selectedId }),
+          add: "open",
+        },
+        resetScroll: false,
+      });
+    }
+  }
+
+  function closeAddPanel(): void {
+    setDestinationOpen(false);
+    if (!globalMaps || !addRouteOpen) {
+      return;
+    }
+    if (addOpenedHereRef.current) {
+      window.history.back();
+    } else {
+      void navigate({
+        to: "/maps",
+        search: {
+          ...(destination === null ? {} : { trip: destination.trip, day: destination.day }),
+          ...(selectedId === null ? {} : { place: selectedId }),
+        },
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }
 
   useEffect(() => {
     saveOsmPhotoCache(osmPhotoCache);
@@ -360,6 +478,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
           searchWasOpen: searchWasOpenRef.current,
           selectedId,
           sheetCollapsed,
+          sheetExpanded,
           sheetScrollTop: sheetScrollTopRef.current,
           viewport,
           visibleLimit,
@@ -378,6 +497,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
     searchOpen,
     selectedId,
     sheetCollapsed,
+    sheetExpanded,
     viewport,
     visibleLimit,
   ]);
@@ -432,21 +552,21 @@ export function ImportedPlacesPage(): React.JSX.Element {
     () =>
       places.filter(
         (place) =>
-          (folder === "All folders" || place.folder === folder) &&
+          (globalMaps || folder === "All folders" || place.folder === folder) &&
           (normalizedQuery === "" ||
             `${place.name} ${place.folder}`.toLocaleLowerCase().includes(normalizedQuery)),
       ),
-    [folder, normalizedQuery, places],
+    [folder, globalMaps, normalizedQuery, places],
   );
   const visibleGeometries = useMemo(
     () =>
       geometries.filter(
         (item) =>
-          (folder === "All folders" || item.folder === folder) &&
+          (globalMaps || folder === "All folders" || item.folder === folder) &&
           (normalizedQuery === "" ||
             `${item.name} ${item.folder}`.toLocaleLowerCase().includes(normalizedQuery)),
       ),
-    [folder, geometries, normalizedQuery],
+    [folder, geometries, globalMaps, normalizedQuery],
   );
   const dayPlaces = useMemo(
     () =>
@@ -460,6 +580,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
     [places, selectedDay, visits],
   );
   const selectedPlace = places.find((place) => place.id === selectedId);
+  const savedPlaceIds = useSavedPlaceIds();
+  const selectedHeading = selectedPlace === undefined ? null : importedPlaceHeading(selectedPlace);
   const sourceImages = selectedPlace === undefined ? [] : importedPlaceImages(selectedPlace);
   const selectedOsmPhoto =
     selectedPlace === undefined || sourceImages.length > 0
@@ -475,6 +597,86 @@ export function ImportedPlacesPage(): React.JSX.Element {
     (url) => !isImageMediaUrl(url),
   );
   const sheetOpen = globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined);
+  const detailSheet = globalMaps && selectedPlace !== undefined && !searchOpen;
+  const sheetSnap: SheetSnap = sheetCollapsed ? "collapsed" : sheetExpanded ? "expanded" : "middle";
+  const visibleSheetSnap = destinationOpen ? "expanded" : sheetSnap;
+  const sheetBaseOffset = sheetOpen ? getSheetOffset(visibleSheetSnap, sheetViewportHeight) : 0;
+
+  const settleSheet = useCallback(
+    (delta: number, duration: number): void => {
+      const next = resolveSheetSnap(sheetSnap, delta, duration, sheetViewportHeight);
+      setSheetDragOffset(0);
+      setSheetCollapsed(next === "collapsed");
+      setSheetExpanded(next === "expanded");
+      if (next !== "expanded") {
+        const field = document.activeElement;
+        if (field instanceof HTMLElement && sheetRef.current?.contains(field)) {
+          field.blur();
+        }
+        sheetScrollTopRef.current = 0;
+        persistMapsSheetScroll(0);
+        sheetRef.current?.scrollTo({ top: 0 });
+      }
+    },
+    [sheetSnap, sheetViewportHeight],
+  );
+
+  function startSheetDrag(event: React.PointerEvent<HTMLElement>): void {
+    if (!detailSheet || destinationOpen) {
+      return;
+    }
+    const target = event.target as Element;
+    const handle = target.closest(".imported-page__sheet-handle") !== null;
+    if (
+      !handle &&
+      target.closest(
+        "button, a, input, textarea, select, summary, label, [data-sheet-drag-ignore], [role='button'], [role='link'], [contenteditable='true']",
+      ) !== null
+    ) {
+      return;
+    }
+    if (
+      sheetSnap === "expanded" &&
+      !handle &&
+      target.closest(".imported-page__selected-header") === null
+    ) {
+      return;
+    }
+    event.preventDefault();
+    sheetDragStartRef.current = event.clientY;
+    sheetDragStartedAtRef.current = performance.now();
+    sheetDragMovedRef.current = false;
+    (handle ? target.closest("button")! : event.currentTarget).setPointerCapture(event.pointerId);
+  }
+
+  function moveSheetDrag(event: React.PointerEvent<HTMLElement>): void {
+    if (sheetDragStartRef.current === null) {
+      return;
+    }
+    const delta = event.clientY - sheetDragStartRef.current;
+    if (Math.abs(delta) > 6) {
+      sheetDragMovedRef.current = true;
+    }
+    setSheetDragOffset(getDragOffset(sheetSnap, delta, sheetViewportHeight));
+  }
+
+  function finishSheetDrag(event: React.PointerEvent<HTMLElement>): void {
+    if (sheetDragStartRef.current === null) {
+      return;
+    }
+    const delta = event.clientY - sheetDragStartRef.current;
+    sheetDragStartRef.current = null;
+    settleSheet(delta, performance.now() - sheetDragStartedAtRef.current);
+  }
+
+  function cancelSheetDrag(): void {
+    if (sheetDragStartRef.current === null) {
+      return;
+    }
+    sheetDragStartRef.current = null;
+    sheetDragMovedRef.current = false;
+    setSheetDragOffset(0);
+  }
 
   useEffect(() => {
     if (
@@ -520,37 +722,65 @@ export function ImportedPlacesPage(): React.JSX.Element {
       return;
     }
     const sheet = sheetRef.current;
-    const observer = new ResizeObserver(() => setSheetHeight(sheet.getBoundingClientRect().height));
+    const observer = new ResizeObserver(() => {
+      setSheetHeight(sheet.getBoundingClientRect().height);
+      setSheetViewportHeight(sheet.parentElement?.clientHeight ?? window.innerHeight);
+    });
     observer.observe(sheet);
+    if (sheet.parentElement !== null) {
+      observer.observe(sheet.parentElement);
+    }
 
     return () => observer.disconnect();
   }, [globalMaps, places.length, geometries.length]);
 
   useEffect(() => {
-    if (!globalMaps || sheetRef.current === null) {
+    if (
+      !globalMaps ||
+      destinationOpen ||
+      sheetRef.current === null ||
+      (detailSheet && sheetSnap !== "expanded")
+    ) {
       return;
     }
 
+    const snap: SheetSnap = sheetCollapsed ? "collapsed" : sheetExpanded ? "expanded" : "middle";
+
     return attachContentSheetDrag(sheetRef.current, {
-      onDrag: setSheetDragOffset,
-      onRelease: (delta, duration) => {
-        setSheetDragOffset(0);
-        if (delta > 90 || (delta > 35 && duration < 280)) {
-          if (selectedPlace !== undefined && !searchOpen) {
-            setSheetCollapsed(true);
-            sheetScrollTopRef.current = 0;
-            persistMapsSheetScroll(0);
-            if (sheetRef.current !== null) {
-              sheetRef.current.scrollTop = 0;
-            }
-          } else {
-            setSearchOpen(false);
-          }
+      onDrag: (delta) => {
+        if (sheetDragStartRef.current === null) {
+          setSheetDragOffset(getDragOffset(snap, delta, sheetViewportHeight));
         }
       },
+      onRelease: (delta, duration) => {
+        if (sheetDragStartRef.current !== null) {
+          return;
+        }
+        setSheetDragOffset(0);
+        sheetDragMovedRef.current = true;
+        window.setTimeout(() => {
+          sheetDragMovedRef.current = false;
+        }, 0);
+        settleSheet(delta, duration);
+      },
       onCancel: () => setSheetDragOffset(0),
+      allowUpwardFrom: (target) =>
+        !detailSheet && target.closest(".imported-page__sheet-handle") !== null,
     });
-  }, [globalMaps, places.length, geometries.length, selectedPlace, searchOpen]);
+  }, [
+    globalMaps,
+    destinationOpen,
+    places.length,
+    geometries.length,
+    selectedPlace,
+    searchOpen,
+    sheetCollapsed,
+    sheetExpanded,
+    sheetViewportHeight,
+    detailSheet,
+    sheetSnap,
+    settleSheet,
+  ]);
 
   useEffect(() => {
     if (sheetOpen && sheetRef.current !== null && sheetScrollTopRef.current > 0) {
@@ -613,10 +843,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
     ).length ?? 0;
 
   useEffect(() => {
-    if (selectedId !== null) {
+    if (!globalMaps && selectedId !== null) {
       selectedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } else if (globalMaps && selectedId !== previousSelectedIdRef.current) {
+      sheetScrollTopRef.current = 0;
+      persistMapsSheetScroll(0);
+      sheetRef.current?.scrollTo({ top: 0 });
     }
-  }, [selectedId]);
+    previousSelectedIdRef.current = selectedId;
+  }, [globalMaps, selectedId]);
 
   async function chooseFile(file: File | undefined): Promise<void> {
     if (file === undefined) {
@@ -667,11 +902,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
   async function addToPlan(point: ImportedPoint): Promise<void> {
     setError("");
     if (globalMaps && destination === null) {
-      setDestinationOpen(true);
-      setSheetCollapsed(false);
-      window.requestAnimationFrame(() =>
-        destinationTripRef.current?.focus({ preventScroll: true }),
-      );
+      openAddPanel();
 
       return;
     }
@@ -679,6 +910,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
     if (target === null) {
       return;
     }
+    setAddingToPlan(true);
     try {
       let result: "added" | "duplicate" | "invalid";
       if (target.trip !== "kyoto") {
@@ -707,9 +939,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
       );
       if (!globalMaps) {
         setView("plan");
+      } else {
+        closeAddPanel();
       }
     } catch {
       setError("This place could not be added to the plan on this device.");
+    } finally {
+      setAddingToPlan(false);
     }
   }
 
@@ -812,8 +1048,38 @@ export function ImportedPlacesPage(): React.JSX.Element {
           value={globalMaps ? draftQuery : query}
         />
       </label>
+      {globalMaps && draftQuery !== "" ? (
+        <button
+          aria-label="Clear search text"
+          className="imported-page__search-clear"
+          onClick={() => {
+            setDraftQuery("");
+            setQuery("");
+            setSearchEditing(false);
+            setSearchOpen(false);
+            searchInputRef.current?.blur();
+          }}
+          type="button"
+        >
+          <X aria-hidden="true" size={15} strokeWidth={2} />
+        </button>
+      ) : null}
       {!globalMaps ? folderFilter : null}
     </div>
+  );
+  const layersButton = (
+    <button
+      aria-controls="import-map-layers"
+      aria-expanded={layersOpen}
+      aria-label="Map layers"
+      className="imported-page__layers-button"
+      disabled={!globalMaps && places.length === 0 && geometries.length === 0}
+      onClick={() => setLayersOpen(true)}
+      ref={layersButtonRef}
+      type="button"
+    >
+      <Layers aria-hidden="true" size={21} />
+    </button>
   );
 
   return (
@@ -823,8 +1089,26 @@ export function ImportedPlacesPage(): React.JSX.Element {
           ? `imported-page imported-page--maps${searchEditing ? " imported-page--searching" : ""}`
           : "imported-page"
       }
+      data-swipe-back-ignore={globalMaps && destinationOpen ? "true" : undefined}
+      onKeyDown={(event) => {
+        if (globalMaps && destinationOpen && event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeAddPanel();
+        }
+      }}
     >
       <header className="imported-page__header">
+        {globalMaps && searchEditing ? (
+          <button
+            aria-label="Close search"
+            className="imported-page__search-back"
+            onClick={closeSearchEditing}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" size={21} />
+          </button>
+        ) : null}
         {!globalMaps ? (
           <Link aria-label="Back to trips" to="/trips">
             <ArrowLeft aria-hidden="true" size={21} />
@@ -841,39 +1125,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
             <p>27 Sep–1 Oct 2026 · saved on this device</p>
           </div>
         )}
-        {globalMaps && searchEditing ? (
-          <button
-            aria-label="Close search"
-            className="imported-page__search-back"
-            onClick={closeSearchEditing}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" size={21} />
-          </button>
-        ) : (
-          <button
-            aria-controls="import-map-layers"
-            aria-expanded={layersOpen}
-            aria-label="Map layers"
-            className="imported-page__layers-button"
-            disabled={places.length === 0 && geometries.length === 0}
-            onClick={() => setLayersOpen(true)}
-            ref={layersButtonRef}
-            type="button"
-          >
-            <Layers aria-hidden="true" size={21} />
-          </button>
-        )}
-        {globalMaps && searchEditing ? (
-          <button
-            aria-label="Show map results"
-            className="imported-page__search-submit"
-            onClick={() => submitSearch()}
-            type="button"
-          >
-            <Search aria-hidden="true" size={21} />
-          </button>
-        ) : (
+        {!globalMaps ? layersButton : null}
+        {!globalMaps ? (
           <label className="imported-page__import-button">
             <FileUp aria-hidden="true" size={21} />
             <input
@@ -890,7 +1143,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
               type="file"
             />
           </label>
-        )}
+        ) : null}
       </header>
 
       {globalMaps && searchEditing ? (
@@ -915,7 +1168,6 @@ export function ImportedPlacesPage(): React.JSX.Element {
             </>
           ) : (
             <>
-              <h2>Places</h2>
               <div className="imported-page__search-list">
                 <button onClick={() => submitSearch()} type="button">
                   <Search aria-hidden="true" size={20} />
@@ -953,12 +1205,20 @@ export function ImportedPlacesPage(): React.JSX.Element {
         hidden={hiddenLayers}
         onClose={closeLayers}
         onHideAll={() => setHiddenLayers((current) => hideAllImportLayers(current, layerSources))}
+        {...(globalMaps
+          ? {
+              onImportFile: (file: File) => {
+                setLayersOpen(false);
+                void chooseFile(file);
+              },
+            }
+          : {})}
         onShowAll={() => setHiddenLayers((current) => showAllImportLayers(current, layerSources))}
         onShowAllSource={(source) =>
           setHiddenLayers((current) => showAllImportLayers(current, [source]))
         }
         onToggle={toggleLayer}
-        open={layersOpen && layerSources.length > 0}
+        open={layersOpen && (globalMaps || layerSources.length > 0)}
         sources={layerSources}
       />
 
@@ -1070,7 +1330,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
           {globalMaps && destination !== null ? (
             <p className="imported-page__empty-target">Adding to {destinationLabel(destination)}</p>
           ) : null}
-          <label htmlFor="import-kml-file">Choose a file</label>
+          {globalMaps ? (
+            <button onClick={() => setLayersOpen(true)} type="button">
+              Open map layers
+            </button>
+          ) : (
+            <label htmlFor="import-kml-file">Choose a file</label>
+          )}
         </div>
       ) : (
         <>
@@ -1105,10 +1371,18 @@ export function ImportedPlacesPage(): React.JSX.Element {
           <div
             aria-hidden={globalMaps && searchEditing}
             className="imported-page__map"
+            data-sheet-dragging={sheetDragOffset === 0 ? undefined : "true"}
             inert={globalMaps && searchEditing}
+            style={
+              globalMaps
+                ? ({
+                    "--import-map-bottom-inset": `${sheetOpen ? Math.max(0, sheetHeight - sheetBaseOffset - sheetDragOffset) : 0}px`,
+                  } as React.CSSProperties)
+                : undefined
+            }
           >
             <TripMap
-              bottomInset={sheetOpen ? sheetHeight : 0}
+              bottomInset={sheetOpen ? Math.max(0, sheetHeight - sheetBaseOffset) : 0}
               clusterAnchorPlaces={clusterAnchorPlaces}
               focusSelectedId={globalMaps ? focusSelectedId : null}
               frameKey={`${view}:${selectedDay}:${folder}:${normalizedQuery}:${places.length}:${geometries.length}`}
@@ -1128,14 +1402,19 @@ export function ImportedPlacesPage(): React.JSX.Element {
               }}
               orderPlaces={orderPlaces}
               places={mapPlaces}
+              recenterLabel={globalMaps ? "Recenter imported places" : "Recenter on Kyoto"}
               selectedId={selectedId}
-              showLocate={false}
+              showLocate={globalMaps && !destinationOpen && !(detailSheet && sheetExpanded)}
               showDayOrder={!globalMaps}
               variant="discovery"
             />
+            {globalMaps && !searchEditing && !destinationOpen && !(detailSheet && sheetExpanded)
+              ? layersButton
+              : null}
           </div>
           <div
-            className={`imported-page__content${globalMaps ? (sheetOpen ? " imported-page__content--open" : " imported-page__content--closed") : ""}${globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen ? " imported-page__content--collapsed" : ""}`}
+            data-dragging={sheetDragOffset === 0 ? undefined : "true"}
+            className={`imported-page__content${globalMaps ? (sheetOpen ? " imported-page__content--open" : " imported-page__content--closed") : ""}${globalMaps && searchOpen ? " imported-page__content--results" : ""}${globalMaps && selectedPlace !== undefined && !searchOpen ? " imported-page__content--detail" : ""}${globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen && !destinationOpen ? " imported-page__content--collapsed" : ""}${globalMaps && (destinationOpen || (sheetExpanded && !sheetCollapsed)) ? " imported-page__content--expanded" : ""}${globalMaps && destinationOpen ? " imported-page__content--adding" : ""}`}
             onScroll={
               globalMaps
                 ? (event) => {
@@ -1145,92 +1424,39 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 : undefined
             }
             ref={sheetRef}
+            onPointerDown={startSheetDrag}
+            onPointerMove={moveSheetDrag}
+            onPointerUp={finishSheetDrag}
+            onPointerCancel={cancelSheetDrag}
+            onLostPointerCapture={cancelSheetDrag}
             style={
-              globalMaps && sheetDragOffset > 0
-                ? { transform: `translateY(${sheetDragOffset}px)` }
+              globalMaps && sheetOpen
+                ? { transform: `translateY(${sheetBaseOffset + sheetDragOffset}px)` }
                 : undefined
             }
           >
             {globalMaps && sheetOpen ? (
-              <div aria-hidden="true" className="imported-page__sheet-handle" />
-            ) : null}
-            {globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen ? (
               <button
-                aria-label="Expand place details"
-                className="imported-page__sheet-peek"
-                onClick={() => setSheetCollapsed(false)}
+                aria-label={sheetExpanded ? "Collapse place details" : "Expand place details"}
+                className="imported-page__sheet-handle"
+                disabled={destinationOpen}
+                onClick={() => {
+                  if (sheetDragMovedRef.current) {
+                    sheetDragMovedRef.current = false;
+
+                    return;
+                  }
+                  if (sheetCollapsed) {
+                    setSheetCollapsed(false);
+                  } else {
+                    setSheetExpanded(!sheetExpanded);
+                  }
+                }}
                 type="button"
-              >
-                <MapPin aria-hidden="true" size={18} />
-                <span>{selectedPlace.name}</span>
-                <ChevronDown aria-hidden="true" size={17} />
-              </button>
+              />
             ) : null}
             {!globalMaps && view === "places" ? placeFilters : null}
-            {globalMaps && selectedPlace !== undefined && !searchOpen ? (
-              <div className="imported-page__destination" aria-label="Add to plan destination">
-                <button
-                  aria-expanded={destinationOpen}
-                  className="imported-page__destination-toggle"
-                  onClick={() => setDestinationOpen((open) => !open)}
-                  type="button"
-                >
-                  <MapPin aria-hidden="true" size={18} />
-                  <span>
-                    <small>Add places to</small>
-                    <strong>
-                      {destination === null
-                        ? "Choose a trip and day"
-                        : destinationLabel(destination)}
-                    </strong>
-                  </span>
-                  <ChevronDown aria-hidden="true" size={17} />
-                </button>
-                {destinationOpen ? (
-                  <div className="imported-page__destination-fields">
-                    <select
-                      aria-label="Destination trip"
-                      ref={destinationTripRef}
-                      value={destination?.trip ?? ""}
-                      onChange={(event) => {
-                        const trip = event.target.value;
-                        setDestination({ trip, day: destinationDays(trip)[0]?.day ?? "" });
-                      }}
-                    >
-                      <option value="" disabled>
-                        Choose trip
-                      </option>
-                      {availableDestinations().map((trip) => (
-                        <option key={trip.id} value={trip.id}>
-                          {trip.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      aria-label="Destination day"
-                      disabled={destination === null}
-                      value={destination?.day ?? ""}
-                      onChange={(event) => {
-                        if (destination !== null) {
-                          setDestination({ ...destination, day: event.target.value });
-                          setDestinationOpen(false);
-                        }
-                      }}
-                    >
-                      {destination === null ? (
-                        <option value="">Choose day</option>
-                      ) : (
-                        destinationDays(destination.trip).map(({ day, label }) => (
-                          <option key={day} value={day}>
-                            {label}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                  </div>
-                ) : null}
-              </div>
-            ) : !globalMaps ? (
+            {!globalMaps ? (
               <div className="imported-page__days" role="group" aria-label="Plan day">
                 {KANTO_DAYS.map((day) => (
                   <button
@@ -1246,76 +1472,150 @@ export function ImportedPlacesPage(): React.JSX.Element {
             ) : null}
             {selectedPlace === undefined || (globalMaps && searchOpen) ? null : (
               <article className="imported-page__selected" ref={selectedRef}>
-                {globalMaps ? (
-                  <button
-                    aria-label="Close place details"
-                    className="imported-page__selected-close"
-                    onClick={() => {
-                      setSelectedId(null);
-                      setFocusSelectedId(null);
-                      setSheetCollapsed(false);
-                    }}
-                    type="button"
-                  >
-                    <X aria-hidden="true" size={18} />
-                  </button>
-                ) : null}
-                <span>{selectedPlace.folder}</span>
-                <h2>{selectedPlace.name}</h2>
-                <ImportedPlaceGallery
-                  images={selectedImages}
-                  key={selectedPlace.id}
-                  name={selectedPlace.name}
-                />
-                {photoLookupLoading && sourceImages.length === 0 ? (
-                  <p className="imported-page__photo-credit">Checking for a linked photo…</p>
-                ) : null}
-                {selectedOsmPhoto !== null ? (
-                  <p className="imported-page__photo-credit">
-                    Photo: {selectedOsmPhoto.artist} ·{" "}
-                    <a href={selectedOsmPhoto.licenseUrl} rel="noopener noreferrer" target="_blank">
-                      {selectedOsmPhoto.license}
-                    </a>
-                    {" · "}
-                    <a href={selectedOsmPhoto.pageUrl} rel="noopener noreferrer" target="_blank">
-                      Wikimedia Commons
-                    </a>
-                    {" · "}
-                    <a href={selectedOsmPhoto.osmUrl} rel="noopener noreferrer" target="_blank">
-                      OpenStreetMap
-                    </a>
-                  </p>
-                ) : null}
-                {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
-                  <p className="imported-page__selected-hidden">
-                    Hidden on map. You can still use this place in your plan. Open Map layers to
-                    show it.
-                  </p>
-                ) : null}
-                {selectedPlace.description !== "" ? <p>{selectedPlace.description}</p> : null}
-                {selectedSourceLinks.length > 0 ? (
-                  <details>
-                    <summary>{selectedSourceLinks.length} source media links</summary>
-                    <ul>
-                      {selectedSourceLinks.map((url, index) => (
-                        <li key={`${url}-${index}`}>
-                          <a href={url} rel="noopener noreferrer" target="_blank">
-                            Open source media {index + 1}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                ) : null}
-                <p>Coordinates from {selectedPlace.sourceName?.trim() || "an imported map"}</p>
-                <button onClick={() => void addToPlan(selectedPlace)} type="button">
-                  <Plus aria-hidden="true" size={18} /> Add to{" "}
-                  {globalMaps
-                    ? destination === null
-                      ? "plan"
-                      : destinationLabel(destination)
-                    : KANTO_DAYS.find((day) => day.date === selectedDay)?.label}
-                </button>
+                <header className="imported-page__selected-header">
+                  <div>
+                    <h2>{selectedHeading?.title}</h2>
+                    {selectedHeading?.subtitle ? <p>{selectedHeading.subtitle}</p> : null}
+                  </div>
+                  {globalMaps ? (
+                    <div className="imported-page__selected-actions">
+                      <button
+                        aria-label={
+                          savedPlaceIds.has(selectedPlace.id)
+                            ? "Remove from saved places"
+                            : "Save place"
+                        }
+                        aria-pressed={savedPlaceIds.has(selectedPlace.id)}
+                        className="imported-page__selected-save"
+                        onClick={() => toggleSavedPlace(selectedPlace.id)}
+                        type="button"
+                      >
+                        <Bookmark
+                          aria-hidden="true"
+                          fill={savedPlaceIds.has(selectedPlace.id) ? "currentColor" : "none"}
+                          size={22}
+                          strokeWidth={1.8}
+                        />
+                      </button>
+                      <button
+                        aria-label="Close place details"
+                        className="imported-page__selected-close"
+                        onClick={() => {
+                          setSelectedId(null);
+                          setFocusSelectedId(null);
+                          setSheetCollapsed(false);
+                        }}
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={18} />
+                      </button>
+                    </div>
+                  ) : null}
+                </header>
+                {globalMaps && destinationOpen ? (
+                  <MapPlanForm
+                    destination={destination}
+                    onDestination={setDestination}
+                    onBack={closeAddPanel}
+                    onAdd={() => void addToPlan(selectedPlace)}
+                    pending={addingToPlan}
+                  />
+                ) : (
+                  <>
+                    <ImportedPlaceGallery
+                      images={selectedImages}
+                      key={selectedPlace.id}
+                      name={selectedPlace.name}
+                    />
+                    {globalMaps ? (
+                      <div className="imported-page__selected-quick-actions">
+                        <button
+                          aria-label="Add to plan"
+                          aria-expanded={destinationOpen}
+                          className="imported-page__selected-primary"
+                          onClick={openAddPanel}
+                          ref={addButtonRef}
+                          type="button"
+                        >
+                          Add to trip
+                        </button>
+                        <a
+                          aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
+                          className="imported-page__selected-secondary"
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}`}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Directions <ExternalLink aria-hidden="true" size={16} />
+                        </a>
+                      </div>
+                    ) : null}
+                    {photoLookupLoading && sourceImages.length === 0 ? (
+                      <p className="imported-page__photo-credit">Checking for a linked photo…</p>
+                    ) : null}
+                    {selectedOsmPhoto !== null ? (
+                      <p className="imported-page__photo-credit">
+                        Photo: {selectedOsmPhoto.artist} ·{" "}
+                        <a
+                          href={selectedOsmPhoto.licenseUrl}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          {selectedOsmPhoto.license}
+                        </a>
+                        {" · "}
+                        <a
+                          href={selectedOsmPhoto.pageUrl}
+                          rel="noopener noreferrer"
+                          target="_blank"
+                        >
+                          Wikimedia Commons
+                        </a>
+                        {" · "}
+                        <a href={selectedOsmPhoto.osmUrl} rel="noopener noreferrer" target="_blank">
+                          OpenStreetMap
+                        </a>
+                      </p>
+                    ) : null}
+                    {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
+                      <p className="imported-page__selected-hidden">
+                        Hidden on map. You can still use this place in your plan. Open Map layers to
+                        show it.
+                      </p>
+                    ) : null}
+                    {selectedPlace.description !== "" ? (
+                      <p className="imported-page__selected-description">
+                        {selectedPlace.description}
+                      </p>
+                    ) : null}
+                    {selectedSourceLinks.length > 0 ? (
+                      <details>
+                        <summary>{selectedSourceLinks.length} source media links</summary>
+                        <ul>
+                          {selectedSourceLinks.map((url, index) => (
+                            <li key={`${url}-${index}`}>
+                              <a href={url} rel="noopener noreferrer" target="_blank">
+                                Open source media {index + 1}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
+                    <p className="imported-page__selected-coordinates">
+                      <MapPin aria-hidden="true" size={21} strokeWidth={1.8} />
+                      <span>
+                        Coordinates from {selectedPlace.sourceName?.trim() || "an imported map"}
+                      </span>
+                    </p>
+                    {!globalMaps ? (
+                      <button onClick={() => void addToPlan(selectedPlace)} type="button">
+                        <Plus aria-hidden="true" size={18} /> Add to{" "}
+                        {KANTO_DAYS.find((day) => day.date === selectedDay)?.label}
+                      </button>
+                    ) : null}
+                  </>
+                )}
               </article>
             )}
             {!globalMaps || searchOpen ? (
@@ -1335,9 +1635,6 @@ export function ImportedPlacesPage(): React.JSX.Element {
                     </button>
                   ) : null}
                 </div>
-                {globalMaps ? (
-                  <div className="imported-page__sheet-filter">{folderFilter}</div>
-                ) : null}
                 {displayedPlaces.length === 0 ? (
                   <p className="imported-page__list-empty">
                     {view === "plan"
