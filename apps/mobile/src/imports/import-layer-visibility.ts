@@ -57,15 +57,21 @@ export function saveHiddenImportLayers(hidden: ReadonlySet<string>): void {
 
 export interface ImportLayerSource {
   id: string;
-  fileName: string;
   label: string;
   counts: Record<ImportLayerKind, number>;
-  folders: { name: string; count: number }[];
+  shownCounts: Record<ImportLayerKind, number>;
+  folders: {
+    name: string;
+    count: number;
+    shownCount: number;
+    counts: Record<ImportLayerKind, number>;
+  }[];
 }
 
 export function buildImportLayerSources(
   points: readonly ImportedPoint[],
   geometries: readonly ImportedGeometry[],
+  hidden: ReadonlySet<string>,
 ): ImportLayerSource[] {
   const sources = new Map<string, ImportLayerSource>();
   for (const item of [...points, ...geometries]) {
@@ -74,34 +80,84 @@ export function buildImportLayerSources(
     if (source === undefined) {
       source = {
         id,
-        fileName: item.sourceFile,
-        label: item.sourceFile,
+        label: item.sourceName?.trim() || item.sourceFile,
         counts: { point: 0, line: 0, area: 0 },
+        shownCounts: { point: 0, line: 0, area: 0 },
         folders: [],
       };
       sources.set(id, source);
+    } else if (item.sourceName?.trim()) {
+      source.label = item.sourceName.trim();
     }
-    source.counts[importLayerKind(item)] += 1;
+    const kind = importLayerKind(item);
+    const shown = isImportLayerVisible(item, hidden);
+    source.counts[kind] += 1;
+    if (shown) {
+      source.shownCounts[kind] += 1;
+    }
     const folder = source.folders.find((entry) => entry.name === item.folder);
     if (folder === undefined) {
-      source.folders.push({ name: item.folder, count: 1 });
+      source.folders.push({
+        name: item.folder,
+        count: 1,
+        shownCount: shown ? 1 : 0,
+        counts: {
+          point: kind === "point" ? 1 : 0,
+          line: kind === "line" ? 1 : 0,
+          area: kind === "area" ? 1 : 0,
+        },
+      });
     } else {
       folder.count += 1;
+      folder.counts[kind] += 1;
+      if (shown) {
+        folder.shownCount += 1;
+      }
     }
   }
   const result = [...sources.values()].sort((left, right) =>
-    left.fileName.localeCompare(right.fileName),
+    left.label.localeCompare(right.label),
   );
-  const fileNameCounts = new Map<string, number>();
+  const labelCounts = new Map<string, number>();
   for (const source of result) {
-    fileNameCounts.set(source.fileName, (fileNameCounts.get(source.fileName) ?? 0) + 1);
+    labelCounts.set(source.label, (labelCounts.get(source.label) ?? 0) + 1);
   }
   for (const source of result) {
-    if ((fileNameCounts.get(source.fileName) ?? 0) > 1) {
-      source.label = `${source.fileName} · ${source.id.slice(0, 6)}`;
+    if ((labelCounts.get(source.label) ?? 0) > 1) {
+      source.label = `${source.label} · ${source.id.slice(0, 6)}`;
     }
     source.folders.sort((left, right) => left.name.localeCompare(right.name));
   }
 
   return result;
+}
+
+export function showAllImportLayers(
+  hidden: ReadonlySet<string>,
+  sources: readonly ImportLayerSource[],
+): Set<string> {
+  const next = new Set(hidden);
+  for (const source of sources) {
+    next.delete(sourceLayerKey(source.id));
+    for (const kind of ["point", "line", "area"] as const) {
+      next.delete(kindLayerKey(source.id, kind));
+    }
+    for (const folder of source.folders) {
+      next.delete(folderLayerKey(source.id, folder.name));
+    }
+  }
+
+  return next;
+}
+
+export function hideAllImportLayers(
+  hidden: ReadonlySet<string>,
+  sources: readonly ImportLayerSource[],
+): Set<string> {
+  const next = new Set(hidden);
+  for (const source of sources) {
+    next.add(sourceLayerKey(source.id));
+  }
+
+  return next;
 }

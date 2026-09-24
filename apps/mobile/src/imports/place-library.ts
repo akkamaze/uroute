@@ -135,17 +135,38 @@ export async function saveImportedContent(
       ),
     ]);
     const knownIds = new Set(knownPlaces.map((point) => point.id));
+    const knownPlacesById = new Map(knownPlaces.map((point) => [point.id, point]));
     const newPoints = points.filter(
       (point) =>
         !knownIds.has(point.id) && !knownPlaces.some((known) => sameImportedPlace(point, known)),
     );
     const knownGeometryIds = new Set(knownGeometries.map((geometry) => geometry.id));
+    const knownGeometriesById = new Map(knownGeometries.map((geometry) => [geometry.id, geometry]));
     const newGeometries = geometries.filter(
       (geometry) =>
         !knownGeometryIds.has(geometry.id) &&
         !knownGeometries.some((known) => sameImportedGeometry(geometry, known)),
     );
-    if (newPoints.length === 0 && newGeometries.length === 0) {
+    const renamedPoints = points.flatMap((point) => {
+      const known = knownPlacesById.get(point.id);
+
+      return known !== undefined && point.sourceName && known.sourceName !== point.sourceName
+        ? [{ ...known, sourceName: point.sourceName }]
+        : [];
+    });
+    const renamedGeometries = geometries.flatMap((geometry) => {
+      const known = knownGeometriesById.get(geometry.id);
+
+      return known !== undefined && geometry.sourceName && known.sourceName !== geometry.sourceName
+        ? [{ ...known, sourceName: geometry.sourceName }]
+        : [];
+    });
+    if (
+      newPoints.length === 0 &&
+      newGeometries.length === 0 &&
+      renamedPoints.length === 0 &&
+      renamedGeometries.length === 0
+    ) {
       return { placeCount: 0, lineCount: 0, areaCount: 0 };
     }
     const transaction = database.transaction(["places", "geometries"], "readwrite");
@@ -154,6 +175,8 @@ export async function saveImportedContent(
     const geometryStore = transaction.objectStore("geometries");
     newPoints.forEach((point) => placeStore.put(point));
     newGeometries.forEach((geometry) => geometryStore.put(geometry));
+    renamedPoints.forEach((point) => placeStore.put(point));
+    renamedGeometries.forEach((geometry) => geometryStore.put(geometry));
     await done;
 
     return {

@@ -8,6 +8,7 @@ export interface ImportedPoint {
   id: string;
   sourceKey: string;
   sourceFile: string;
+  sourceName?: string;
   folder: string;
   name: string;
   description: string;
@@ -21,6 +22,7 @@ export interface ImportedLine {
   id: string;
   sourceKey: string;
   sourceFile: string;
+  sourceName?: string;
   folder: string;
   name: string;
   description: string;
@@ -33,6 +35,7 @@ export interface ImportedArea {
   id: string;
   sourceKey: string;
   sourceFile: string;
+  sourceName?: string;
   folder: string;
   name: string;
   description: string;
@@ -45,6 +48,7 @@ export type ImportedGeometry = ImportedArea | ImportedLine;
 
 export interface ImportPreview {
   fileName: string;
+  sourceName: string;
   points: ImportedPoint[];
   lines: ImportedLine[];
   areas: ImportedArea[];
@@ -340,8 +344,13 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
     throw new Error("This file has too many map items to import at once.");
   }
   const hash = await sha256(kml);
+  const sourceName = childText(
+    directChild(document.documentElement, "Document") ?? document.documentElement,
+    "name",
+  ).slice(0, 240);
   const preview: ImportPreview = {
     fileName: file.name,
+    sourceName,
     points: [],
     lines: [],
     areas: [],
@@ -370,6 +379,7 @@ export async function parsePlaceFile(file: File): Promise<ImportPreview> {
     const itemName = name || `Item ${index + 1}`;
     const shared = {
       sourceFile: file.name,
+      sourceName,
       folder: folderPath(placemark),
       name,
       description: plainDescription(childText(placemark, "description")),

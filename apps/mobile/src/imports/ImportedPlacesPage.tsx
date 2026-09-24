@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, FileUp, MapPin, Menu, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, FileUp, Layers, MapPin, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { MapGeometryCollection, PlaceCollection } from "../plan/map-data";
@@ -8,8 +8,10 @@ import { ImportLayerMenu } from "./ImportLayerMenu";
 import {
   buildImportLayerSources,
   isImportLayerVisible,
+  hideAllImportLayers,
   loadHiddenImportLayers,
   saveHiddenImportLayers,
+  showAllImportLayers,
 } from "./import-layer-visibility";
 import {
   addImportedVisit,
@@ -74,7 +76,7 @@ function countLabel(count: number, singular: string): string {
 }
 
 export function ImportedPlacesPage(): React.JSX.Element {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const layersButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRef = useRef<HTMLElement>(null);
   const [places, setPlaces] = useState<ImportedPoint[]>([]);
   const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
@@ -130,9 +132,21 @@ export function ImportedPlacesPage(): React.JSX.Element {
   }
 
   const layerSources = useMemo(
-    () => buildImportLayerSources(places, geometries),
-    [places, geometries],
+    () => buildImportLayerSources(places, geometries, hiddenLayers),
+    [places, geometries, hiddenLayers],
   );
+  const allLayersHidden =
+    layerSources.length > 0 &&
+    layerSources.every(
+      (source) =>
+        source.shownCounts.point + source.shownCounts.line + source.shownCounts.area === 0,
+    );
+
+  function closeLayers(): void {
+    setLayersOpen(false);
+    window.requestAnimationFrame(() => layersButtonRef.current?.focus({ preventScroll: true }));
+  }
+
   const folders = useMemo(
     () => ["All folders", ...new Set([...places, ...geometries].map((item) => item.folder))],
     [geometries, places],
@@ -186,11 +200,11 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const mapGeometry = useMemo(
     () =>
       toMapGeometry(
-        (view === "plan" ? geometries : visibleGeometries).filter((item) =>
+        (view === "plan" ? [] : visibleGeometries).filter((item) =>
           isImportLayerVisible(item, hiddenLayers),
         ),
       ),
-    [geometries, hiddenLayers, view, visibleGeometries],
+    [hiddenLayers, view, visibleGeometries],
   );
   const orderPlaces = useMemo(
     () =>
@@ -241,9 +255,6 @@ export function ImportedPlacesPage(): React.JSX.Element {
       setError(cause instanceof Error ? cause.message : "This file could not be read.");
     } finally {
       setBusy(false);
-      if (fileInputRef.current !== null) {
-        fileInputRef.current.value = "";
-      }
     }
   }
 
@@ -318,37 +329,42 @@ export function ImportedPlacesPage(): React.JSX.Element {
           aria-label="Map layers"
           className="imported-page__layers-button"
           disabled={places.length === 0 && geometries.length === 0}
-          onClick={() => setLayersOpen((current) => !current)}
+          onClick={() => setLayersOpen(true)}
+          ref={layersButtonRef}
           type="button"
         >
-          <Menu aria-hidden="true" size={21} />
+          <Layers aria-hidden="true" size={21} />
         </button>
-        <button
-          aria-label="Import KML or KMZ"
-          className="imported-page__import-button"
-          onClick={() => fileInputRef.current?.click()}
-          type="button"
-        >
+        <label className="imported-page__import-button">
           <FileUp aria-hidden="true" size={21} />
-        </button>
-        <input
-          accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
-          aria-label="Choose KML or KMZ file"
-          className="imported-page__file-input"
-          onChange={(event) => void chooseFile(event.currentTarget.files?.[0])}
-          ref={fileInputRef}
-          type="file"
-        />
+          <input
+            accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz"
+            aria-label="Choose KML or KMZ file"
+            className="imported-page__file-input"
+            disabled={busy}
+            id="import-kml-file"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              void chooseFile(file);
+            }}
+            type="file"
+          />
+        </label>
       </header>
 
-      {layersOpen && layerSources.length > 0 ? (
-        <ImportLayerMenu
-          hidden={hiddenLayers}
-          onClose={() => setLayersOpen(false)}
-          onToggle={toggleLayer}
-          sources={layerSources}
-        />
-      ) : null}
+      <ImportLayerMenu
+        hidden={hiddenLayers}
+        onClose={closeLayers}
+        onHideAll={() => setHiddenLayers((current) => hideAllImportLayers(current, layerSources))}
+        onShowAll={() => setHiddenLayers((current) => showAllImportLayers(current, layerSources))}
+        onShowAllSource={(source) =>
+          setHiddenLayers((current) => showAllImportLayers(current, [source]))
+        }
+        onToggle={toggleLayer}
+        open={layersOpen && layerSources.length > 0}
+        sources={layerSources}
+      />
 
       {error !== "" ? (
         <p className="imported-page__error" role="alert">
@@ -374,7 +390,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
               Cancel
             </button>
           </div>
-          <p className="imported-page__source-name">{preview.fileName}</p>
+          <p className="imported-page__source-name">{preview.sourceName || preview.fileName}</p>
           <p>
             {preview.points.length} {preview.points.length === 1 ? "point" : "points"} ·{" "}
             {preview.lines.length} {preview.lines.length === 1 ? "line" : "lines"} ·{" "}
@@ -451,9 +467,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
           <MapPin aria-hidden="true" size={30} />
           <h2>Bring your places onto the map</h2>
           <p>Import a KML or KMZ file, review its points, then choose places for each day.</p>
-          <button onClick={() => fileInputRef.current?.click()} type="button">
+          <label htmlFor="import-kml-file">
             Choose a file
-          </button>
+          </label>
         </div>
       ) : (
         <>
@@ -469,12 +485,18 @@ export function ImportedPlacesPage(): React.JSX.Element {
               Plan <span>{visits.length}</span>
             </button>
           </div>
-          {geometries.length > 0 ? (
-            <p className="imported-page__map-summary">
-              {countLabel(mapPlaces.features.length, "point")}, {countLabel(lineCount, "line")} and{" "}
-              {countLabel(areaCount, "area")} shown on map
+          {allLayersHidden ? (
+            <p className="imported-page__layers-empty" role="status">
+              All imported layers are hidden.
+              <button onClick={() => setLayersOpen(true)} type="button">
+                Open layers
+              </button>
             </p>
           ) : null}
+          <p className="imported-page__map-summary">
+            {countLabel(mapPlaces.features.length, "point")}, {countLabel(lineCount, "line")} and{" "}
+            {countLabel(areaCount, "area")} shown on map
+          </p>
           <div className="imported-page__map">
             <TripMap
               clusterAnchorPlaces={clusterAnchorPlaces}
@@ -528,6 +550,12 @@ export function ImportedPlacesPage(): React.JSX.Element {
               <article className="imported-page__selected" ref={selectedRef}>
                 <span>{selectedPlace.folder}</span>
                 <h2>{selectedPlace.name}</h2>
+                {!isImportLayerVisible(selectedPlace, hiddenLayers) ? (
+                  <p className="imported-page__selected-hidden">
+                    Hidden on map. You can still use this place in your plan. Open Map layers to
+                    show it.
+                  </p>
+                ) : null}
                 {selectedPlace.description !== "" ? <p>{selectedPlace.description}</p> : null}
                 {selectedPlace.mediaReferences.length > 0 ? (
                   <details>

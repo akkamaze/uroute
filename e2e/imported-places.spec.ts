@@ -7,6 +7,77 @@ const sample = `<?xml version="1.0" encoding="UTF-8"?>
 <Placemark><name>River path</name><LineString><coordinates>139.770,35.680 139.771,35.681</coordinates></LineString></Placemark>
 </Folder></Document></kml>`;
 
+test("opens the mobile file picker on first tap and accepts the same file again", async ({ page }) => {
+  const file = {
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  };
+  await page.goto("/plan/kanto");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const picker = page.waitForEvent("filechooser");
+    if (attempt === 0) {
+      await page.locator(".imported-page__import-button").tap();
+    } else {
+      await page.getByText("Choose a file", { exact: true }).tap();
+    }
+    await (await picker).setFiles(file);
+    const review = page.getByRole("region", { name: "Import review" });
+    await expect(review).toContainText("2 points · 1 line · 0 areas");
+    await review.getByRole("button", { name: "Cancel" }).click();
+  }
+});
+
+test("uses the KML map name instead of its file name for imported layers", async ({ page }) => {
+  const file = {
+    name: "export-2.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(`<kml><Document><name>Tokyo favourites</name><Folder><name>Central</name>
+<Placemark><name>Market</name><Point><coordinates>139.770,35.680</coordinates></Point></Placemark>
+</Folder></Document></kml>`),
+  };
+  await page.goto("/plan/kanto");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
+  const review = page.getByRole("region", { name: "Import review" });
+  await expect(review.getByText("Tokyo favourites")).toBeVisible();
+  await review.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  const layers = page.getByRole("dialog", { name: "Map layers" });
+  await expect(layers.getByRole("region", { name: "Tokyo favourites" })).toBeVisible();
+  await expect(layers).not.toContainText("export-2.kml");
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("uroute-imported-places", 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Could not open import storage"));
+    });
+    const transaction = database.transaction("places", "readwrite");
+    const store = transaction.objectStore("places");
+    const request = store.getAll() as IDBRequest<{ id: string; sourceName?: string }[]>;
+    request.onsuccess = () => {
+      for (const item of request.result) {
+        delete item.sourceName;
+        store.put(item);
+      }
+    };
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error("Could not update import storage"));
+    });
+    database.close();
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  await expect(layers.getByRole("region", { name: "export-2.kml" })).toBeVisible();
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles(file);
+  await review.getByRole("button", { name: "Import 0 places, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  await expect(layers.getByRole("region", { name: "Tokyo favourites" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Places 1" })).toBeVisible();
+});
+
 test("reviews KML geometry, imports points once, and adds a place to a day", async ({ page }) => {
   await page.goto("/plan/kanto");
   await expect(page.getByRole("heading", { name: "Kanto trip" })).toBeVisible();
@@ -30,6 +101,9 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
     "true",
   );
   await expect(page.getByRole("heading", { name: "Plan · Sun 27 Sep" })).toBeVisible();
+  await expect(page.getByText("1 point, 0 lines and 0 areas shown on map")).toBeVisible();
+  await page.getByRole("button", { name: "Places 2" }).click();
+  await expect(page.getByText("2 points, 1 line and 0 areas shown on map")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: "Plan 1" })).toBeVisible();
 
@@ -93,6 +167,10 @@ test("imports a polygon with an inner ring and does not duplicate it", async ({ 
   await expect(review).toContainText("0 points · 0 lines · 1 area");
   await review.getByRole("button", { name: "Import 0 places, 0 lines and 1 area" }).click();
   await expect(page.getByRole("status")).toContainText("0 places, 0 lines and 1 area imported");
+  await expect(page.getByText("0 points, 0 lines and 1 area shown on map")).toBeVisible();
+  await page.getByRole("button", { name: "Plan 0" }).click();
+  await expect(page.getByText("0 points, 0 lines and 0 areas shown on map")).toBeVisible();
+  await page.getByRole("button", { name: "Places 0" }).click();
   await expect(page.getByText("0 points, 0 lines and 1 area shown on map")).toBeVisible();
   await expect
     .poll(() =>
@@ -158,26 +236,48 @@ test("toggles imported file, geometry and folder layers without deleting places"
       ).__urouteMapDiagnostics?.(),
     );
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(2);
+  const mapBeforeSheet = await page.locator(".imported-page__map").boundingBox();
   await page.getByRole("button", { name: "Map layers" }).click();
-  const layers = page.getByRole("region", { name: "Map layers" });
-  await expect(layers.getByRole("checkbox", { name: "Show sample.kml" })).toBeChecked();
-  await layers.getByRole("checkbox", { name: "Show lines in sample.kml" }).uncheck();
+  const layers = page.getByRole("dialog", { name: "Map layers" });
+  await expect(layers.getByRole("button", { name: "Close map layers" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(layers).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Map layers" })).toBeFocused();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  const mapAfterSheet = await page.locator(".imported-page__map").boundingBox();
+  expect(mapAfterSheet?.y).toBeCloseTo(mapBeforeSheet!.y, 3);
+  const fileSwitch = layers.getByRole("switch", { name: "Show sample.kml" });
+  await expect(fileSwitch).toBeChecked();
+  await fileSwitch.uncheck();
+  await expect(layers.getByRole("switch", { name: "Show lines in sample.kml" })).toBeDisabled();
+  await fileSwitch.check();
+  const lineSwitch = layers.getByRole("switch", { name: "Show lines in sample.kml" });
+  await lineSwitch.uncheck();
+  await expect(layers.getByRole("region", { name: "sample.kml" })).toContainText(
+    "Partly enabled · 2 of 3 enabled",
+  );
+  await layers
+    .getByRole("region", { name: "sample.kml" })
+    .getByRole("button", {
+      name: "Show all in this file",
+    })
+    .click();
+  await expect(lineSwitch).toBeChecked();
+  await lineSwitch.uncheck();
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(1);
-  await layers.getByRole("checkbox", { name: "Show areas in osaka.kml" }).uncheck();
+  await layers.getByRole("switch", { name: "Show areas in osaka.kml" }).uncheck();
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
   await expect(page.getByRole("button", { name: "Places 2" })).toBeVisible();
 
   await page.reload();
   await page.getByRole("button", { name: "Map layers" }).click();
-  await expect(
-    layers.getByRole("checkbox", { name: "Show lines in sample.kml" }),
-  ).not.toBeChecked();
-  await expect(layers.getByRole("checkbox", { name: "Show areas in osaka.kml" })).not.toBeChecked();
-  await layers.getByRole("checkbox", { name: "Show areas in osaka.kml" }).check();
+  await expect(layers.getByRole("switch", { name: "Show lines in sample.kml" })).not.toBeChecked();
+  await expect(layers.getByRole("switch", { name: "Show areas in osaka.kml" })).not.toBeChecked();
+  await layers.getByRole("switch", { name: "Show areas in osaka.kml" }).check();
   await layers.locator("details").last().locator("summary").click();
   const beforeFolderToggle = await readMap();
   expect(beforeFolderToggle).toBeDefined();
-  await layers.getByRole("checkbox", { name: "Show Tokyo in sample.kml" }).uncheck();
+  await layers.getByRole("switch", { name: "Show Tokyo in sample.kml" }).uncheck();
   await expect.poll(async () => (await readMap())?.featureCount).toBe(0);
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(1);
   const afterFolderToggle = await readMap();
@@ -185,8 +285,25 @@ test("toggles imported file, geometry and folder layers without deleting places"
   expect(afterFolderToggle?.center.latitude).toBeCloseTo(beforeFolderToggle!.center.latitude, 6);
   expect(afterFolderToggle?.zoom).toBeCloseTo(beforeFolderToggle!.zoom, 6);
   await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
-  await layers.getByRole("checkbox", { name: "Show osaka.kml" }).uncheck();
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await expect(
+    page.getByText("Hidden on map. You can still use this place in your plan."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  await layers.getByRole("switch", { name: "Show osaka.kml" }).uncheck();
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
+  await layers.getByRole("button", { name: "Hide all" }).click();
+  await expect(page.getByText("All imported layers are hidden.")).toBeVisible();
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await expect(page.getByRole("button", { name: "Map layers" })).toBeFocused();
+  await page.getByRole("button", { name: "Open layers" }).click();
+  await layers.getByRole("button", { name: "Show all", exact: true }).click();
+  await expect(page.getByText("2 points, 1 line and 1 area shown on map")).toBeVisible();
+  await expect.poll(async () => (await readMap())?.featureCount).toBe(1);
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(2);
+  await expect(layers.getByRole("switch", { name: "Show Tokyo in sample.kml" })).toBeChecked();
+  await expect(page.getByText("All imported layers are hidden.")).toHaveCount(0);
 });
 
 test("imports supported parts of nested MultiGeometry and reports the rest", async ({ page }) => {
@@ -288,6 +405,7 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   await page.getByLabel("Choose KML or KMZ file").setInputFiles(samplePath);
   const review = page.getByRole("region", { name: "Import review" });
   await expect(review).toContainText("463 points · 9 lines · 1 area");
+  await expect(review.getByText("KANTO TRIP 2026")).toBeVisible();
   await expect(review).toContainText("CENTRAL TOKYO: 101");
   await review.getByRole("button", { name: "Import 463 places, 9 lines and 1 area" }).click();
   await expect(page.getByRole("button", { name: "Places 463" })).toBeVisible();
@@ -308,7 +426,8 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
     .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 10 });
 
   await page.getByRole("button", { name: "Map layers" }).click();
-  const layers = page.getByRole("region", { name: "Map layers" });
+  const layers = page.getByRole("dialog", { name: "Map layers" });
+  await expect(layers.getByRole("region", { name: "KANTO TRIP 2026" })).toBeVisible();
   await layers.locator("details summary").click();
   const readCamera = (): Promise<{
     center: { longitude: number; latitude: number };
@@ -342,7 +461,7 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
     });
   const beforeSumidaToggle = await readCamera();
   expect(beforeSumidaToggle?.firstClusterPoint).not.toBeNull();
-  await layers.getByRole("checkbox", { name: /Show TOKYO \(SUMIDA\) in/ }).uncheck();
+  await layers.getByRole("switch", { name: /Show TOKYO \(SUMIDA\) in/ }).uncheck();
   await expect.poll(async () => (await readCamera())?.count).toBeLessThan(463);
   const afterSumidaToggle = await readCamera();
   expect(afterSumidaToggle?.center.longitude).toBeCloseTo(beforeSumidaToggle!.center.longitude, 6);
