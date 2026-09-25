@@ -152,12 +152,53 @@ test("opening a server trip stop shows its details with directions", async ({ pa
     }),
   );
 
+  await page.goto("/maps");
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "kanto.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><Placemark><name>Senso-ji</name><Point><coordinates>139.796,35.715</coordinates></Point></Placemark><Placemark><name>Other place</name><Point><coordinates>139.7,35.6</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 0 lines and 0 areas" }).click();
   await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  await page.evaluate(() =>
+    sessionStorage.setItem(
+      "uroute-maps-state:v1",
+      JSON.stringify({ query: "Other place", draftQuery: "Other place", searchOpen: true }),
+    ),
+  );
   await page
     .getByLabel(/Thursday 1 October itinerary/)
     .getByRole("button", { name: /Senso-ji/ })
     .click();
   await expect(page).toHaveURL(/\/maps\?.*place=pin-1/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const diagnostics = (
+          window as Window & {
+            __urouteMapDiagnostics?: () => {
+              center: { latitude: number; longitude: number };
+              placeLabels: { name: string }[];
+              renderedSelectedIds: string[];
+              status: string;
+            };
+          }
+        ).__urouteMapDiagnostics?.();
+
+        return diagnostics?.status === "ready"
+          ? {
+              selected: diagnostics.renderedSelectedIds,
+              sensoji: diagnostics.placeLabels.filter((label) => label.name === "Senso-ji").length,
+              near:
+                Math.abs(diagnostics.center.latitude - 35.715) < 0.01 &&
+                Math.abs(diagnostics.center.longitude - 139.796) < 0.01,
+            }
+          : null;
+      }),
+    )
+    .toEqual({ selected: ["pin-1"], sensoji: 1, near: true });
   await expect(
     page.getByRole("link", {
       name: "Directions to Senso-ji in Google Maps (opens another app or tab)",

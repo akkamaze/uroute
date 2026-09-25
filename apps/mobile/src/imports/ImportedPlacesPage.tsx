@@ -296,6 +296,10 @@ function loadRecentSearches(): string[] {
   }
 }
 
+function placeIdentity(place: ImportedPoint): string {
+  return `${place.name.trim().toLocaleLowerCase()}|${place.latitude.toFixed(6)}|${place.longitude.toFixed(6)}`;
+}
+
 export function ImportedPlacesPage(): React.JSX.Element {
   const navigate = useNavigate();
   const account = useAccount();
@@ -316,8 +320,10 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [tripPoints, setTripPoints] = useState<ImportedPoint[]>([]);
   const places = useMemo(() => {
     const libraryIds = new Set(libraryPlaces.map((place) => place.id));
+    const trip = tripPoints.filter((point) => !libraryIds.has(point.id));
+    const tripKeys = new Set(trip.map(placeIdentity));
 
-    return [...libraryPlaces, ...tripPoints.filter((point) => !libraryIds.has(point.id))];
+    return [...libraryPlaces.filter((place) => !tripKeys.has(placeIdentity(place))), ...trip];
   }, [libraryPlaces, tripPoints]);
   const requestedTrip = requested.get("trip");
   const requestedDay = requested.get("day");
@@ -325,11 +331,12 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const requestedPlace = requested.get("place");
   const [selectedId, setSelectedId] = useState<string | null>(
-    requested.get("place") ?? savedMapsState.selectedId ?? null,
+    requestedPlace ?? savedMapsState.selectedId ?? null,
   );
   const previousSelectedIdRef = useRef(selectedId);
-  const [focusSelectedId, setFocusSelectedId] = useState<string | null>(null);
+  const [focusSelectedId, setFocusSelectedId] = useState<string | null>(requestedPlace);
   const [viewport, setViewport] = useState<MapViewport | null>(savedMapsState.viewport ?? null);
   const [searchOrigin, setSearchOrigin] = useState<MapViewport | null>(
     savedMapsState.viewport ?? null,
@@ -417,11 +424,17 @@ export function ImportedPlacesPage(): React.JSX.Element {
   }, [accountUserId, globalMaps, requestedDay, requestedTrip]);
   const [selectedDay, setSelectedDay] = useState<KantoDay>(KANTO_DAYS[0].date);
   const [folder, setFolder] = useState(savedMapsState.folder ?? "All folders");
-  const [query, setQuery] = useState(savedMapsState.query ?? "");
-  const [draftQuery, setDraftQuery] = useState(savedMapsState.draftQuery ?? "");
-  const [searchEditing, setSearchEditing] = useState(savedMapsState.searchEditing ?? false);
+  const [query, setQuery] = useState(requestedPlace ? "" : (savedMapsState.query ?? ""));
+  const [draftQuery, setDraftQuery] = useState(
+    requestedPlace ? "" : (savedMapsState.draftQuery ?? ""),
+  );
+  const [searchEditing, setSearchEditing] = useState(
+    requestedPlace ? false : (savedMapsState.searchEditing ?? false),
+  );
   const [recentSearches, setRecentSearches] = useState(loadRecentSearches);
-  const [searchOpen, setSearchOpen] = useState(savedMapsState.searchOpen ?? false);
+  const [searchOpen, setSearchOpen] = useState(
+    requestedPlace ? false : (savedMapsState.searchOpen ?? false),
+  );
   const [visibleLimit, setVisibleLimit] = useState(savedMapsState.visibleLimit ?? 24);
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [addingToPlan, setAddingToPlan] = useState(false);
@@ -1245,6 +1258,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
             setQuery("");
             setSearchEditing(false);
             setSearchOpen(false);
+            setSelectedId(null);
+            setFocusSelectedId(null);
             searchInputRef.current?.blur();
           }}
           type="button"

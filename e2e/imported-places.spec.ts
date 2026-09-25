@@ -64,6 +64,28 @@ test("Maps search keeps one submit path and offers a compact clear button", asyn
   await expect(search).toHaveValue("");
 });
 
+test("clearing the search text also closes the selected place details", async ({ page }) => {
+  await page.goto("/maps");
+  if ((await page.locator(".imported-page__header .imported-page__file-input").count()) === 0) {
+    await page.getByRole("button", { name: "Map layers" }).click();
+  }
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "search-close.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(sample),
+  });
+  await page.getByRole("button", { name: "Import 2 places, 1 line and 0 areas" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page
+    .getByRole("region", { name: "Search suggestions" })
+    .getByRole("button", { name: /^Market/ })
+    .click();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear search text" }).click();
+  await expect(page.getByLabel("Search imported places")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Close place details" })).toHaveCount(0);
+});
+
 test("Maps suggestions preview imported photos and keep a pin when no photo exists", async ({
   page,
 }) => {
