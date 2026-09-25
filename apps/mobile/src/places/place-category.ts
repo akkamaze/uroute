@@ -18,10 +18,10 @@ export type PlaceCategory = (typeof PLACE_CATEGORIES)[number];
 export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
   unknown: "Unknown",
   coffee: "Coffee",
-  food: "Food & drink",
+  food: "Food & Drink",
   shopping: "Shopping",
-  temple: "Temple / shrine",
-  nature: "Park / nature",
+  temple: "Temple / Shrine",
+  nature: "Park / Nature",
   sightseeing: "Sightseeing",
   museum: "Museum",
   activity: "Activity",

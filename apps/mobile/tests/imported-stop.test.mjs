@@ -60,6 +60,6 @@ test("an explicit category overrides the icon, including Unknown", () => {
   });
   expect(importedPointAsStop({ ...point, categoryOverride: "nature" })).toMatchObject({
     category: "nature",
-    type: "Park / nature",
+    type: "Park / Nature",
   });
 });
