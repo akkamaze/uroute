@@ -234,11 +234,6 @@
   font-weight: 600;
 }
 
-.trip-account-card > .trip-account-action {
-  display: block;
-  margin: -10px 16px 12px auto;
-}
-
 .trip-account-message {
   flex: none;
   margin: 0 0 8px;
@@ -311,6 +306,37 @@
   flex: none;
   border-radius: 9px;
   object-fit: cover;
+}
+
+.compact-trip__placeholder {
+  display: inline-flex;
+  width: 66px;
+  height: 64px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-active);
+  border-radius: 9px;
+  background: #edf5ff;
+}
+
+.compact-trip__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1875rem;
+}
+
+.compact-trip__copy strong {
+  color: var(--color-text);
+  font-size: var(--type-title-size);
+  font-weight: 500;
+}
+
+.compact-trip__copy > span {
+  color: var(--color-muted);
+  font-size: var(--type-body-size);
 }
 
 .compact-trip > div {
@@ -531,33 +557,7 @@
 .trip-period {
   flex: none;
 }
-.imported-trip-link {
-  display: flex;
-  min-height: 76px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 16px 12px;
-  padding: 14px 16px;
-  border: 1px solid #dce7f2;
-  border-radius: 16px;
-  background: #f6faff;
-  color: #202124;
-  text-decoration: none;
-}
-.imported-trip-link strong,
-.imported-trip-link small {
+.created-compact-trip > .trip-account-action {
   display: block;
-}
-.imported-trip-link strong {
-  font-size: 16px;
-}
-.imported-trip-link small {
-  margin-top: 4px;
-  color: #637385;
-  font-size: 12px;
-}
-.imported-trip-link:focus-visible {
-  outline: 3px solid #1677ff;
-  outline-offset: 3px;
+  margin: -8px 0 8px auto;
 }

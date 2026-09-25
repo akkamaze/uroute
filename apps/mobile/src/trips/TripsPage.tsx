@@ -145,6 +145,39 @@ function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
   );
 }
 
+function CreatedCompactTrip({
+  trip,
+  onImport,
+}: {
+  trip: CreatedTrip;
+  onImport?: (() => void) | undefined;
+}): React.JSX.Element {
+  const start = new Date(`${trip.startDate}T12:00:00Z`);
+  const end = new Date(`${trip.endDate}T12:00:00Z`);
+  const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+
+  return (
+    <div className="created-compact-trip">
+      <Link className="compact-trip" params={{ tripId: trip.id }} to="/plan/trip/$tripId">
+        <span aria-hidden="true" className="compact-trip__placeholder">
+          <MapPin size={24} strokeWidth={1.7} />
+        </span>
+        <span className="compact-trip__copy">
+          <strong>{trip.name}</strong>
+          <span>
+            {formatDateRange(start, end)} · {duration} {duration === 1 ? "day" : "days"}
+          </span>
+        </span>
+      </Link>
+      {onImport ? (
+        <button className="trip-account-action" onClick={onImport} type="button">
+          Copy to account
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function BeforeYouGo({
   onOpenPacking,
   tripName,
@@ -231,11 +264,17 @@ export function TripsPage(): React.JSX.Element {
   const visibleTrips = trips.filter(
     (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
   );
-  const visibleCreatedTrips = createdTrips.filter(
-    (trip) =>
-      trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
-      (period === "upcoming") === trip.endDate >= new Date().toISOString().slice(0, 10),
-  );
+  const visibleCreatedTrips = createdTrips
+    .filter(
+      (trip) =>
+        trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
+        (period === "upcoming") === trip.endDate >= new Date().toISOString().slice(0, 10),
+    )
+    .sort((left, right) =>
+      period === "upcoming"
+        ? left.startDate.localeCompare(right.startDate)
+        : right.endDate.localeCompare(left.endDate),
+    );
 
   useEffect(() => {
     const dialog = accountDialogRef.current;
@@ -437,7 +476,7 @@ export function TripsPage(): React.JSX.Element {
         ref={resultsScrollRef}
       >
         <div aria-live="polite" className="trip-results">
-          {[...visibleCreatedTrips].reverse().map((trip, index) => {
+          {visibleCreatedTrips.map((trip, index) => {
             if (index === 0 && period === "upcoming" && normalizedQuery.length === 0) {
               return (
                 <CreatedFeaturedTrip
@@ -447,35 +486,12 @@ export function TripsPage(): React.JSX.Element {
                 />
               );
             }
-            const start = new Date(`${trip.startDate}T12:00:00Z`);
-            const end = new Date(`${trip.endDate}T12:00:00Z`);
-            const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
-
             return (
-              <div className="trip-account-card" key={trip.id}>
-                <Link
-                  className="imported-trip-link"
-                  to="/plan/trip/$tripId"
-                  params={{ tripId: trip.id }}
-                >
-                  <span>
-                    <strong>{trip.name}</strong>
-                    <small>
-                      {formatDateRange(start, end)} · {duration} {duration === 1 ? "day" : "days"}
-                    </small>
-                  </span>
-                  <ChevronRight aria-hidden="true" size={20} />
-                </Link>
-                {account.user ? (
-                  <button
-                    className="trip-account-action"
-                    onClick={() => setTripToImport(trip)}
-                    type="button"
-                  >
-                    Copy to account
-                  </button>
-                ) : null}
-              </div>
+              <CreatedCompactTrip
+                key={trip.id}
+                trip={trip}
+                {...(account.user ? { onImport: () => setTripToImport(trip) } : {})}
+              />
             );
           })}
           {visibleTrips.length === 0 && visibleCreatedTrips.length === 0 ? (
