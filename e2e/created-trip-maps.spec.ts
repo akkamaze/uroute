@@ -10,6 +10,45 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("edits a created trip's visit time and note without changing its imported source", async ({
+  page,
+}) => {
+  await page.goto("/trips");
+  await page.getByRole("button", { name: "New" }).click();
+  const newTrip = page.getByRole("dialog", { name: "New trip" });
+  await newTrip.getByLabel("Destination").fill("Lisbon");
+  await newTrip.getByLabel("Start date").fill("2027-01-10");
+  await newTrip.getByLabel("End date").fill("2027-01-10");
+  await newTrip.getByRole("button", { name: "Create trip" }).click();
+  await page.getByRole("button", { name: /Add a place/ }).click();
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><name>Lisbon map</name><Placemark><name>Market</name><Point><coordinates>-9.1393,38.7223</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market" }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await page.goto("/trips");
+  await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Edit time and note for Market" }).click();
+  const details = page.getByRole("dialog", { name: "Market" });
+  await details.getByLabel("Visit time").fill("09:45");
+  await details.getByLabel("Visit note").fill("Coffee before the market");
+  await details.getByRole("button", { name: "Apply" }).click();
+  await expect(page.locator("[data-edit-plan-row-id] .edit-plan__time")).toHaveText("09:45");
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.reload();
+  await expect(page.locator("[data-plan-stop-id] .timeline__time")).toHaveText("09:45");
+  await expect(page.getByText("Coffee before the market")).toBeVisible();
+});
+
 test("creates a trip before using imported places and remembers the selected day", async ({
   page,
 }) => {

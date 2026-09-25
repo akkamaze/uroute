@@ -15,6 +15,7 @@ import {
   FileText,
   GripVertical,
   History,
+  Pencil,
   Plus,
   Redo2,
   Trash2,
@@ -163,7 +164,12 @@ interface RemoveHistoryChange {
   removed: Array<{ index: number; placeId: string }>;
 }
 
-type HistoryChange = MoveHistoryChange | RemoveHistoryChange;
+interface EditHistoryChange {
+  kind: "edit";
+  placeId: string;
+}
+
+type HistoryChange = MoveHistoryChange | RemoveHistoryChange | EditHistoryChange;
 
 interface HistoryEntry {
   change: HistoryChange;
@@ -529,6 +535,8 @@ function CreatedTripEditPlanLoader({
       data.itinerary,
       data.visits,
       data.trip.rowOrder?.[rowKey],
+      undefined,
+      data.trip.rowEdits?.[rowKey],
     );
     const visibleRows = buildCreatedPlanRows(
       tripId,
@@ -539,6 +547,7 @@ function CreatedTripEditPlanLoader({
       data.visits,
       data.trip.rowOrder?.[rowKey],
       data.trip.rowHidden?.[rowKey],
+      data.trip.rowEdits?.[rowKey],
     );
     const editorKey = createdEditorKey(tripId, date, selectedOption);
     const dateValue = new Date(`${date}T12:00:00Z`);
@@ -559,23 +568,32 @@ function CreatedTripEditPlanLoader({
       notes: row.detail,
     }));
     const stops = new Map(allRows.map((row) => [row.id, createdRowAsStop(row)]));
-    const savePlan = async (visits: readonly PlannedVisit[]): Promise<boolean> => {
+    const savePlan = (visits: readonly PlannedVisit[]): Promise<boolean> => {
       const knownIds = new Set(allRows.map((row) => row.id));
       const orderedIds = visits.map((visit) => visit.placeId);
       if (
         orderedIds.some((id) => !knownIds.has(id)) ||
         new Set(orderedIds).size !== orderedIds.length
       ) {
-        return false;
+        return Promise.resolve(false);
       }
       const kept = new Set(orderedIds);
       const hiddenIds = allRows.filter((row) => !kept.has(row.id)).map((row) => row.id);
       try {
-        setTripPlanRows(tripId, date, selectedOption, orderedIds, hiddenIds);
+        setTripPlanRows(
+          tripId,
+          date,
+          selectedOption,
+          orderedIds,
+          hiddenIds,
+          Object.fromEntries(
+            visits.map((visit) => [visit.placeId, { time: visit.time, notes: visit.notes }]),
+          ),
+        );
 
-        return true;
+        return Promise.resolve(true);
       } catch {
-        return false;
+        return Promise.resolve(false);
       }
     };
 
@@ -695,10 +713,14 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
   const [versionFilter, setVersionFilter] = useState<"all" | "changes">("changes");
   const [saving, setSaving] = useState(false);
+  const [editingVisitId, setEditingVisitId] = useState<string | null>(null);
+  const [editTime, setEditTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
   const dragRef = useRef<DragState | null>(null);
   const allowExitRef = useRef(false);
   const discardDialogRef = useRef<HTMLDialogElement>(null);
   const saveDialogRef = useRef<HTMLDialogElement>(null);
+  const editDialogRef = useRef<HTMLDialogElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const previewAnimationRef = useRef<PreviewAnimation | null>(null);
   const rowSwipeRef = useRef<RowSwipeGesture | null>(null);
@@ -834,6 +856,15 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
     announcement: string;
     card: NonNullable<NoticeState["card"]>;
   } {
+    if (change.kind === "edit") {
+      const stop = stops.get(change.placeId);
+      const name = stop?.name ?? "Place";
+
+      return {
+        announcement: `Undid details · ${name}`,
+        card: { action: "Time and note", image: stop?.image ?? "", name },
+      };
+    }
     if (change.kind === "move") {
       const stop = stops.get(change.placeId);
       const name = stop?.name ?? "Place";
@@ -878,6 +909,15 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
     announcement: string;
     card: NonNullable<NoticeState["card"]>;
   } {
+    if (change.kind === "edit") {
+      const stop = stops.get(change.placeId);
+      const name = stop?.name ?? "Place";
+
+      return {
+        announcement: `Redid details · ${name}`,
+        card: { action: "Time and note", image: stop?.image ?? "", name },
+      };
+    }
     if (change.kind === "move") {
       const stop = stops.get(change.placeId);
       const name = stop?.name ?? "Place";
@@ -1051,6 +1091,31 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
     } else {
       void finishSave();
     }
+  }
+
+  function openVisitEditor(visit: PlannedVisit): void {
+    closeRowSwipe();
+    setEditingVisitId(visit.placeId);
+    setEditTime(visit.time);
+    setEditNotes(visit.notes);
+  }
+
+  function saveVisitEditor(): void {
+    if (
+      editingVisitId === null ||
+      !/^(?:[01]\d|2[0-3]):[0-5]\d$|^$/.test(editTime) ||
+      editNotes.length > 5_000
+    ) {
+      return;
+    }
+    commitDraft(
+      draft.map((visit) =>
+        visit.placeId === editingVisitId ? { ...visit, time: editTime, notes: editNotes } : visit,
+      ),
+      `${stops.get(editingVisitId)?.name ?? "Place"} details updated`,
+      { kind: "edit", placeId: editingVisitId },
+    );
+    setEditingVisitId(null);
   }
 
   function removeSelected(): void {
@@ -1462,7 +1527,7 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
     setDraftStorageFailed(false);
     allowExitRef.current = true;
     navigationBlocker.proceed();
-  }, [baseSignature, day, dirty, draft, navigationBlocker]);
+  }, [adapter, baseSignature, day, dirty, draft, navigationBlocker]);
 
   useEffect(() => {
     const dialog = discardDialogRef.current;
@@ -1481,6 +1546,15 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
       dialog.close();
     }
   }, [confirmSave]);
+
+  useEffect(() => {
+    const dialog = editDialogRef.current;
+    if (dialog !== null && editingVisitId !== null && !dialog.open) {
+      dialog.showModal();
+    } else if (dialog !== null && editingVisitId === null && dialog.open) {
+      dialog.close();
+    }
+  }, [editingVisitId]);
 
   useLayoutEffect(() => {
     const list = listRef.current;
@@ -2210,6 +2284,16 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
                       <span className="edit-plan__place">
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
+                        <button
+                          aria-label={`Edit time and note for ${stop.name}`}
+                          className="edit-plan__edit-details"
+                          onClick={() => openVisitEditor(visit)}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          type="button"
+                        >
+                          <Pencil aria-hidden="true" size={15} strokeWidth={1.8} />
+                          Time / note
+                        </button>
                       </span>
                       {stop.image ? <img alt="" src={stop.image} /> : null}
                     </>
@@ -2294,6 +2378,45 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
           ) : null}
         </div>
       )}
+
+      <dialog
+        aria-labelledby="edit-plan-visit-title"
+        className="remove-stops-dialog edit-plan__visit-dialog"
+        onCancel={(event) => {
+          event.preventDefault();
+          setEditingVisitId(null);
+        }}
+        ref={editDialogRef}
+      >
+        <h2 id="edit-plan-visit-title">{stops.get(editingVisitId ?? "")?.name ?? "Place"}</h2>
+        <label>
+          Time
+          <input
+            aria-label="Visit time"
+            onChange={(event) => setEditTime(event.target.value)}
+            type="time"
+            value={editTime}
+          />
+        </label>
+        <label>
+          Note
+          <textarea
+            aria-label="Visit note"
+            maxLength={5_000}
+            onChange={(event) => setEditNotes(event.target.value)}
+            rows={4}
+            value={editNotes}
+          />
+        </label>
+        <div>
+          <button onClick={() => setEditingVisitId(null)} type="button">
+            Cancel
+          </button>
+          <button className="edit-plan__primary" onClick={saveVisitEditor} type="button">
+            Apply
+          </button>
+        </div>
+      </dialog>
 
       <dialog
         aria-labelledby="edit-plan-discard-title"

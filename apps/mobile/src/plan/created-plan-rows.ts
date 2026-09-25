@@ -29,6 +29,7 @@ export function buildCreatedPlanRows(
   visits: readonly ImportedVisit[],
   rowOrder?: readonly string[],
   hiddenIds?: readonly string[],
+  rowEdits?: Readonly<Record<string, { time: string; notes: string }>>,
 ): CreatedPlanRow[] {
   const byId = new Map(points.map((point) => [point.id, point]));
   const sheetRows = itinerary
@@ -67,7 +68,13 @@ export function buildCreatedPlanRows(
     });
 
   const hidden = new Set(hiddenIds ?? []);
-  const combined = [...sheetRows, ...addedRows].filter((row) => !hidden.has(row.id));
+  const combined = [...sheetRows, ...addedRows]
+    .filter((row) => !hidden.has(row.id))
+    .map((row) => {
+      const edit = rowEdits?.[row.id];
+
+      return edit ? { ...row, time: edit.time, detail: edit.notes } : row;
+    });
   if (!Array.isArray(rowOrder) || rowOrder.length === 0) {
     return combined;
   }

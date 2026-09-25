@@ -6,6 +6,7 @@ export interface CreatedTrip {
   dayOptions?: Record<string, string>;
   rowOrder?: Record<string, string[]>;
   rowHidden?: Record<string, string[]>;
+  rowEdits?: Record<string, Record<string, { time: string; notes: string }>>;
 }
 
 const STORAGE_KEY = "uroute.created-trips.v1";
@@ -140,6 +141,7 @@ export function setTripPlanRows(
   option: string,
   orderedIds: readonly string[],
   hiddenIds: readonly string[],
+  rowEdits?: Readonly<Record<string, { time: string; notes: string }>>,
 ): CreatedTrip {
   const trips = loadCreatedTrips();
   const existing = trips.find((trip) => trip.id === id);
@@ -151,7 +153,15 @@ export function setTripPlanRows(
     !/^[A-Z]$/.test(option) ||
     allIds.length > 10_000 ||
     allIds.some((rowId) => typeof rowId !== "string" || rowId.length > 300) ||
-    new Set(allIds).size !== allIds.length
+    new Set(allIds).size !== allIds.length ||
+    (rowEdits !== undefined &&
+      (Object.keys(rowEdits).some((rowId) => !orderedIds.includes(rowId)) ||
+        Object.values(rowEdits).some(
+          (edit) =>
+            !/^(?:[01]\d|2[0-3]):[0-5]\d$|^$/.test(edit.time) ||
+            typeof edit.notes !== "string" ||
+            edit.notes.length > 5_000,
+        )))
   ) {
     throw new Error("Could not save this plan day.");
   }
@@ -160,6 +170,11 @@ export function setTripPlanRows(
     ...existing,
     rowOrder: { ...existing.rowOrder, [key]: [...orderedIds] },
     rowHidden: { ...existing.rowHidden, [key]: [...hiddenIds] },
+    ...(rowEdits === undefined
+      ? {}
+      : {
+          rowEdits: { ...existing.rowEdits, [key]: { ...existing.rowEdits?.[key], ...rowEdits } },
+        }),
   };
   localStorage.setItem(
     STORAGE_KEY,

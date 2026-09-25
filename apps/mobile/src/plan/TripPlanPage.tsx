@@ -115,6 +115,7 @@ export function TripPlanPage(): React.JSX.Element {
   const variant = variants.includes(savedOption) ? savedOption : (variants[0] ?? "A");
   const rowOrder = trip?.rowOrder?.[`${day}:${variant}`];
   const rowHidden = trip?.rowHidden?.[`${day}:${variant}`];
+  const rowEdits = trip?.rowEdits?.[`${day}:${variant}`];
   const mapExpanded = search.map === "full";
   const mapVisible = showMap || mapExpanded;
   const mapOpenedHereRef = useRef(false);
@@ -182,8 +183,18 @@ export function TripPlanPage(): React.JSX.Element {
 
   const rows = useMemo(
     () =>
-      buildCreatedPlanRows(tripId, day, variant, points, itinerary, visits, rowOrder, rowHidden),
-    [day, itinerary, points, rowHidden, rowOrder, tripId, variant, visits],
+      buildCreatedPlanRows(
+        tripId,
+        day,
+        variant,
+        points,
+        itinerary,
+        visits,
+        rowOrder,
+        rowHidden,
+        rowEdits,
+      ),
+    [day, itinerary, points, rowEdits, rowHidden, rowOrder, tripId, variant, visits],
   );
   const places = useMemo(() => mapPlaces(rows), [rows]);
   const legacyCount = visits.filter(
