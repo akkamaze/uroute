@@ -302,7 +302,9 @@
 }
 
 .edit-plan__icon--shopping,
-.edit-plan__icon--sightseeing {
+.edit-plan__icon--sightseeing,
+.edit-plan__icon--museum,
+.edit-plan__icon--activity {
   color: #8b56b0;
   background: #f5edfa;
 }

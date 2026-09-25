@@ -1175,7 +1175,9 @@ a,
 }
 
 .timeline__icon--shopping,
-.timeline__icon--sightseeing {
+.timeline__icon--sightseeing,
+.timeline__icon--museum,
+.timeline__icon--activity {
   color: #8b56b0;
   background: #f5edfa;
 }
