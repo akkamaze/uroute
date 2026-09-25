@@ -52,7 +52,7 @@ test("an overnight flight card shows the next-day arrival, airline logo and new 
 }) => {
   await page.goto("/bookings?booking=manual-vz830");
   const ticket = page.getByRole("article", { name: "Share preview" });
-  await expect(ticket).toContainText("Journeys worth remembering");
+  await expect(ticket.locator(".booking-ticket__tagline")).toHaveText("Your trip.Your way.");
   await expect(ticket).not.toContainText("Sample booking");
   await expect(ticket).not.toContainText("Your booking");
   await expect(ticket).not.toContainText("Travel brings us closer");

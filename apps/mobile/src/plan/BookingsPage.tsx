@@ -573,7 +573,10 @@ function BookingScreen({
                 <span className="booking-ticket__brand">
                   <span>u</span>route
                 </span>
-                <span className="booking-ticket__tagline">Journeys worth remembering</span>
+                <span className="booking-ticket__tagline">
+                  Your trip.
+                  <span>Your way.</span>
+                </span>
               </header>
               {selectedBooking.fromCode === undefined ? (
                 <div className="booking-ticket__primary booking-ticket__primary--feature">
