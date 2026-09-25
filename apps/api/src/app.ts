@@ -129,6 +129,7 @@ export function createApp(
   trips?: TripRepository,
   entries?: TripEntryRepository,
   drafts?: TripDraftRepository,
+  checkDatabase: () => Promise<void> = async () => {},
 ) {
   const app = new Elysia()
     .onRequest(({ request, set, status }) => {
@@ -160,7 +161,16 @@ export function createApp(
 
       return undefined;
     })
-    .get("/health", () => ({ status: "ok" }));
+    .get("/health", () => ({ status: "ok" }))
+    .get("/ready", async ({ status }) => {
+      try {
+        await checkDatabase();
+
+        return { status: "ready" };
+      } catch {
+        return status(503, { status: "unavailable" });
+      }
+    });
 
   if (!auth) {
     return app;

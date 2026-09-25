@@ -22,6 +22,9 @@ const app = createApp(
   new PgTripRepository(database),
   new PgTripEntryRepository(database),
   new PgTripDraftRepository(database),
+  async () => {
+    await database.query("SELECT 1");
+  },
 ).listen({
   hostname: config.hostname,
   port: config.port,
