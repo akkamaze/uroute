@@ -12,6 +12,7 @@ import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import { createTrip, loadCreatedTrips, type CreatedTrip } from "./trip-store";
 import { importLocalTripToAccount } from "./trip-account-import";
+import { createAccountTrip, loadAccountTrips, type AccountTrip } from "../plan/account-plan";
 import "./trips.css";
 
 interface TripCardProps {
@@ -216,6 +217,7 @@ function BeforeYouGo({
 export function TripsPage(): React.JSX.Element {
   const mode = useAppMode();
   const account = useAccount();
+  const accountUserId = account.user?.id;
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/trips" });
   const packingOpen = search.packing === "open";
@@ -246,6 +248,7 @@ export function TripsPage(): React.JSX.Element {
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
   const [createdTrips, setCreatedTrips] = useState<CreatedTrip[]>(loadCreatedTrips);
+  const [accountTrips, setAccountTrips] = useState<AccountTrip[]>([]);
   const [tripToImport, setTripToImport] = useState<CreatedTrip | null>(null);
   const [importingToAccount, setImportingToAccount] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
@@ -270,7 +273,14 @@ export function TripsPage(): React.JSX.Element {
             trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
         )
       : [];
-  const visibleCreatedTrips = (mode === "real" ? createdTrips : [])
+  const displayTrips =
+    mode === "real"
+      ? [
+          ...accountTrips,
+          ...createdTrips.filter((trip) => !accountTrips.some((remote) => remote.id === trip.id)),
+        ]
+      : [];
+  const visibleCreatedTrips = displayTrips
     .filter(
       (trip) =>
         trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
@@ -281,6 +291,30 @@ export function TripsPage(): React.JSX.Element {
         ? left.startDate.localeCompare(right.startDate)
         : right.endDate.localeCompare(left.endDate),
     );
+
+  useEffect(() => {
+    if (mode !== "real" || !accountUserId) {
+      setAccountTrips([]);
+
+      return;
+    }
+    let active = true;
+    void loadAccountTrips()
+      .then((rows) => {
+        if (active) {
+          setAccountTrips(rows);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAccountMessage("Could not load account trips. Showing trips saved on this device.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountUserId, mode]);
 
   useEffect(() => {
     const dialog = accountDialogRef.current;
@@ -371,7 +405,7 @@ export function TripsPage(): React.JSX.Element {
       void navigate({ to: "/trips", search: {}, replace: true, resetScroll: false });
     }
   }
-  function createDraftTrip(event: React.FormEvent<HTMLFormElement>): void {
+  async function createDraftTrip(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const name = destination.trim();
 
@@ -393,9 +427,15 @@ export function TripsPage(): React.JSX.Element {
 
     let createdTrip: CreatedTrip;
     try {
-      const trip = createTrip(name, startDate, endDate);
-      createdTrip = trip;
-      setCreatedTrips((current) => [...current, trip]);
+      if (account.user) {
+        const trip = await createAccountTrip({ id: crypto.randomUUID(), name, startDate, endDate });
+        createdTrip = trip;
+        setAccountTrips((current) => [...current, trip]);
+      } else {
+        const trip = createTrip(name, startDate, endDate);
+        createdTrip = trip;
+        setCreatedTrips((current) => [...current, trip]);
+      }
     } catch (error) {
       setFormMessage(error instanceof Error ? error.message : "Could not create this trip.");
 
@@ -490,7 +530,9 @@ export function TripsPage(): React.JSX.Element {
                 <CreatedFeaturedTrip
                   key={trip.id}
                   trip={trip}
-                  {...(account.user ? { onImport: () => setTripToImport(trip) } : {})}
+                  {...(account.user && !accountTrips.some((remote) => remote.id === trip.id)
+                    ? { onImport: () => setTripToImport(trip) }
+                    : {})}
                 />
               );
             }
@@ -499,7 +541,9 @@ export function TripsPage(): React.JSX.Element {
               <CreatedCompactTrip
                 key={trip.id}
                 trip={trip}
-                {...(account.user ? { onImport: () => setTripToImport(trip) } : {})}
+                {...(account.user && !accountTrips.some((remote) => remote.id === trip.id)
+                  ? { onImport: () => setTripToImport(trip) }
+                  : {})}
               />
             );
           })}
@@ -599,7 +643,7 @@ export function TripsPage(): React.JSX.Element {
         <form
           className="new-trip-form keyboard-dialog-form"
           onKeyDown={advanceFormField}
-          onSubmit={createDraftTrip}
+          onSubmit={(event) => void createDraftTrip(event)}
         >
           <header>
             <div>

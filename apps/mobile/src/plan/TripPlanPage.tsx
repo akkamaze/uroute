@@ -1,4 +1,5 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
 import { Landmark, Map as MapIcon, Pencil, Plus, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -31,6 +32,16 @@ import type { PlaceCollection } from "./map-data";
 import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
 import { PlanWorkspace } from "./PlanWorkspace";
 import { PlanTimelineRow } from "./PlanTimelineRow";
+import {
+  accountPlanItinerary,
+  accountPlanPoints,
+  loadAccountPlanDay,
+  loadAccountTrip,
+  saveAccountPlanDay,
+  updateAccountTrip,
+  type AccountPlanEntry,
+  type AccountTrip,
+} from "./account-plan";
 import { usePlanStopSwipe } from "./usePlanStopSwipe";
 import "./stop-actions.css";
 
@@ -86,6 +97,12 @@ export function TripPlanPage(): React.JSX.Element {
   const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId" });
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/plan/trip/$tripId" });
+  const account = useAccount();
+  const accountUserId = account.user?.id;
+  const [accountTripChecked, setAccountTripChecked] = useState(false);
+  const [remoteTrip, setRemoteTrip] = useState<AccountTrip | null>(null);
+  const [remoteEntries, setRemoteEntries] = useState<AccountPlanEntry[]>([]);
+  const [remoteVersion, setRemoteVersion] = useState("");
   const [trip, setTrip] = useState<CreatedTrip | undefined>(() =>
     loadCreatedTrips().find((item) => item.id === tripId),
   );
@@ -121,6 +138,66 @@ export function TripPlanPage(): React.JSX.Element {
   const mapOpenedHereRef = useRef(false);
 
   useEffect(() => {
+    setAccountTripChecked(false);
+    if (!accountUserId) {
+      setAccountTripChecked(true);
+
+      return;
+    }
+    let active = true;
+    void loadAccountTrip(tripId)
+      .then((loaded) => {
+        if (!active) {
+          return;
+        }
+        setRemoteTrip(loaded);
+        setTrip(loaded);
+        setTripName(loaded.name);
+        setTripStart(loaded.startDate);
+        setTripEnd(loaded.endDate);
+        setAccountTripChecked(true);
+      })
+      .catch(() => {
+        // Existing device-only trips remain usable when they have no account copy.
+        if (active) {
+          setAccountTripChecked(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountUserId, tripId]);
+
+  useEffect(() => {
+    if (!remoteTrip || !day) {
+      return;
+    }
+    let active = true;
+    void loadAccountPlanDay(tripId, day)
+      .then((loaded) => {
+        if (!active) {
+          return;
+        }
+        setRemoteVersion(loaded.version);
+        setRemoteEntries(loaded.entries);
+        setPoints(accountPlanPoints(loaded.entries));
+        setItinerary(accountPlanItinerary(tripId, loaded.entries));
+        setVisits([]);
+        setError("");
+      })
+      .catch(() => {
+        if (active) {
+          setError("Could not load this plan from your account.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [remoteTrip, tripId, day]);
+
+  useEffect(() => {
     if (!mapExpanded) {
       mapOpenedHereRef.current = false;
     }
@@ -150,6 +227,9 @@ export function TripPlanPage(): React.JSX.Element {
   }
 
   useEffect(() => {
+    if (remoteTrip) {
+      return;
+    }
     let active = true;
     async function load(): Promise<void> {
       try {
@@ -179,7 +259,7 @@ export function TripPlanPage(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [tripId]);
+  }, [tripId, remoteTrip]);
 
   const rows = useMemo(
     () =>
@@ -213,6 +293,11 @@ export function TripPlanPage(): React.JSX.Element {
     if (!file || !trip) {
       return;
     }
+    if (remoteTrip) {
+      setError("Account trip spreadsheet import is not available yet.");
+
+      return;
+    }
     setImporting(true);
     setError("");
     try {
@@ -238,7 +323,22 @@ export function TripPlanPage(): React.JSX.Element {
     }
   }
 
-  function removeRow(row: CreatedPlanRow): void {
+  async function removeRow(row: CreatedPlanRow): Promise<void> {
+    if (remoteTrip) {
+      try {
+        const next = remoteEntries.filter((entry) => entry.sourceKey !== row.id);
+        const saved = await saveAccountPlanDay(tripId, day, remoteVersion, next);
+        setRemoteVersion(saved.version);
+        setRemoteEntries(saved.entries);
+        setItinerary(accountPlanItinerary(tripId, saved.entries));
+        setPoints(accountPlanPoints(saved.entries));
+        setError("");
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not remove this place.");
+      }
+
+      return;
+    }
     try {
       setTrip(
         setTripPlanRows(
@@ -288,7 +388,7 @@ export function TripPlanPage(): React.JSX.Element {
     setRemovedRows([]);
   }
 
-  function saveTripDetails(event: React.FormEvent<HTMLFormElement>): void {
+  async function saveTripDetails(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (
       itinerary.some((entry) => entry.day < tripStart || entry.day > tripEnd) ||
@@ -301,7 +401,17 @@ export function TripPlanPage(): React.JSX.Element {
       return;
     }
     try {
-      setTrip(updateTrip(tripId, tripName, tripStart, tripEnd));
+      if (remoteTrip) {
+        const saved = await updateAccountTrip(remoteTrip, {
+          name: tripName,
+          startDate: tripStart,
+          endDate: tripEnd,
+        });
+        setRemoteTrip(saved);
+        setTrip(saved);
+      } else {
+        setTrip(updateTrip(tripId, tripName, tripStart, tripEnd));
+      }
       setEditingTrip(false);
       setError("");
     } catch (cause) {
@@ -310,6 +420,14 @@ export function TripPlanPage(): React.JSX.Element {
   }
 
   if (!trip) {
+    if (account.loading || !accountTripChecked) {
+      return (
+        <section className="day-plan__empty" role="status">
+          Loading plan…
+        </section>
+      );
+    }
+
     return (
       <section className="day-plan__empty">
         <h1>Trip not found</h1>
@@ -416,7 +534,7 @@ export function TripPlanPage(): React.JSX.Element {
         </span>
       </header>
       {editingTrip ? (
-        <form className="trip-plan__details-form" onSubmit={saveTripDetails}>
+        <form className="trip-plan__details-form" onSubmit={(event) => void saveTripDetails(event)}>
           <label>
             Destination{" "}
             <input
@@ -481,7 +599,11 @@ export function TripPlanPage(): React.JSX.Element {
               key={option}
               onClick={() => {
                 try {
-                  setTrip(setTripDayOption(tripId, day, option));
+                  setTrip(
+                    remoteTrip
+                      ? { ...trip, dayOptions: { ...trip.dayOptions, [day]: option } }
+                      : setTripDayOption(tripId, day, option),
+                  );
                 } catch {
                   setError("Could not save itinerary option.");
                 }
@@ -524,7 +646,7 @@ export function TripPlanPage(): React.JSX.Element {
                 }}
                 onRemove={() => {
                   stopSwipe.close();
-                  removeRow(row);
+                  void removeRow(row);
                 }}
                 removeLabel={`Remove ${row.title} from ${dayHeading(day)}`}
                 selected={row.point?.id === selectedId}
@@ -561,7 +683,7 @@ export function TripPlanPage(): React.JSX.Element {
           <p>Add your first place when you are ready.</p>
         </div>
       )}
-      {itinerary.length === 0 ? (
+      {!remoteTrip && itinerary.length === 0 ? (
         <label className="trip-plan__upload">
           <Upload aria-hidden="true" size={18} />{" "}
           {importing

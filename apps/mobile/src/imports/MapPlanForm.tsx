@@ -2,6 +2,7 @@ import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useLayoutEffect, useRef, type ReactElement } from "react";
 
 import { loadCreatedTrips } from "../trips/trip-store";
+import { getAccountMapTrip } from "./map-destination";
 import "../places/places.css";
 import { availableDestinations, destinationDays, type MapDestination } from "./map-destination";
 
@@ -9,7 +10,7 @@ function tripLabel(id: string, name: string): string {
   if (id === "kyoto") {
     return "Kyoto · 12–16 Nov 2026";
   }
-  const trip = loadCreatedTrips().find((item) => item.id === id);
+  const trip = getAccountMapTrip(id) ?? loadCreatedTrips().find((item) => item.id === id);
   if (trip === undefined) {
     return name;
   }

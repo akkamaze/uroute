@@ -10,7 +10,7 @@ import type { AuthConfig } from "../src/config";
 import type { EntryInput, EntryPage, EntryRecord, TripEntryRepository } from "../src/trips/entries";
 import type { DraftVisit, TripDraft, TripDraftRepository } from "../src/trips/drafts";
 import type { TripInput, TripRecord, TripRepository } from "../src/trips/repository";
-import type { PlanDay, TripPlanRepository } from "../src/trips/plan";
+import type { PlanDay, PlanPlace, TripPlanRepository } from "../src/trips/plan";
 
 const config: AuthConfig = {
   baseURL: "http://localhost:3001",
@@ -30,27 +30,58 @@ let plans: MemoryPlanRepository;
 
 class MemoryPlanRepository implements TripPlanRepository {
   private readonly records = new Map<string, PlanDay["entries"]>();
+  private readonly places = new Map<string, PlanPlace>();
 
   constructor(private readonly trips: MemoryTripRepository) {}
 
   async day(ownerId: string, tripId: string, day: string): Promise<PlanDay | null> {
     const trip = await this.trips.get(ownerId, tripId);
-    if (!trip) return null;
-    return { version: trip.version, entries: this.records.get(`${tripId}:${day}`) ?? [] };
+    if (!trip) {
+      return null;
+    }
+
+    return {
+      version: trip.version,
+      entries: (this.records.get(`${tripId}:${day}`) ?? []).map((entry) => ({
+        ...entry,
+        place: entry.placeId ? (this.places.get(`${tripId}:${entry.placeId}`) ?? null) : null,
+      })),
+    };
   }
 
-  async replaceDay(ownerId: string, tripId: string, day: string, version: string,
-    input: readonly EntryInput[]): Promise<PlanDay | "not-found" | "conflict" | "out-of-range"> {
+  async upsertPlace(ownerId: string, tripId: string, place: PlanPlace): Promise<PlanPlace | null> {
+    if (!(await this.trips.get(ownerId, tripId))) {
+      return null;
+    }
+    this.places.set(`${tripId}:${place.sourceKey}`, place);
+
+    return place;
+  }
+
+  async replaceDay(
+    ownerId: string,
+    tripId: string,
+    day: string,
+    version: string,
+    input: readonly EntryInput[],
+  ): Promise<PlanDay | "not-found" | "conflict" | "out-of-range"> {
     const trip = await this.trips.get(ownerId, tripId);
-    if (!trip) return "not-found";
-    if (trip.version !== version) return "conflict";
+    if (!trip) {
+      return "not-found";
+    }
+    if (trip.version !== version) {
+      return "conflict";
+    }
     if (day < trip.startDate || day > trip.endDate || input.some((row) => row.day !== day)) {
       return "out-of-range";
     }
     const updated = await this.trips.update(ownerId, tripId, version, trip);
-    if (typeof updated === "string") return "conflict";
+    if (typeof updated === "string") {
+      return "conflict";
+    }
     const rows = input.map((row) => ({ ...row, id: crypto.randomUUID(), place: null }));
     this.records.set(`${tripId}:${day}`, rows);
+
     return { version: updated.version, entries: rows };
   }
 }
@@ -364,17 +395,59 @@ test("plan days are owner-scoped and save one day with version checks", async ()
   expect((await request(path)).status).toBe(401);
   expect((await request(path, "GET", undefined, other)).status).toBe(404);
   expect(await (await request(path, "GET", undefined, owner)).json()).toMatchObject({
-    trip: input, version: "1", entries: [],
+    trip: input,
+    version: "1",
+    entries: [],
   });
   const saved = await request(path, "PUT", { version: "1", entries: [entry] }, owner);
   expect(saved.status).toBe(200);
   expect(await saved.json()).toMatchObject({ version: "2", entries: [entry] });
   expect((await request(path, "PUT", { version: "1", entries: [] }, owner)).status).toBe(409);
-  expect((await request(path, "PUT", { version: "2", entries: [
-    { ...entry, day: "2026-09-28" },
-  ] }, owner)).status).toBe(400);
-  expect((await request(`/api/trips/${ID}/plan?day=2026-10-02`, "GET", undefined, owner)).status).toBe(400);
-  expect((await request(`/api/trips/${ID}/plan?day=2026-09-28`, "GET", undefined, owner)).status).toBe(200);
+  expect(
+    (
+      await request(
+        path,
+        "PUT",
+        { version: "2", entries: [{ ...entry, day: "2026-09-28" }] },
+        owner,
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (await request(`/api/trips/${ID}/plan?day=2026-10-02`, "GET", undefined, owner)).status,
+  ).toBe(400);
+  expect(
+    (await request(`/api/trips/${ID}/plan?day=2026-09-28`, "GET", undefined, owner)).status,
+  ).toBe(200);
+});
+
+test("plan pin metadata is owner-scoped and joined to the saved day", async () => {
+  const owner = await cookie("pin-owner@example.test");
+  const other = await cookie("pin-other@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const place: PlanPlace = {
+    sourceKey: "osm-1",
+    name: "Temple",
+    latitude: 35.7,
+    longitude: 139.7,
+    category: "temple",
+    imageUrl: null,
+    notes: null,
+  };
+  const path = `/api/trips/${ID}/places`;
+  expect((await request(path, "POST", place, other)).status).toBe(404);
+  expect((await request(path, "POST", place, owner)).status).toBe(200);
+  await request(
+    `/api/trips/${ID}/plan?day=2026-09-27`,
+    "PUT",
+    {
+      version: "1",
+      entries: [{ ...entry, placeId: place.sourceKey }],
+    },
+    owner,
+  );
+  const plan = await request(`/api/trips/${ID}/plan?day=2026-09-27`, "GET", undefined, owner);
+  expect(await plan.json()).toMatchObject({ entries: [{ place }] });
 });
 
 test("daily entries preserve order, owner scope, and trip version", async () => {

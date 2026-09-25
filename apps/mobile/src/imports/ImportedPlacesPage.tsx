@@ -1,4 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
 import {
   ArrowLeft,
   Bookmark,
@@ -38,6 +39,7 @@ import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
+import { addAccountPlanPlace, loadAccountTrips } from "../plan/account-plan";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
@@ -52,9 +54,13 @@ import {
 } from "./osm-photo";
 import {
   destinationLabel,
+  availableDestinations,
+  destinationDays,
+  isAccountMapTrip,
   isMapDestination,
   loadMapDestination,
   saveMapDestination,
+  setAccountMapTrips,
   type MapDestination,
 } from "./map-destination";
 import {
@@ -286,6 +292,9 @@ function loadRecentSearches(): string[] {
 
 export function ImportedPlacesPage(): React.JSX.Element {
   const navigate = useNavigate();
+  const account = useAccount();
+  const accountUserId = account.user?.id;
+  const [, refreshAccountDestinations] = useState(0);
   const addRouteOpen = useRouterState({
     select: (state) => state.location.pathname === "/maps" && state.location.search.add === "open",
   });
@@ -332,6 +341,35 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
     return isMapDestination(requestedDestination) ? requestedDestination : loadMapDestination();
   });
+
+  useEffect(() => {
+    if (!globalMaps || !accountUserId) {
+      setAccountMapTrips([]);
+
+      return;
+    }
+    let active = true;
+    void loadAccountTrips()
+      .then((trips) => {
+        if (!active) {
+          return;
+        }
+        setAccountMapTrips(trips);
+        refreshAccountDestinations((current) => current + 1);
+        const params = new URLSearchParams(window.location.search);
+        const candidate = { trip: params.get("trip"), day: params.get("day") };
+        if (isMapDestination(candidate)) {
+          setDestination(candidate);
+        }
+      })
+      .catch(() => {
+        // Device-only maps remain available when the account is offline.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountUserId, globalMaps]);
   const [selectedDay, setSelectedDay] = useState<KantoDay>(KANTO_DAYS[0].date);
   const [folder, setFolder] = useState(savedMapsState.folder ?? "All folders");
   const [query, setQuery] = useState(savedMapsState.query ?? "");
@@ -399,7 +437,10 @@ export function ImportedPlacesPage(): React.JSX.Element {
   function openAddPanel(): void {
     addPreviousScrollRef.current = sheetRef.current?.scrollTop ?? 0;
     if (destination === null) {
-      setDestination({ trip: "kyoto", day: "2026-11-13" });
+      const first = availableDestinations()[0];
+      if (first) {
+        setDestination({ trip: first.id, day: destinationDays(first.id)[0]?.day ?? "" });
+      }
     }
     setDestinationOpen(true);
     setSheetCollapsed(false);
@@ -974,7 +1015,9 @@ export function ImportedPlacesPage(): React.JSX.Element {
     setAddingToPlan(true);
     try {
       let result: "added" | "duplicate" | "invalid";
-      if (target.trip !== "kyoto") {
+      if (isAccountMapTrip(target.trip)) {
+        result = await addAccountPlanPlace(target.trip, target.day, point);
+      } else if (target.trip !== "kyoto") {
         result = await addImportedVisit(
           target.day,
           point.id,

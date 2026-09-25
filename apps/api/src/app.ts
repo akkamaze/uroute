@@ -5,7 +5,7 @@ import type { AuthService } from "./auth/create-auth";
 import type { EntryInput, TripEntryRepository } from "./trips/entries";
 import type { DraftVisit, TripDraftRepository } from "./trips/drafts";
 import type { TripInput, TripRepository } from "./trips/repository";
-import type { TripPlanRepository } from "./trips/plan";
+import type { PlanPlace, TripPlanRepository } from "./trips/plan";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -109,6 +109,37 @@ function validEntry(value: unknown): value is EntryInput {
     typeof entry.area === "string" &&
     entry.area.length <= 160 &&
     (entry.placeId === null || (typeof entry.placeId === "string" && entry.placeId.length <= 240))
+  );
+}
+
+function validPlanPlace(value: unknown): value is PlanPlace {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const place = value as Partial<PlanPlace>;
+
+  return (
+    typeof place.sourceKey === "string" &&
+    place.sourceKey.length > 0 &&
+    place.sourceKey.length <= 240 &&
+    typeof place.name === "string" &&
+    place.name.trim().length > 0 &&
+    place.name.length <= 500 &&
+    typeof place.latitude === "number" &&
+    Number.isFinite(place.latitude) &&
+    place.latitude >= -90 &&
+    place.latitude <= 90 &&
+    typeof place.longitude === "number" &&
+    Number.isFinite(place.longitude) &&
+    place.longitude >= -180 &&
+    place.longitude <= 180 &&
+    (place.category === null ||
+      (typeof place.category === "string" && place.category.length <= 80)) &&
+    (place.imageUrl === null ||
+      (typeof place.imageUrl === "string" &&
+        place.imageUrl.length <= 2048 &&
+        /^https:\/\//.test(place.imageUrl))) &&
+    (place.notes === null || (typeof place.notes === "string" && place.notes.length <= 5000))
   );
 }
 
@@ -378,6 +409,22 @@ export function createApp(
 
   const planRoutes = plans
     ? entryRoutes
+        .post("/api/trips/:id/places", async ({ request, params, body, status }) => {
+          if (!UUID.test(params.id) || !validPlanPlace(body)) {
+            return status(400, { error: "Invalid plan place." });
+          }
+          try {
+            const ownerId = await sessionOwner(auth, request);
+            if (!ownerId) {
+              return status(401, { error: "Sign in to continue." });
+            }
+            const result = await plans.upsertPlace(ownerId, params.id, body);
+
+            return result ?? status(404, { error: "Trip not found." });
+          } catch {
+            return status(503, { error: "Plan service is temporarily unavailable." });
+          }
+        })
         .get("/api/trips/:id/plan", async ({ request, params, status }) => {
           const day = new URL(request.url).searchParams.get("day");
           if (!UUID.test(params.id) || !day || !validDay(day)) {
@@ -385,15 +432,20 @@ export function createApp(
           }
           try {
             const ownerId = await sessionOwner(auth, request);
-            if (!ownerId) return status(401, { error: "Sign in to continue." });
+            if (!ownerId) {
+              return status(401, { error: "Sign in to continue." });
+            }
             const [trip, plan] = await Promise.all([
               trips.get(ownerId, params.id),
               plans.day(ownerId, params.id, day),
             ]);
-            if (!trip || !plan) return status(404, { error: "Trip not found." });
+            if (!trip || !plan) {
+              return status(404, { error: "Trip not found." });
+            }
             if (day < trip.startDate || day > trip.endDate) {
               return status(400, { error: "Day is outside this trip." });
             }
+
             return { trip, ...plan };
           } catch {
             return status(503, { error: "Plan service is temporarily unavailable." });
@@ -402,20 +454,43 @@ export function createApp(
         .put("/api/trips/:id/plan", async ({ request, params, body, status }) => {
           const day = new URL(request.url).searchParams.get("day");
           const payload = body as { version?: unknown; entries?: unknown } | null;
-          if (!UUID.test(params.id) || !day || !validDay(day) ||
-            !payload || typeof payload.version !== "string" || !VERSION.test(payload.version) ||
-            !Array.isArray(payload.entries) || payload.entries.length > 2_000 ||
+          if (
+            !UUID.test(params.id) ||
+            !day ||
+            !validDay(day) ||
+            !payload ||
+            typeof payload.version !== "string" ||
+            !VERSION.test(payload.version) ||
+            !Array.isArray(payload.entries) ||
+            payload.entries.length > 2_000 ||
             !payload.entries.every(validEntry) ||
-            new Set(payload.entries.map((entry: EntryInput) => entry.sourceKey)).size !== payload.entries.length) {
+            new Set(payload.entries.map((entry: EntryInput) => entry.sourceKey)).size !==
+              payload.entries.length
+          ) {
             return status(400, { error: "Invalid plan." });
           }
           try {
             const ownerId = await sessionOwner(auth, request);
-            if (!ownerId) return status(401, { error: "Sign in to continue." });
-            const result = await plans.replaceDay(ownerId, params.id, day, payload.version, payload.entries);
-            if (result === "not-found") return status(404, { error: "Trip not found." });
-            if (result === "conflict") return status(409, { error: "Trip changed on another device." });
-            if (result === "out-of-range") return status(400, { error: "Day is outside this trip." });
+            if (!ownerId) {
+              return status(401, { error: "Sign in to continue." });
+            }
+            const result = await plans.replaceDay(
+              ownerId,
+              params.id,
+              day,
+              payload.version,
+              payload.entries,
+            );
+            if (result === "not-found") {
+              return status(404, { error: "Trip not found." });
+            }
+            if (result === "conflict") {
+              return status(409, { error: "Trip changed on another device." });
+            }
+            if (result === "out-of-range") {
+              return status(400, { error: "Day is outside this trip." });
+            }
+
             return result;
           } catch {
             return status(503, { error: "Plan service is temporarily unavailable." });

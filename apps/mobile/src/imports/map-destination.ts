@@ -1,5 +1,6 @@
 import { loadCreatedTrips, tripDays } from "../trips/trip-store";
 import { getAppMode } from "../app-mode";
+import type { AccountTrip } from "../plan/account-plan";
 
 export type ImportDestinationTrip = string;
 export interface MapDestination {
@@ -8,6 +9,19 @@ export interface MapDestination {
 }
 
 const STORAGE_KEY = "uroute.maps.add-destination.v1";
+let accountTrips: AccountTrip[] = [];
+
+export function setAccountMapTrips(trips: AccountTrip[]): void {
+  accountTrips = trips;
+}
+
+export function isAccountMapTrip(id: string): boolean {
+  return accountTrips.some((trip) => trip.id === id);
+}
+
+export function getAccountMapTrip(id: string): AccountTrip | undefined {
+  return accountTrips.find((trip) => trip.id === id);
+}
 const KYOTO_DAYS = [12, 13, 14, 15, 16].map((date) => ({
   day: `2026-11-${date}`,
   label: `${["Thu", "Fri", "Sat", "Sun", "Mon"][date - 12]} ${date} Nov`,
@@ -26,7 +40,9 @@ export function destinationDays(tripId: string): { day: string; label: string }[
       { day: "2026-10-01", label: "Thu 1 Oct" },
     ];
   }
-  const trip = loadCreatedTrips().find((item) => item.id === tripId);
+  const trip =
+    accountTrips.find((item) => item.id === tripId) ??
+    loadCreatedTrips().find((item) => item.id === tripId);
 
   return trip === undefined ? [] : tripDays(trip);
 }
@@ -34,7 +50,12 @@ export function destinationDays(tripId: string): { day: string; label: string }[
 export function availableDestinations(): { id: string; name: string }[] {
   return getAppMode() === "mock"
     ? [{ id: "kyoto", name: "Kyoto" }]
-    : loadCreatedTrips().map((trip) => ({ id: trip.id, name: trip.name }));
+    : [
+        ...accountTrips,
+        ...loadCreatedTrips().filter(
+          (trip) => !accountTrips.some((remote) => remote.id === trip.id),
+        ),
+      ].map((trip) => ({ id: trip.id, name: trip.name }));
 }
 
 export function isMapDestination(value: unknown): value is MapDestination {
@@ -75,7 +96,9 @@ export function destinationLabel(destination: MapDestination): string {
       ? "Kyoto"
       : destination.trip === "kanto"
         ? "Kanto"
-        : (loadCreatedTrips().find((trip) => trip.id === destination.trip)?.name ?? "Trip");
+        : (accountTrips.find((trip) => trip.id === destination.trip)?.name ??
+          loadCreatedTrips().find((trip) => trip.id === destination.trip)?.name ??
+          "Trip");
   const day = destinationDays(destination.trip).find((item) => item.day === destination.day);
 
   return `${name} · ${day?.label ?? destination.day}`;

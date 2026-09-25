@@ -6,9 +6,16 @@ const PLAN_STORAGE_KEY = "uroute.mock.kyoto-plan.v1";
 const VERSIONS_STORAGE_KEY = "uroute.mock.edit-plan-versions.v1";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({ contentType: "application/json", body: "null" }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+  });
   await page.goto("/plan?day=13");
   await page.evaluate((key) => {
     window.localStorage.clear();
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
     window.localStorage.setItem(
       key,
       JSON.stringify({

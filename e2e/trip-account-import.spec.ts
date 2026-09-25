@@ -9,15 +9,6 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
   let accountVersion = "1";
   let accountTripInfo: Record<string, unknown> = {};
   let replacements = 0;
-  await page.route("**/api/auth/get-session", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
-        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
-      }),
-    }),
-  );
   await page.route("**/api/trips", (route) => {
     if (route.request().method() !== "POST") {
       return route.fallback();
@@ -32,10 +23,14 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
     });
   });
   await page.route("**/api/trips/*", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
-    }),
+    route.fulfill(
+      accountTripInfo.id
+        ? {
+            contentType: "application/json",
+            body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
+          }
+        : { status: 404, contentType: "application/json", body: "{}" },
+    ),
   );
   await page.route("**/api/trips/*/entries?*", (route) =>
     route.fulfill({
@@ -65,6 +60,15 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
   await dialog.getByLabel("Start date").fill("2027-01-10");
   await dialog.getByLabel("End date").fill("2027-01-10");
   await dialog.getByRole("button", { name: "Create trip" }).click();
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
   await page.goto("/trips");
   await page.getByRole("button", { name: "Copy to account" }).click();
   const confirm = page.getByRole("dialog", { name: "Copy Lisbon to your account?" });
@@ -111,15 +115,6 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
     revision?: string | null;
     visits?: Array<{ time: string; notes: string }>;
   } | null = null;
-  await page.route("**/api/auth/get-session", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
-        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
-      }),
-    }),
-  );
   await page.route("**/api/trips", (route) => {
     const input: unknown = route.request().postDataJSON();
     if (typeof input !== "object" || input === null) {
@@ -133,10 +128,14 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
     });
   });
   await page.route("**/api/trips/*", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
-    }),
+    route.fulfill(
+      accountTripInfo.id
+        ? {
+            contentType: "application/json",
+            body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
+          }
+        : { status: 404, contentType: "application/json", body: "{}" },
+    ),
   );
   await page.route("**/api/trips/*/entries?*", (route) =>
     route.fulfill({
@@ -199,6 +198,16 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await dialog.getByLabel("Start date").fill("2027-01-10");
   await dialog.getByLabel("End date").fill("2027-01-10");
   await dialog.getByRole("button", { name: "Create trip" }).click();
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.reload();
   await page.getByRole("button", { name: /Add a place/ }).click();
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
     name: "sample.kml",

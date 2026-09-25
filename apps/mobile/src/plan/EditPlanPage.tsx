@@ -38,6 +38,14 @@ import {
   type CreatedTrip,
 } from "../trips/trip-store";
 import { hasConfirmedAccountCopy } from "../trips/trip-account-import";
+import {
+  accountPlanItinerary,
+  accountEntryInput,
+  accountPlanPoints,
+  loadAccountPlanDay,
+  saveAccountPlanDay,
+  type AccountPlanDay,
+} from "./account-plan";
 
 import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
 import {
@@ -476,6 +484,7 @@ interface CreatedEditorData {
   points: ImportedPoint[];
   itinerary: ItineraryEntry[];
   visits: ImportedVisit[];
+  remotePlan?: AccountPlanDay;
 }
 
 function createdRowAsStop(row: CreatedPlanRow): PlannedStop {
@@ -516,28 +525,54 @@ function CreatedTripEditPlanLoader({
 
   useEffect(() => {
     let active = true;
-    const trip = loadCreatedTrips().find((candidate) => candidate.id === tripId);
-    if (!trip || date < trip.startDate || date > trip.endDate) {
-      setLoadError(true);
+    async function load(): Promise<void> {
+      if (ownerId) {
+        try {
+          const remotePlan = await loadAccountPlanDay(tripId, date);
+          if (active) {
+            setData({
+              trip: remotePlan.trip,
+              points: accountPlanPoints(remotePlan.entries),
+              itinerary: accountPlanItinerary(tripId, remotePlan.entries),
+              visits: [],
+              remotePlan,
+            });
+          }
 
-      return;
-    }
-    void Promise.all([loadImportedPlaces(), loadItinerary(tripId), loadImportedVisits()])
-      .then(([points, itinerary, visits]) => {
-        if (active) {
-          setData({ trip, points, itinerary, visits });
+          return;
+        } catch {
+          // A device-only trip may not have been copied to this account.
         }
-      })
-      .catch(() => {
+      }
+      const trip = loadCreatedTrips().find((candidate) => candidate.id === tripId);
+      if (!trip || date < trip.startDate || date > trip.endDate) {
         if (active) {
           setLoadError(true);
         }
-      });
+
+        return;
+      }
+      try {
+        const [points, itinerary, visits] = await Promise.all([
+          loadImportedPlaces(),
+          loadItinerary(tripId),
+          loadImportedVisits(),
+        ]);
+        if (active) {
+          setData({ trip, points, itinerary, visits });
+        }
+      } catch {
+        if (active) {
+          setLoadError(true);
+        }
+      }
+    }
+    void load();
 
     return () => {
       active = false;
     };
-  }, [date, tripId]);
+  }, [ownerId, date, tripId]);
 
   const adapter = useMemo<PlanEditorAdapter | null>(() => {
     if (!data) {
@@ -597,14 +632,70 @@ function CreatedTripEditPlanLoader({
             baseSignature: visitsSignature(savedVisits),
           }
         : null;
-    const savePlan = (visits: readonly PlannedVisit[]): Promise<boolean> => {
+    const savePlan = async (visits: readonly PlannedVisit[]): Promise<boolean> => {
       const knownIds = new Set(allRows.map((row) => row.id));
       const orderedIds = visits.map((visit) => visit.placeId);
       if (
         orderedIds.some((id) => !knownIds.has(id)) ||
         new Set(orderedIds).size !== orderedIds.length
       ) {
-        return Promise.resolve(false);
+        return false;
+      }
+      if (data.remotePlan) {
+        const selected = new Map(
+          data.remotePlan.entries
+            .filter((entry) => entry.variant === selectedOption)
+            .map((entry) => [entry.sourceKey, entry]),
+        );
+        const retained = data.remotePlan.entries
+          .filter((entry) => entry.variant !== selectedOption)
+          .map(accountEntryInput);
+        const changed = visits.map((visit, position) => {
+          const existing = selected.get(visit.placeId);
+          if (!existing) {
+            return null;
+          }
+
+          return {
+            sourceKey: existing.sourceKey,
+            day: date,
+            variant: selectedOption,
+            position,
+            kind: existing.kind,
+            title: existing.title,
+            timeLabel: visit.time,
+            detail: visit.notes,
+            area: existing.area,
+            placeId: existing.placeId,
+          };
+        });
+        if (changed.some((entry) => entry === null)) {
+          return false;
+        }
+        try {
+          const saved = await saveAccountPlanDay(tripId, date, data.remotePlan.version, [
+            ...retained,
+            ...changed.filter((entry) => entry !== null),
+          ]);
+          setData((current) =>
+            current
+              ? {
+                  ...current,
+                  itinerary: accountPlanItinerary(tripId, saved.entries),
+                  points: accountPlanPoints(saved.entries),
+                  remotePlan: {
+                    ...data.remotePlan!,
+                    version: saved.version,
+                    entries: saved.entries,
+                  },
+                }
+              : current,
+          );
+
+          return true;
+        } catch {
+          return false;
+        }
       }
       const kept = new Set(orderedIds);
       const hiddenIds = allRows.filter((row) => !kept.has(row.id)).map((row) => row.id);
@@ -620,9 +711,9 @@ function CreatedTripEditPlanLoader({
           ),
         );
 
-        return Promise.resolve(true);
+        return true;
       } catch {
-        return Promise.resolve(false);
+        return false;
       }
     };
 

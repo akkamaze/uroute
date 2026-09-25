@@ -24,6 +24,7 @@ export interface PlanDay {
 
 export interface TripPlanRepository {
   day(ownerId: string, tripId: string, day: string): Promise<PlanDay | null>;
+  upsertPlace(ownerId: string, tripId: string, place: PlanPlace): Promise<PlanPlace | null>;
   replaceDay(
     ownerId: string,
     tripId: string,
@@ -54,9 +55,40 @@ export class PgTripPlanRepository implements TripPlanRepository {
        WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
       [tripId, ownerId],
     );
-    if (!trip.rows[0]) return null;
+    if (!trip.rows[0]) {
+      return null;
+    }
     const result = await this.database.query<PlanEntry>(SELECT_ENTRIES, [tripId, day]);
+
     return { version: trip.rows[0].version, entries: result.rows };
+  }
+
+  async upsertPlace(ownerId: string, tripId: string, place: PlanPlace): Promise<PlanPlace | null> {
+    const result = await this.database.query<PlanPlace>(
+      `INSERT INTO trip_source_place (trip_id, source_key, name, latitude, longitude,
+        category, image_url, notes)
+       SELECT t.id, $3, $4, $5, $6, $7, $8, $9 FROM trip t
+       WHERE t.id = $1 AND t.owner_id = $2 AND t.deleted_at IS NULL
+       ON CONFLICT (trip_id, source_key) DO UPDATE SET
+         name = EXCLUDED.name, latitude = EXCLUDED.latitude,
+         longitude = EXCLUDED.longitude, category = EXCLUDED.category,
+         image_url = EXCLUDED.image_url, notes = EXCLUDED.notes
+       RETURNING source_key AS "sourceKey", name, latitude, longitude,
+         category, image_url AS "imageUrl", notes`,
+      [
+        tripId,
+        ownerId,
+        place.sourceKey,
+        place.name,
+        place.latitude,
+        place.longitude,
+        place.category,
+        place.imageUrl,
+        place.notes,
+      ],
+    );
+
+    return result.rows[0] ?? null;
   }
 
   async replaceDay(
@@ -78,17 +110,27 @@ export class PgTripPlanRepository implements TripPlanRepository {
       const current = trip.rows[0];
       if (!current) {
         await client.query("ROLLBACK");
+
         return "not-found";
       }
       if (current.version !== version) {
         await client.query("ROLLBACK");
+
         return "conflict";
       }
-      if (day < current.startDate || day > current.endDate || entries.some((entry) => entry.day !== day)) {
+      if (
+        day < current.startDate ||
+        day > current.endDate ||
+        entries.some((entry) => entry.day !== day)
+      ) {
         await client.query("ROLLBACK");
+
         return "out-of-range";
       }
-      await client.query("DELETE FROM trip_entry WHERE trip_id = $1 AND day = $2::date", [tripId, day]);
+      await client.query("DELETE FROM trip_entry WHERE trip_id = $1 AND day = $2::date", [
+        tripId,
+        day,
+      ]);
       if (entries.length) {
         await client.query(
           `INSERT INTO trip_entry (id, trip_id, source_key, day, variant, position, kind,
@@ -107,12 +149,13 @@ export class PgTripPlanRepository implements TripPlanRepository {
          WHERE id = $1 RETURNING version::text AS version`,
         [tripId],
       );
-      await client.query(
-        `DELETE FROM trip_draft WHERE trip_id = $1 AND day = $2::date`,
-        [tripId, day],
-      );
+      await client.query(`DELETE FROM trip_draft WHERE trip_id = $1 AND day = $2::date`, [
+        tripId,
+        day,
+      ]);
       const saved = await client.query<PlanEntry>(SELECT_ENTRIES, [tripId, day]);
       await client.query("COMMIT");
+
       return { version: updated.rows[0]!.version, entries: saved.rows };
     } catch (error) {
       await client.query("ROLLBACK");
