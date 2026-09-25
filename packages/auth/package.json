@@ -1,0 +1,15 @@
+{
+  "name": "@uroute/auth",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    "./useAccount": "./src/useAccount.ts"
+  },
+  "dependencies": {
+    "better-auth": "1.7.4"
+  },
+  "peerDependencies": {
+    "react": "^19.1.1"
+  }
+}

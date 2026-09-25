@@ -207,6 +207,7 @@ export function KantoPlanPage(): React.JSX.Element {
         await saveItinerary(trip?.id ?? "kanto", itinerary);
       } catch {
         setError("Could not save itinerary changes.");
+
         return;
       }
     }
