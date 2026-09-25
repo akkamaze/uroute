@@ -20,6 +20,7 @@ export interface Booking {
   toName?: string;
   fromLocalTime?: string;
   toLocalTime?: string;
+  arrivalDayOffset?: number;
   service?: string;
   airlineName?: string;
   airlineCode?: string;
@@ -126,4 +127,20 @@ export const BOOKINGS: readonly Booking[] = [
 
 export function isBookingId(value: unknown): value is Booking["id"] {
   return typeof value === "string" && value.length > 0 && value.length <= 120;
+}
+
+export function bookingAirlineCode(booking: Booking): string | undefined {
+  return (
+    booking.airlineCode ??
+    /^([A-Z0-9]{2})\s?\d{1,4}[A-Z]?$/i.exec(booking.service ?? "")?.[1]?.toUpperCase()
+  );
+}
+
+export function bookingAirlineLogoUrl(booking: Booking): string | undefined {
+  const code = bookingAirlineCode(booking);
+
+  return (
+    booking.airlineLogoUrl ??
+    (code === undefined ? undefined : `https://pics.avs.io/al_square/128/128/${code}.png`)
+  );
 }

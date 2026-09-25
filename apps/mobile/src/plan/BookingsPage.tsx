@@ -28,7 +28,7 @@ import {
   splitBookingTimeline,
   type BookingFilter,
 } from "./booking-timeline";
-import type { Booking } from "./bookings-data";
+import { bookingAirlineCode, bookingAirlineLogoUrl, type Booking } from "./bookings-data";
 import { shareBookingCard } from "./share-booking-card";
 import { TripHeader } from "./TripHeader";
 import "./bookings.css";
@@ -256,6 +256,7 @@ function BookingScreen({
   const addWasOpenRef = useRef(false);
   const pendingRevealRef = useRef<string | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const ticketRef = useRef<HTMLElement>(null);
   const lastTriggerRef = useRef<HTMLButtonElement>(null);
   const openedHereRef = useRef(false);
   const wasOpenRef = useRef(false);
@@ -407,13 +408,14 @@ function BookingScreen({
   }
 
   async function shareSelectedBooking(): Promise<void> {
-    if (selectedBooking === undefined || sharing) {
+    const ticket = ticketRef.current;
+    if (selectedBooking === undefined || sharing || ticket === null) {
       return;
     }
     setSharing(true);
     setShareMessage("");
     try {
-      const result = await shareBookingCard(selectedBooking);
+      const result = await shareBookingCard(selectedBooking, ticket);
       if (result === "downloaded") {
         setShareMessage("Image saved. You can post it from your photos or files.");
       }
@@ -554,12 +556,12 @@ function BookingScreen({
               </button>
               <p className="booking-dialog__caption">Share your journey</p>
             </div>
-            <article aria-label="Share preview" className="booking-ticket">
+            <article aria-label="Share preview" className="booking-ticket" ref={ticketRef}>
               <header className="booking-ticket__header">
                 <span className="booking-ticket__brand">
                   <span>u</span>route
                 </span>
-                <span className="booking-ticket__tagline">Travel brings us closer</span>
+                <span className="booking-ticket__tagline">Journeys worth remembering</span>
               </header>
               {selectedBooking.fromCode === undefined ? (
                 <div className="booking-ticket__primary booking-ticket__primary--feature">
@@ -592,18 +594,30 @@ function BookingScreen({
                       ) : null}
                     </div>
                     <span aria-hidden="true" className="booking-ticket__route-line">
+                      <span className="booking-ticket__route-dash" />
                       {selectedBooking.category === "flight" ? (
                         <Plane size={19} />
                       ) : (
                         <TrainFront size={19} />
                       )}
+                      <span className="booking-ticket__route-dash" />
                     </span>
                     <div>
                       <strong>{selectedBooking.toCode}</strong>
                       <span>{selectedBooking.toName}</span>
                       {selectedBooking.toLocalTime !== undefined ? (
                         <time className="booking-ticket__local-time">
-                          {selectedBooking.toLocalTime}
+                          <span className="booking-ticket__clock">
+                            {selectedBooking.toLocalTime}
+                            {selectedBooking.arrivalDayOffset ? (
+                              <sup
+                                aria-label={`${selectedBooking.arrivalDayOffset} day later`}
+                                className="booking-ticket__day-offset"
+                              >
+                                +{selectedBooking.arrivalDayOffset}
+                              </sup>
+                            ) : null}
+                          </span>
                           <small>Local time</small>
                         </time>
                       ) : null}
@@ -619,14 +633,16 @@ function BookingScreen({
                 {selectedBooking.category === "flight" ? (
                   <div className="booking-ticket__operator">
                     <span aria-hidden="true" className="booking-ticket__operator-mark">
-                      {selectedBooking.airlineCode ?? <Plane size={17} strokeWidth={1.8} />}
-                      {selectedBooking.airlineLogoUrl !== undefined ? (
+                      {bookingAirlineCode(selectedBooking) ?? <Plane size={17} strokeWidth={1.8} />}
+                      {bookingAirlineLogoUrl(selectedBooking) !== undefined ? (
                         <img
                           alt=""
+                          crossOrigin="anonymous"
+                          key={bookingAirlineLogoUrl(selectedBooking)}
                           onError={(event) => {
                             event.currentTarget.hidden = true;
                           }}
-                          src={selectedBooking.airlineLogoUrl}
+                          src={bookingAirlineLogoUrl(selectedBooking)}
                         />
                       ) : null}
                     </span>
@@ -656,9 +672,6 @@ function BookingScreen({
               <div aria-hidden="true" className="booking-ticket__perforation" />
               <footer className="booking-ticket__footer">
                 <div>
-                  <span>
-                    {selectedBooking.origin === "manual" ? "Your booking" : "Sample booking"}
-                  </span>
                   <strong>Have a great trip!</strong>
                 </div>
                 <svg

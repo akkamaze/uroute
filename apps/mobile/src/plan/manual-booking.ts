@@ -193,7 +193,8 @@ export function buildManualBooking(draft: ManualBookingDraft, id: string): Manua
   const nights = Math.round(
     (Date.parse(`${endDay}T00:00:00Z`) - Date.parse(`${draft.startDay}T00:00:00Z`)) / 86_400_000,
   );
-  const dateLabel = formatRange(draft.startDay, endDay);
+  const dateLabel =
+    draft.category === "flight" ? formatDay(draft.startDay) : formatRange(draft.startDay, endDay);
   const timeLabel =
     category === "flight"
       ? `${draft.startTime} ${fromCode} · ${draft.endTime} ${toCode}`
@@ -239,6 +240,7 @@ export function buildManualBooking(draft: ManualBookingDraft, id: string): Manua
           toCode,
           fromLocalTime: draft.startTime,
           toLocalTime: draft.endTime,
+          ...(nights > 0 ? { arrivalDayOffset: nights } : {}),
           ...(airlineName ? { airlineName } : {}),
           ...(service ? { service } : {}),
         }
