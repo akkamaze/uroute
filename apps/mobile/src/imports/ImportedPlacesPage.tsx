@@ -1712,7 +1712,16 @@ export function ImportedPlacesPage(): React.JSX.Element {
                           setFocusSelectedId(null);
                           setSheetCollapsed(false);
                           if (globalMaps && normalizedQuery !== "") {
-                            setSearchOpen(true);
+                            const resultCount = visiblePlaces.filter((place) =>
+                              isImportLayerVisible(place, hiddenLayers),
+                            ).length;
+                            if (resultCount > 1) {
+                              setSearchOpen(true);
+                            } else {
+                              setQuery("");
+                              setDraftQuery("");
+                              setSearchOpen(false);
+                            }
                           }
                         }}
                         type="button"
