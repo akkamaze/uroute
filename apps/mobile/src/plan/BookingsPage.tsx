@@ -155,20 +155,32 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
                             <span className="booking-timeline__airport booking-timeline__airport--arrival">
                               <strong>{booking.toCode}</strong>
                               <span>{booking.toName}</span>
-                              <b>{booking.toLocalTime}</b>
+                              <b>
+                                {booking.toLocalTime}
+                                {booking.arrivalDayOffset ? (
+                                  <sup
+                                    aria-label={`${booking.arrivalDayOffset} day later`}
+                                    className="booking-timeline__day-offset"
+                                  >
+                                    +{booking.arrivalDayOffset}
+                                  </sup>
+                                ) : null}
+                              </b>
                               <small>Local time</small>
                             </span>
                           </span>
                           <span className="booking-timeline__airline">
                             <span aria-hidden="true" className="booking-timeline__airline-mark">
-                              {booking.airlineCode ?? <Plane size={17} strokeWidth={1.9} />}
-                              {booking.airlineLogoUrl !== undefined ? (
+                              {bookingAirlineCode(booking) ?? <Plane size={17} strokeWidth={1.9} />}
+                              {bookingAirlineLogoUrl(booking) !== undefined ? (
                                 <img
                                   alt=""
+                                  crossOrigin="anonymous"
+                                  key={bookingAirlineLogoUrl(booking)}
                                   onError={(event) => {
                                     event.currentTarget.hidden = true;
                                   }}
-                                  src={booking.airlineLogoUrl}
+                                  src={bookingAirlineLogoUrl(booking)}
                                 />
                               ) : null}
                             </span>

@@ -974,3 +974,10 @@
     transition: none;
   }
 }
+
+.booking-timeline__day-offset {
+  margin-left: 0.125rem;
+  color: var(--color-active);
+  font-size: 0.6875rem;
+  font-weight: 750;
+}

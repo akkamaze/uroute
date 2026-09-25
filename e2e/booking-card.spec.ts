@@ -64,6 +64,16 @@ test("an overnight flight card shows the next-day arrival, airline logo and new 
   );
 });
 
+test("the booking list shows the next-day arrival and airline logo", async ({ page }) => {
+  await page.goto("/bookings");
+  const card = page.locator("#booking-card-manual-vz830");
+  await expect(card.getByLabel("1 day later")).toHaveText("+1");
+  await expect(card.locator(".booking-timeline__airline-mark img")).toHaveAttribute(
+    "src",
+    "https://pics.avs.io/al_square/128/128/VZ.png",
+  );
+});
+
 test("the saved booking image matches the card preview", async ({ page }) => {
   await page.goto("/bookings?booking=manual-vz830");
   const ticket = page.getByRole("article", { name: "Share preview" });
