@@ -642,6 +642,7 @@ export function TripPlanPage(): React.JSX.Element {
                   if (!point) {
                     return;
                   }
+                  captureNavigationSnapshot("/maps");
                   void navigate({ to: "/maps", search: { trip: tripId, day, place: point.id } });
                 }}
                 onRemove={() => {

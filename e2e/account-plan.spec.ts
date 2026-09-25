@@ -228,3 +228,85 @@ test("opening a server trip stop shows its details with directions", async ({ pa
     page.getByRole("button", { name: "Category: Museum. Change category" }),
   ).toBeVisible();
 });
+
+test("swipe back returns from a server trip plan and its map place", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = [
+    {
+      id: "entry-1",
+      sourceKey: "entry:1",
+      day,
+      variant: "A",
+      position: 0,
+      kind: "place",
+      title: "Senso-ji",
+      timeLabel: "09:00",
+      detail: "Visit temple",
+      area: "Asakusa",
+      placeId: "pin-1",
+      place: {
+        sourceKey: "pin-1",
+        name: "Senso-ji",
+        latitude: 35.715,
+        longitude: 139.796,
+        category: "temple",
+        imageUrl: null,
+        notes: null,
+      },
+    },
+  ];
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+  const navigation = page.locator(".app-navigation");
+  async function swipeBack(y: number): Promise<void> {
+    await page.mouse.move(40, y);
+    await page.mouse.down();
+    await page.mouse.move(150, y + 2, { steps: 4 });
+    await expect(navigation).toHaveAttribute("data-swipe-phase", "dragging");
+    await page.mouse.move(220, y + 2);
+    await page.mouse.up();
+  }
+
+  await page.goto("/trips");
+  await page.getByRole("link", { name: "Open Kanto trip plan" }).click();
+  await expect(page.getByLabel(/Thursday 1 October itinerary/)).toContainText("Senso-ji");
+  await swipeBack(120);
+  await expect(page).toHaveURL(/\/trips(?:\?|$)/);
+  await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
+
+  await expect(async () => {
+    await page.getByRole("link", { name: "Open Kanto trip plan" }).click();
+    await expect(page).toHaveURL(new RegExp(`/plan/trip/${tripId}`), { timeout: 1_000 });
+  }).toPass();
+  await page
+    .getByLabel(/Thursday 1 October itinerary/)
+    .getByRole("button", { name: /Senso-ji/ })
+    .click();
+  await expect(page.getByRole("button", { name: "Close place details" })).toBeVisible();
+  const heading = await page.getByRole("heading", { name: "Senso-ji" }).boundingBox();
+  if (heading === null) {
+    throw new Error("Place details must be visible");
+  }
+  await swipeBack(heading.y + heading.height / 2);
+  await expect(page).toHaveURL(new RegExp(`/plan/trip/${tripId}`));
+  await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
+});

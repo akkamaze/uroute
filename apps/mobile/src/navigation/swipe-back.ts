@@ -58,7 +58,12 @@ export function shouldCaptureForwardNavigation(fromPath: string, toPath: string)
   }
 
   if (fromPath === "/trips") {
-    return ["/plan", "/bookings", "/expenses"].includes(toPath);
+    return (
+      ["/plan", "/bookings", "/expenses"].includes(toPath) || /^\/plan\/trip\/[^/]+$/.test(toPath)
+    );
+  }
+  if (toPath === "/maps" && /^\/plan\/trip\/[^/]+$/.test(fromPath)) {
+    return true;
   }
 
   return ["/plan", "/saved"].includes(fromPath) && toPath === "/places";
