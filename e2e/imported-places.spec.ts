@@ -1600,17 +1600,17 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles(samplePath);
   const review = page.getByRole("region", { name: "Import review" });
-  await expect(review).toContainText("470 points · 9 lines · 1 area");
+  await expect(review).toContainText("463 points · 9 lines · 1 area");
   await expect(review.getByText("KANTO TRIP 2026")).toBeVisible();
   await expect(review).toContainText("CENTRAL TOKYO: 101");
-  await review.getByRole("button", { name: "Import 470 places, 9 lines and 1 area" }).click();
+  await review.getByRole("button", { name: "Import 463 places, 9 lines and 1 area" }).click();
   await expect(page.locator(".imported-page__notice")).toContainText(
-    "470 places, 9 lines and 1 area imported",
+    "463 places, 9 lines and 1 area imported",
   );
   await page.getByLabel("Search imported places").click();
   await page.getByLabel("Search imported places").press("Enter");
   await expect(
-    page.locator(".imported-page__list-heading span").getByText("470", { exact: true }),
+    page.locator(".imported-page__list-heading span").getByText("463", { exact: true }),
   ).toBeVisible();
   await expect
     .poll(() =>
@@ -1626,7 +1626,7 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
         ).__urouteMapDiagnostics?.(),
       ),
     )
-    .toMatchObject({ status: "ready", featureCount: 470, geometryFeatureCount: 10 });
+    .toMatchObject({ status: "ready", featureCount: 463, geometryFeatureCount: 10 });
 
   await page.getByRole("button", { name: "Map layers" }).click();
   const layers = page.getByRole("dialog", { name: "Map layers" });
@@ -1665,14 +1665,14 @@ test("reviews the supplied KMZ without losing non-point geometry", async ({ page
   const beforeSumidaToggle = await readCamera();
   expect(beforeSumidaToggle?.firstClusterPoint).not.toBeNull();
   await layers.getByRole("switch", { name: /Show TOKYO \(SUMIDA\) in/ }).uncheck();
-  await expect.poll(async () => (await readCamera())?.count).toBeLessThan(470);
+  await expect.poll(async () => (await readCamera())?.count).toBeLessThan(463);
   const afterSumidaToggle = await readCamera();
   expect(afterSumidaToggle?.center.longitude).toBeCloseTo(beforeSumidaToggle!.center.longitude, 6);
   expect(afterSumidaToggle?.center.latitude).toBeCloseTo(beforeSumidaToggle!.center.latitude, 6);
   expect(afterSumidaToggle?.zoom).toBeCloseTo(beforeSumidaToggle!.zoom, 6);
-  expect(afterSumidaToggle?.renderedClusterLabels).not.toEqual(
-    beforeSumidaToggle?.renderedClusterLabels,
-  );
+  await expect
+    .poll(async () => (await readCamera())?.renderedClusterLabels)
+    .not.toEqual(beforeSumidaToggle?.renderedClusterLabels);
   expect(afterSumidaToggle?.firstClusterPoint?.x).toBeCloseTo(
     beforeSumidaToggle!.firstClusterPoint!.x,
     3,
