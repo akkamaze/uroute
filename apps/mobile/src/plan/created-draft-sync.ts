@@ -1,4 +1,5 @@
 import { accountCopiedDraftProof } from "../trips/trip-account-import";
+import { pendingCreatedTripChange } from "../trips/trip-store";
 import { loadCreatedEditDraft, saveCreatedEditDraft } from "./created-edit-plan-store";
 import type { PlannedVisit } from "./plan-store";
 
@@ -138,10 +139,6 @@ async function getJson<T>(path: string): Promise<T | null> {
 }
 
 async function deleteRemote(address: DraftAddress): Promise<void> {
-  const trip = await getJson<RemoteTrip>(`/api/trips/${encodeURIComponent(address.tripId)}`);
-  if (!trip) {
-    return;
-  }
   const remote = await getJson<RemoteDraft>(draftPath(address));
   if (remote) {
     const digest = await digestVisits(remote.visits);
@@ -161,12 +158,16 @@ async function deleteRemote(address: DraftAddress): Promise<void> {
       throw new Error(`Account draft deletion failed: ${response.status}`);
     }
   }
+  const trip = await getJson<RemoteTrip>(`/api/trips/${encodeURIComponent(address.tripId)}`);
+  if (!trip) {
+    return;
+  }
   writeProof(address, { baseVersion: trip.version, digest: "", revision: null });
   markDeletion(address, false);
 }
 
 async function upload(address: DraftAddress, visits: readonly PlannedVisit[]): Promise<void> {
-  if (pendingDeletion(address)) {
+  if (pendingDeletion(address) || pendingCreatedTripChange(address.tripId)) {
     return;
   }
   const trip = await getJson<RemoteTrip>(`/api/trips/${encodeURIComponent(address.tripId)}`);
@@ -176,7 +177,23 @@ async function upload(address: DraftAddress, visits: readonly PlannedVisit[]): P
   const remote = await getJson<RemoteDraft>(draftPath(address));
   const digest = await digestVisits(visits);
   const remoteDigest = remote ? await digestVisits(remote.visits) : "";
-  const proof = readProof(address) ?? (remote ? copiedProof(address, remote, remoteDigest) : null);
+  let proof = readProof(address) ?? (remote ? copiedProof(address, remote, remoteDigest) : null);
+  if (
+    remote &&
+    remote.baseVersion === trip.version &&
+    proof?.revision === remote.revision &&
+    proof.digest === remoteDigest
+  ) {
+    // An earlier entry replacement may have committed before its response reached
+    // this device. The server's rebased draft is proof of the new base version.
+    proof = { ...proof, baseVersion: trip.version };
+    writeProof(address, proof);
+  } else if (!remote && proof?.revision === null && proof.digest === "") {
+    // Likewise, a completed deletion has no remote draft to rebase. A fresh trip
+    // read and the absence of a remote draft recover its empty proof.
+    proof = { ...proof, baseVersion: trip.version };
+    writeProof(address, proof);
+  }
   if (remote && remote.baseVersion === trip.version && remoteDigest === digest) {
     writeProof(address, { baseVersion: trip.version, digest, revision: remote.revision });
 
@@ -261,12 +278,48 @@ export function retryAccountDraftDeletion(address: DraftAddress): void {
   }
 }
 
+export function advanceDraftProofsForTrip(
+  ownerId: string,
+  tripId: string,
+  fromVersion: string,
+  toVersion: string,
+  changedGroups: readonly string[],
+): void {
+  if (fromVersion === toVersion) {
+    return;
+  }
+  const prefix = `uroute.account-draft-proof.v1.${ownerId}.${tripId}.`;
+  const changed = new Set(changedGroups);
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(prefix)) {
+        continue;
+      }
+      const value: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+      if (typeof value !== "object" || value === null) {
+        continue;
+      }
+      const proof = value as Partial<DraftProof>;
+      const group = key.slice(prefix.length).replace(/\.(?=[A-Z]$)/, ":");
+      if (proof.baseVersion === fromVersion && (proof.revision === null || !changed.has(group))) {
+        localStorage.setItem(key, JSON.stringify({ ...proof, baseVersion: toVersion }));
+      }
+    }
+  } catch {
+    // A missing proof keeps future uploads conservative until the account is checked again.
+  }
+}
+
 export async function restoreAccountDraft(
   address: DraftAddress,
   knownIds: ReadonlySet<string>,
   stillCurrent: () => boolean,
 ): Promise<void> {
   try {
+    if (pendingCreatedTripChange(address.tripId)) {
+      return;
+    }
     if (pendingDeletion(address)) {
       scheduleAccountDraftDeletion(address);
 
@@ -281,7 +334,10 @@ export async function restoreAccountDraft(
       return;
     }
     if (!remote) {
-      if (!readProof(address)) {
+      const existing = readProof(address);
+      if (existing?.revision === null && existing.digest === "") {
+        writeProof(address, { ...existing, baseVersion: trip.version });
+      } else if (!existing) {
         const copied = accountCopiedDraftProof(
           address.ownerId,
           address.tripId,
@@ -307,6 +363,10 @@ export async function restoreAccountDraft(
     const digest = await digestVisits(remote.visits);
     if (!stillCurrent() || pendingDeletion(address)) {
       return;
+    }
+    const proof = readProof(address);
+    if (proof?.revision === remote.revision && proof.digest === digest) {
+      writeProof(address, { ...proof, baseVersion: trip.version });
     }
     const local = loadCreatedEditDraft(address.editorKey, address.baseSignature);
     if (local) {

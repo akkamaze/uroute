@@ -42,6 +42,51 @@ const COLUMNS = `id::text AS id, source_key AS "sourceKey", day::text AS day,
   variant, position, kind, title, time_label AS "timeLabel", detail, area,
   place_id AS "placeId"`;
 
+function entryGroup(entry: EntryInput): string {
+  return `${entry.day}:${entry.variant}`;
+}
+
+function groupedEntries(entries: readonly EntryInput[]): Map<string, string> {
+  const groups = new Map<string, EntryInput[]>();
+  for (const entry of entries) {
+    const key = entryGroup(entry);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+
+  return new Map(
+    [...groups].map(([key, rows]) => [
+      key,
+      JSON.stringify(
+        rows
+          .map(({ sourceKey, position, kind, title, timeLabel, detail, area, placeId }) => ({
+            sourceKey,
+            position,
+            kind,
+            title,
+            timeLabel,
+            detail,
+            area,
+            placeId,
+          }))
+          .sort((left, right) =>
+            left.position === right.position
+              ? left.sourceKey.localeCompare(right.sourceKey)
+              : left.position - right.position,
+          ),
+      ),
+    ]),
+  );
+}
+
+function changedEntryGroups(before: readonly EntryInput[], after: readonly EntryInput[]): string[] {
+  const oldGroups = groupedEntries(before);
+  const newGroups = groupedEntries(after);
+
+  return [...new Set([...oldGroups.keys(), ...newGroups.keys()])].filter(
+    (key) => oldGroups.get(key) !== newGroups.get(key),
+  );
+}
+
 export class PgTripEntryRepository implements TripEntryRepository {
   constructor(private readonly database: Pool) {}
 
@@ -105,6 +150,11 @@ export class PgTripEntryRepository implements TripEntryRepository {
 
         return "out-of-range";
       }
+      const previous = await client.query<EntryRecord>(
+        `SELECT ${COLUMNS} FROM trip_entry WHERE trip_id = $1`,
+        [tripId],
+      );
+      const changedGroups = changedEntryGroups(previous.rows, entries);
       await client.query("DELETE FROM trip_entry WHERE trip_id = $1", [tripId]);
       if (entries.length) {
         await client.query(
@@ -124,6 +174,12 @@ export class PgTripEntryRepository implements TripEntryRepository {
         `UPDATE trip SET version = version + 1, updated_at = now()
          WHERE id = $1 RETURNING version::text AS version`,
         [tripId],
+      );
+      await client.query(
+        `UPDATE trip_draft SET base_version = $3::bigint
+         WHERE trip_id = $1 AND base_version = $2::bigint
+           AND NOT ((day::text || ':' || variant) = ANY($4::text[]))`,
+        [tripId, version, updated.rows[0]!.version, changedGroups],
       );
       const saved = await client.query<EntryRecord>(
         `SELECT ${COLUMNS} FROM trip_entry WHERE trip_id = $1

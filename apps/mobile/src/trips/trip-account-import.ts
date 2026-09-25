@@ -4,7 +4,13 @@ import { buildCreatedPlanRows, startTime } from "../plan/created-plan-rows";
 import { createdEditorKey, loadCreatedEditDraft } from "../plan/created-edit-plan-store";
 import { visitsSignature } from "../plan/edit-plan-store";
 import type { PlannedVisit } from "../plan/plan-store";
-import { tripDays, type CreatedTrip } from "./trip-store";
+import {
+  acknowledgeCreatedTripChange,
+  loadCreatedTrips,
+  pendingCreatedTripChange,
+  tripDays,
+  type CreatedTrip,
+} from "./trip-store";
 
 interface AccountTrip {
   id: string;
@@ -279,6 +285,39 @@ function sameEntries(left: readonly AccountEntry[], right: readonly AccountEntry
   return JSON.stringify(left.map(selectEntry)) === JSON.stringify(right.map(selectEntry));
 }
 
+function entryGroups(entries: readonly AccountEntry[]): Map<string, string> {
+  const groups = new Map<string, AccountEntry[]>();
+  for (const entry of entries) {
+    const key = `${entry.day}:${entry.variant}`;
+    groups.set(key, [...(groups.get(key) ?? []), selectEntry(entry)]);
+  }
+
+  return new Map(
+    [...groups].map(([key, rows]) => [
+      key,
+      JSON.stringify(
+        rows.sort((left, right) =>
+          left.position === right.position
+            ? left.sourceKey.localeCompare(right.sourceKey)
+            : left.position - right.position,
+        ),
+      ),
+    ]),
+  );
+}
+
+function changedEntryGroups(
+  before: readonly AccountEntry[],
+  after: readonly AccountEntry[],
+): string[] {
+  const oldGroups = entryGroups(before);
+  const newGroups = entryGroups(after);
+
+  return [...new Set([...oldGroups.keys(), ...newGroups.keys()])].filter(
+    (key) => oldGroups.get(key) !== newGroups.get(key),
+  );
+}
+
 async function getRemoteDraft(
   path: string,
 ): Promise<{ visits: PlannedVisit[]; revision: string } | null> {
@@ -297,6 +336,7 @@ export async function importLocalTripToAccount(
   ownerId: string,
 ): Promise<{ entries: number; drafts: number }> {
   // Validate the whole local snapshot before creating a server-side trip.
+  const pendingToken = pendingCreatedTripChange(trip.id);
   const { entries, drafts } = await localSnapshot(trip);
   const marker = readMarker(ownerId, trip.id);
   const saved = await request<AccountTrip>("/api/trips", {
@@ -422,5 +462,58 @@ export async function importLocalTripToAccount(
     throw error;
   }
 
+  acknowledgeCreatedTripChange(trip.id, pendingToken);
+
   return { entries: entries.length, drafts: drafts.length };
+}
+
+export async function syncConfirmedTripEntries(
+  tripId: string,
+  ownerId: string,
+): Promise<{ fromVersion: string; toVersion: string; changedGroups: string[] } | null> {
+  if (!hasConfirmedAccountCopy(ownerId, tripId)) {
+    return null;
+  }
+  const trip = loadCreatedTrips().find((candidate) => candidate.id === tripId);
+  if (!trip) {
+    return null;
+  }
+  const pendingToken = pendingCreatedTripChange(tripId);
+  const { entries } = await localSnapshot(trip);
+  const accountTrip = await request<AccountTrip>(`/api/trips/${encodeURIComponent(tripId)}`);
+  if (
+    accountTrip.startDate !== trip.startDate ||
+    accountTrip.endDate !== trip.endDate
+  ) {
+    // A changed date range affects which days can be saved on the account. A local
+    // rename does not, so it must not strand later itinerary and draft edits.
+    return null;
+  }
+  const marker = readMarker(ownerId, tripId);
+  const remote = await remoteEntries(tripId);
+  const changedGroups = changedEntryGroups(remote.entries, entries);
+  if (sameEntries(remote.entries, entries)) {
+    marker.entriesDigest = await digest(entries.map(selectEntry));
+    writeMarker(ownerId, tripId, marker);
+    acknowledgeCreatedTripChange(tripId, pendingToken);
+
+    return { fromVersion: remote.version, toVersion: remote.version, changedGroups: [] };
+  }
+  if (marker.entriesDigest !== (await digest(remote.entries.map(selectEntry)))) {
+    // A different server itinerary must remain untouched until the user reviews it.
+    return null;
+  }
+  const updated = await request<{ tripVersion: string }>(
+    `/api/trips/${encodeURIComponent(tripId)}/entries`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: remote.version, entries }),
+    },
+  );
+  marker.entriesDigest = await digest(entries.map(selectEntry));
+  writeMarker(ownerId, tripId, marker);
+  acknowledgeCreatedTripChange(tripId, pendingToken);
+
+  return { fromVersion: remote.version, toVersion: updated.tripVersion, changedGroups };
 }

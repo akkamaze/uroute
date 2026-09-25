@@ -1,6 +1,7 @@
 import { strFromU8, unzipSync } from "fflate";
 
 import type { ImportedPoint } from "./parse-place-file";
+import { notifyCreatedTripChanged } from "../trips/trip-store";
 
 export interface ItineraryEntry {
   id: string;
@@ -290,6 +291,7 @@ export async function saveItinerary(
       transaction.onabort = () =>
         reject(transaction.error ?? new Error("Itinerary save was interrupted."));
     });
+    notifyCreatedTripChanged(tripId);
   } finally {
     database.close();
   }

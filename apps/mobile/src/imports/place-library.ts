@@ -1,5 +1,6 @@
 import type { ImportedGeometry, ImportedPoint } from "./parse-place-file";
 import type { PlaceCategory } from "../places/place-category";
+import { notifyCreatedTripChanged } from "../trips/trip-store";
 
 const DATABASE_NAME = "uroute-imported-places";
 const DATABASE_VERSION = 2;
@@ -269,6 +270,10 @@ export async function addImportedVisit(
     } satisfies ImportedVisit);
     await done;
 
+    if (tripId) {
+      notifyCreatedTripChanged(tripId);
+    }
+
     return "added";
   } finally {
     database.close();
@@ -286,6 +291,9 @@ export async function removeImportedVisit(
     const done = complete(transaction);
     transaction.objectStore("visits").delete(`${tripId ? `${tripId}:` : ""}${day}:${placeId}`);
     await done;
+    if (tripId) {
+      notifyCreatedTripChanged(tripId);
+    }
   } finally {
     database.close();
   }
@@ -298,6 +306,9 @@ export async function restoreImportedVisit(visit: ImportedVisit): Promise<void> 
     const done = complete(transaction);
     transaction.objectStore("visits").put(visit);
     await done;
+    if (visit.tripId) {
+      notifyCreatedTripChanged(visit.tripId);
+    }
   } finally {
     database.close();
   }
@@ -324,6 +335,9 @@ export async function saveImportedVisitDetails(
     const done = complete(transaction);
     store.put({ ...existing, time, notes } satisfies ImportedVisit);
     await done;
+    if (existing.tripId) {
+      notifyCreatedTripChanged(existing.tripId);
+    }
 
     return true;
   } finally {
@@ -353,6 +367,9 @@ export async function moveImportedVisit(visitId: string, direction: -1 | 1): Pro
     store.put({ ...current, order: neighbor.order } satisfies ImportedVisit);
     store.put({ ...neighbor, order: current.order } satisfies ImportedVisit);
     await done;
+    if (current.tripId) {
+      notifyCreatedTripChanged(current.tripId);
+    }
 
     return true;
   } finally {
@@ -387,6 +404,7 @@ export async function copyLegacyVisitsToTrip(
     const store = transaction.objectStore("visits");
     additions.forEach((visit) => store.put(visit));
     await done;
+    notifyCreatedTripChanged(tripId);
 
     return additions.length;
   } finally {

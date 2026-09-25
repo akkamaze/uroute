@@ -10,7 +10,43 @@ export interface CreatedTrip {
 }
 
 const STORAGE_KEY = "uroute.created-trips.v1";
+const PENDING_PREFIX = "uroute.created-trip-pending.v1.";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export const CREATED_TRIP_CHANGED = "uroute:created-trip-changed";
+export const CREATED_TRIP_SYNCED = "uroute:created-trip-synced";
+
+export function pendingCreatedTripChange(tripId: string): string | null {
+  try {
+    return localStorage.getItem(`${PENDING_PREFIX}${tripId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function acknowledgeCreatedTripChange(tripId: string, token: string | null): void {
+  if (token === null || pendingCreatedTripChange(tripId) !== token) {
+    return;
+  }
+  try {
+    localStorage.removeItem(`${PENDING_PREFIX}${tripId}`);
+  } catch {
+    // A later scan safely repeats the idempotent account comparison.
+  }
+}
+
+export function notifyCreatedTripSynced(tripId: string): void {
+  window.dispatchEvent(new CustomEvent(CREATED_TRIP_SYNCED, { detail: { tripId } }));
+}
+
+export function notifyCreatedTripChanged(tripId: string): void {
+  try {
+    localStorage.setItem(`${PENDING_PREFIX}${tripId}`, crypto.randomUUID());
+  } catch {
+    // The local plan remains intact; another opening still compares it with the account.
+  }
+  window.dispatchEvent(new CustomEvent(CREATED_TRIP_CHANGED, { detail: { tripId } }));
+}
 
 function isTrip(value: unknown): value is CreatedTrip {
   if (typeof value !== "object" || value === null) {
@@ -115,6 +151,7 @@ export function setTripRowOrder(
     STORAGE_KEY,
     JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
   );
+  notifyCreatedTripChanged(id);
 
   return updated;
 }
@@ -131,6 +168,7 @@ export function clearTripRowOrder(id: string): CreatedTrip {
     STORAGE_KEY,
     JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
   );
+  notifyCreatedTripChanged(id);
 
   return updated;
 }
@@ -180,6 +218,7 @@ export function setTripPlanRows(
     STORAGE_KEY,
     JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
   );
+  notifyCreatedTripChanged(id);
 
   return updated;
 }

@@ -31,7 +31,12 @@ import { loadImportedVisits, type ImportedVisit } from "../imports/place-library
 import { importedPointAsStop } from "../imports/imported-stop";
 import { loadItinerary, type ItineraryEntry } from "../imports/itinerary-sheet";
 import type { ImportedPoint } from "../imports/parse-place-file";
-import { loadCreatedTrips, setTripPlanRows, type CreatedTrip } from "../trips/trip-store";
+import {
+  CREATED_TRIP_SYNCED,
+  loadCreatedTrips,
+  setTripPlanRows,
+  type CreatedTrip,
+} from "../trips/trip-store";
 import { hasConfirmedAccountCopy } from "../trips/trip-account-import";
 
 import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
@@ -1579,9 +1584,18 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
 
   useEffect(() => {
     const retry = (): void => adapter?.retryDraft?.(baseSignature, draft, dirty);
+    const retryAfterPlanSync = (event: Event): void => {
+      if ((event as CustomEvent<{ tripId?: unknown }>).detail?.tripId === adapter?.tripId) {
+        retry();
+      }
+    };
     window.addEventListener("online", retry);
+    window.addEventListener(CREATED_TRIP_SYNCED, retryAfterPlanSync);
 
-    return () => window.removeEventListener("online", retry);
+    return () => {
+      window.removeEventListener("online", retry);
+      window.removeEventListener(CREATED_TRIP_SYNCED, retryAfterPlanSync);
+    };
   }, [adapter, baseSignature, dirty, draft]);
 
   useEffect(() => {

@@ -5,7 +5,10 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
 }) => {
   const posted: unknown[] = [];
   let accountHasDifferentRows = false;
-  let replaced = false;
+  let accountEntries: unknown[] = [];
+  let accountVersion = "1";
+  let accountTripInfo: Record<string, unknown> = {};
+  let replacements = 0;
   await page.route("**/api/auth/get-session", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -21,25 +24,38 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
     }
     const input: unknown = route.request().postDataJSON();
     posted.push(input);
+    accountTripInfo = input as Record<string, unknown>;
 
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({ ...(input as object), version: "1" }),
     });
   });
+  await page.route("**/api/trips/*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
+    }),
+  );
   await page.route("**/api/trips/*/entries?*", (route) =>
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        entries: accountHasDifferentRows ? [{ sourceKey: "other" }] : [],
-        tripVersion: "1",
+        entries: accountHasDifferentRows ? [{ sourceKey: "other" }] : accountEntries,
+        tripVersion: accountVersion,
       }),
     }),
   );
   await page.route("**/api/trips/*/entries", (route) => {
-    replaced = true;
+    const input = route.request().postDataJSON() as { entries: unknown[] };
+    replacements += 1;
+    accountEntries = input.entries;
+    accountVersion = String(Number(accountVersion) + 1);
 
-    return route.fulfill({ contentType: "application/json", body: "{}" });
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ tripVersion: accountVersion }),
+    });
   });
 
   await page.goto("/trips");
@@ -59,6 +75,22 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
     page.getByText(/Lisbon, 0 visible itinerary rows and 0 saved drafts copied/),
   ).toBeVisible();
   expect(posted).toHaveLength(1);
+  await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
+  await page.getByRole("button", { name: /Add a place/ }).click();
+  await page.getByLabel("Choose KML or KMZ file").setInputFiles({
+    name: "sample.kml",
+    mimeType: "application/vnd.google-earth.kml+xml",
+    buffer: Buffer.from(
+      `<kml><Document><name>Lisbon map</name><Placemark><name>Market</name><Point><coordinates>-9.1393,38.7223</coordinates></Point></Placemark></Document></kml>`,
+    ),
+  });
+  await page.getByRole("button", { name: "Import 1 place, 0 lines and 0 areas" }).click();
+  await page.getByRole("button", { name: "Market" }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect.poll(() => accountEntries.length).toBe(1);
+  expect(replacements).toBe(1);
+  await page.goto("/trips");
   accountHasDifferentRows = true;
   await page.getByRole("button", { name: "Copy to account" }).click();
   await page
@@ -66,12 +98,13 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
     .getByRole("button", { name: "Copy trip" })
     .click();
   await expect(page.getByText(/different itinerary on your account/)).toBeVisible();
-  expect(replaced).toBe(false);
+  expect(replacements).toBe(1);
 });
 
 test("account import includes the current unsaved Edit Plan draft", async ({ page }) => {
   let accountEntries: unknown[] = [];
   let accountVersion = "1";
+  let accountTripInfo: Record<string, unknown> = {};
   let accountDraft: { baseVersion: string; revision: string; visits: unknown } | null = null;
   let copiedDraft: {
     baseVersion?: string;
@@ -92,6 +125,7 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
     if (typeof input !== "object" || input === null) {
       throw new Error("Expected trip object");
     }
+    accountTripInfo = input as Record<string, unknown>;
 
     return route.fulfill({
       contentType: "application/json",
@@ -101,7 +135,7 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await page.route("**/api/trips/*", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ version: accountVersion }),
+      body: JSON.stringify({ ...accountTripInfo, version: accountVersion }),
     }),
   );
   await page.route("**/api/trips/*/entries?*", (route) =>
@@ -181,6 +215,14 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await page.goto("/trips");
   await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
   await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("uroute.account-draft-proof.v1.")) {
+        const proof = JSON.parse(localStorage.getItem(key) ?? "null") as Record<string, unknown>;
+        localStorage.setItem(key, JSON.stringify({ ...proof, baseVersion: "1" }));
+      }
+    }
+  });
   await page.getByRole("button", { name: "Edit time and note for Market" }).click();
   const details = page.getByRole("dialog", { name: "Market" });
   await details.getByLabel("Visit time").fill("09:45");
@@ -237,19 +279,21 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await expect(page.getByText(/1 saved draft copied/)).toBeVisible();
   expect(copiedDraft).toMatchObject({ revision: "1", visits: [{ notes: "After lunch" }] });
   expect(accountDraft).toMatchObject({ revision: "2" });
-  accountEntries = [];
-  accountVersion = "3";
-  await page.getByRole("button", { name: "Copy to account" }).click();
-  await page
-    .getByRole("dialog", { name: "Copy Lisbon to your account?" })
-    .getByRole("button", { name: "Copy trip" })
-    .click();
-  await expect(page.getByText(/different itinerary on your account/)).toBeVisible();
-  expect(accountEntries).toHaveLength(0);
   await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
   await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => accountDraft).toBeNull();
+  await expect
+    .poll(() => (accountEntries[0] as { detail?: string } | undefined)?.detail)
+    .toBe("After lunch");
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("uroute.account-draft-proof.v1.")) {
+        const proof = JSON.parse(localStorage.getItem(key) ?? "null") as Record<string, unknown>;
+        localStorage.setItem(key, JSON.stringify({ ...proof, baseVersion: "2" }));
+      }
+    }
+  });
   await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
   await page.getByRole("button", { name: "Edit time and note for Market" }).click();
   await page.getByRole("dialog", { name: "Market" }).getByLabel("Visit note").fill("Dinner");
@@ -257,4 +301,15 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await expect
     .poll(() => (accountDraft?.visits as Array<{ notes: string }> | undefined)?.[0]?.notes)
     .toBe("Dinner");
+  await page.getByRole("button", { name: "Back to Plan" }).click();
+  await page.goto("/trips");
+  accountEntries = [];
+  accountVersion = "4";
+  await page.getByRole("button", { name: "Copy to account" }).click();
+  await page
+    .getByRole("dialog", { name: "Copy Lisbon to your account?" })
+    .getByRole("button", { name: "Copy trip" })
+    .click();
+  await expect(page.getByText(/different itinerary on your account/)).toBeVisible();
+  expect(accountEntries).toHaveLength(0);
 });
