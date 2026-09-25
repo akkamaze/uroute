@@ -1,0 +1,76 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-uroute-app
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: uroute-app
+      HOST_IP: 192.168.31.113
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Docker tools
+        run: |
+          docker version --format '{{.Server.Version}}'
+          docker compose version
+
+      - name: Write runtime configuration
+        env:
+          APP_ENV: ${{ secrets.APP_ENV }}
+          DATABASE_ENV: ${{ secrets.DATABASE_ENV }}
+        run: |
+          umask 077
+          test -n "$APP_ENV" && test -n "$DATABASE_ENV"
+          printf '%s\n' "$APP_ENV" > "$RUNNER_TEMP/app.env"
+          printf '%s\n' "$DATABASE_ENV" > "$RUNNER_TEMP/database.env"
+          echo "APP_ENV_FILE=$RUNNER_TEMP/app.env" >> "$GITHUB_ENV"
+          echo "DATABASE_ENV_FILE=$RUNNER_TEMP/database.env" >> "$GITHUB_ENV"
+          echo "WEB_PORT=$(grep -E '^WEB_PORT=' "$RUNNER_TEMP/app.env" | cut -d= -f2)" >> "$GITHUB_ENV"
+
+      - name: Check the web port belongs to this project
+        run: |
+          docker ps --format '{{.Names}}\t{{.Ports}}'
+          owners=$(docker ps --format '{{.Names}} {{.Ports}}' | grep -E ":${WEB_PORT}->" | cut -d' ' -f1 | grep -v "^${COMPOSE_PROJECT_NAME}-web-" || true)
+          if [ -n "$owners" ]; then
+            echo "Port ${WEB_PORT} is already used by: $owners"
+            exit 1
+          fi
+
+      - name: Test and build images
+        run: docker compose --env-file "$APP_ENV_FILE" build
+
+      - name: Start database
+        run: docker compose --env-file "$APP_ENV_FILE" up -d --wait database
+
+      - name: Create application role and database
+        run: |
+          docker compose --env-file "$APP_ENV_FILE" exec -T database \
+            sh -c 'psql -U "$POSTGRES_USER" -d postgres -q' < deploy/init-database.sql
+
+      - name: Apply migrations
+        run: |
+          docker compose --env-file "$APP_ENV_FILE" run --rm -T api bun apps/api/src/auth/migrate.ts --apply
+          docker compose --env-file "$APP_ENV_FILE" run --rm -T api bun apps/api/src/trips/migrate.ts --apply
+
+      - name: Start application
+        run: docker compose --env-file "$APP_ENV_FILE" up -d --wait
+
+      - name: Check health through the published port
+        run: |
+          for attempt in $(seq 1 10); do
+            curl -sf "http://${HOST_IP}:${WEB_PORT}/health" && exit 0
+            sleep 3
+          done
+          docker compose --env-file "$APP_ENV_FILE" logs --tail 100 api web
+          exit 1
+
+      - name: Remove runtime configuration
+        if: always()
+        run: rm -f "$RUNNER_TEMP/app.env" "$RUNNER_TEMP/database.env"
