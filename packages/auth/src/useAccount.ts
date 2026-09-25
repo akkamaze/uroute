@@ -11,7 +11,7 @@ interface AccountState {
   signIn: () => void;
   signOut: () => Promise<boolean>;
   unavailable: boolean;
-  user: { email: string; name: string } | null;
+  user: { id: string; email: string; name: string } | null;
   working: boolean;
 }
 

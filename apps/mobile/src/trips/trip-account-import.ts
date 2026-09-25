@@ -33,6 +33,11 @@ interface LocalDraft {
   visits: PlannedVisit[];
 }
 
+interface AccountCopyMarker {
+  entriesDigest: string;
+  drafts: Record<string, { digest: string; revision: string }>;
+}
+
 class AccountImportError extends Error {
   constructor(
     message: string,
@@ -73,6 +78,57 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+function markerKey(ownerId: string, tripId: string): string {
+  return `uroute.account-copy.v1.${ownerId}.${tripId}`;
+}
+
+function readMarker(ownerId: string, tripId: string): AccountCopyMarker {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(markerKey(ownerId, tripId)) ?? "null");
+    if (typeof value !== "object" || value === null) {
+      return { entriesDigest: "", drafts: {} };
+    }
+    const record = value as Partial<AccountCopyMarker>;
+    const drafts: AccountCopyMarker["drafts"] = {};
+    if (typeof record.drafts === "object" && record.drafts !== null) {
+      for (const [key, item] of Object.entries(record.drafts)) {
+        if (
+          /^\d{4}-\d{2}-\d{2}:[A-Z]$/.test(key) &&
+          typeof item === "object" &&
+          item !== null &&
+          typeof item.digest === "string" &&
+          typeof item.revision === "string" &&
+          /^[1-9]\d{0,17}$/.test(item.revision)
+        ) {
+          drafts[key] = { digest: item.digest, revision: item.revision };
+        }
+      }
+    }
+
+    return {
+      entriesDigest: typeof record.entriesDigest === "string" ? record.entriesDigest : "",
+      drafts,
+    };
+  } catch {
+    return { entriesDigest: "", drafts: {} };
+  }
+}
+
+function writeMarker(ownerId: string, tripId: string, marker: AccountCopyMarker): void {
+  try {
+    localStorage.setItem(markerKey(ownerId, tripId), JSON.stringify(marker));
+  } catch {
+    // A missing marker only disables updates; it never permits an overwrite.
+  }
+}
+
+async function digest(value: unknown): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function validEntry(entry: AccountEntry): boolean {
@@ -179,8 +235,8 @@ async function remoteEntries(
   return { entries, version };
 }
 
-function sameEntries(left: readonly AccountEntry[], right: readonly AccountEntry[]): boolean {
-  const select = (entry: AccountEntry): AccountEntry => ({
+function selectEntry(entry: AccountEntry): AccountEntry {
+  return {
     sourceKey: entry.sourceKey,
     day: entry.day,
     variant: entry.variant,
@@ -191,16 +247,33 @@ function sameEntries(left: readonly AccountEntry[], right: readonly AccountEntry
     detail: entry.detail,
     area: entry.area,
     placeId: entry.placeId,
-  });
+  };
+}
 
-  return JSON.stringify(left.map(select)) === JSON.stringify(right.map(select));
+function sameEntries(left: readonly AccountEntry[], right: readonly AccountEntry[]): boolean {
+  return JSON.stringify(left.map(selectEntry)) === JSON.stringify(right.map(selectEntry));
+}
+
+async function getRemoteDraft(
+  path: string,
+): Promise<{ visits: PlannedVisit[]; revision: string } | null> {
+  try {
+    return await request<{ visits: PlannedVisit[]; revision: string }>(path);
+  } catch (error) {
+    if (error instanceof AccountImportError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function importLocalTripToAccount(
   trip: CreatedTrip,
+  ownerId: string,
 ): Promise<{ entries: number; drafts: number }> {
   // Validate the whole local snapshot before creating a server-side trip.
   const { entries, drafts } = await localSnapshot(trip);
+  const marker = readMarker(ownerId, trip.id);
   const saved = await request<AccountTrip>("/api/trips", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -212,14 +285,17 @@ export async function importLocalTripToAccount(
     }),
   });
   const remote = await remoteEntries(saved.id);
+  const remoteDigest = await digest(remote.entries.map(selectEntry));
   if (!sameEntries(remote.entries, entries) && remote.entries.length > 0) {
-    throw new AccountImportError(
-      "This trip already has a different itinerary on your account. Nothing was overwritten.",
-      409,
-    );
+    if (marker.entriesDigest !== remoteDigest) {
+      throw new AccountImportError(
+        "This trip already has a different itinerary on your account. Nothing was overwritten.",
+        409,
+      );
+    }
   }
   let version = remote.version;
-  if (!sameEntries(remote.entries, entries) && entries.length > 0) {
+  if (!sameEntries(remote.entries, entries)) {
     const updated = await request<{ tripVersion: string }>(
       `/api/trips/${encodeURIComponent(saved.id)}/entries`,
       {
@@ -230,30 +306,62 @@ export async function importLocalTripToAccount(
     );
     version = updated.tripVersion;
   }
+  marker.entriesDigest = await digest(entries.map(selectEntry));
+  writeMarker(ownerId, trip.id, marker);
   for (const draft of drafts) {
+    const draftKey = `${draft.day}:${draft.variant}`;
     const path = `/api/trips/${encodeURIComponent(saved.id)}/drafts/${draft.day}/${draft.variant}`;
-    let known: { visits: PlannedVisit[] } | null = null;
-    try {
-      known = await request<{ visits: PlannedVisit[] }>(path);
-    } catch (error) {
-      if (!(error instanceof AccountImportError) || error.status !== 404) {
-        throw error;
-      }
-    }
+    const known = await getRemoteDraft(path);
+    const localDigest = await digest(draft.visits);
     if (known) {
-      if (visitsSignature(known.visits) !== visitsSignature(draft.visits)) {
+      const knownDigest = await digest(known.visits);
+      if (knownDigest === localDigest) {
+        marker.drafts[draftKey] = { digest: localDigest, revision: known.revision };
+        writeMarker(ownerId, trip.id, marker);
+        continue;
+      }
+      const previous = marker.drafts[draftKey];
+      if (!previous || previous.digest !== knownDigest || previous.revision !== known.revision) {
         throw new AccountImportError(
           "A different draft already exists on your account. Nothing was overwritten.",
           409,
         );
       }
-      continue;
     }
-    await request(path, {
+    const updated = await request<{ revision: string }>(path, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ baseVersion: version, revision: null, visits: draft.visits }),
+      body: JSON.stringify({
+        baseVersion: version,
+        revision: known?.revision ?? null,
+        visits: draft.visits,
+      }),
     });
+    marker.drafts[draftKey] = { digest: localDigest, revision: updated.revision };
+    writeMarker(ownerId, trip.id, marker);
+  }
+  const localDraftKeys = new Set(drafts.map((draft) => `${draft.day}:${draft.variant}`));
+  for (const [draftKey, previous] of Object.entries(marker.drafts)) {
+    if (localDraftKeys.has(draftKey)) {
+      continue;
+    }
+    const [day, variant] = draftKey.split(":");
+    if (!day || !variant) {
+      continue;
+    }
+    const path = `/api/trips/${encodeURIComponent(saved.id)}/drafts/${day}/${variant}`;
+    const known = await getRemoteDraft(path);
+    if (
+      known &&
+      (known.revision !== previous.revision || (await digest(known.visits)) !== previous.digest)
+    ) {
+      throw new AccountImportError("A draft changed on your account. Nothing was deleted.", 409);
+    }
+    if (known) {
+      await request(`${path}?revision=${encodeURIComponent(known.revision)}`, { method: "DELETE" });
+    }
+    delete marker.drafts[draftKey];
+    writeMarker(ownerId, trip.id, marker);
   }
 
   return { entries: entries.length, drafts: drafts.length };

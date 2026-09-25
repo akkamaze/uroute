@@ -253,7 +253,7 @@ export function TripsPage(): React.JSX.Element {
     setImportingToAccount(true);
     setAccountMessage("");
     try {
-      const copied = await importLocalTripToAccount(tripToImport);
+      const copied = await importLocalTripToAccount(tripToImport, account.user.id);
       setAccountMessage(
         `${tripToImport.name}, ${copied.entries} visible itinerary ${copied.entries === 1 ? "row" : "rows"} and ${copied.drafts} saved ${copied.drafts === 1 ? "draft" : "drafts"} copied to your account. Imported map pins and edit history remain on this device.`,
       );

@@ -70,6 +70,9 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
 });
 
 test("account import includes the current unsaved Edit Plan draft", async ({ page }) => {
+  let accountEntries: unknown[] = [];
+  let accountVersion = "1";
+  let accountDraft: { revision: string; visits: unknown } | null = null;
   let copiedDraft: {
     baseVersion?: string;
     revision?: string | null;
@@ -98,28 +101,48 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await page.route("**/api/trips/*/entries?*", (route) =>
     route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ entries: [], tripVersion: "1" }),
+      body: JSON.stringify({ entries: accountEntries, tripVersion: accountVersion }),
     }),
   );
-  await page.route("**/api/trips/*/entries", (route) =>
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ entries: [], tripVersion: "2" }),
-    }),
-  );
-  await page.route("**/api/trips/*/drafts/*/*", (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  await page.route("**/api/trips/*/entries", (route) => {
+    const input: unknown = route.request().postDataJSON();
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      !("entries" in input) ||
+      !Array.isArray(input.entries)
+    ) {
+      throw new Error("Expected itinerary entries");
     }
-    const payload: unknown = route.request().postDataJSON();
-    if (typeof payload !== "object" || payload === null) {
-      throw new Error("Expected draft object");
-    }
-    copiedDraft = payload;
+    accountEntries = input.entries;
+    accountVersion = String(Number(accountVersion) + 1);
 
     return route.fulfill({
       contentType: "application/json",
-      body: JSON.stringify({ revision: "1" }),
+      body: JSON.stringify({ entries: accountEntries, tripVersion: accountVersion }),
+    });
+  });
+  await page.route("**/api/trips/*/drafts/*/*", (route) => {
+    if (route.request().method() === "GET") {
+      return route.fulfill(
+        accountDraft
+          ? { contentType: "application/json", body: JSON.stringify(accountDraft) }
+          : { status: 404, contentType: "application/json", body: "{}" },
+      );
+    }
+    const payload: unknown = route.request().postDataJSON();
+    if (typeof payload !== "object" || payload === null || !("visits" in payload)) {
+      throw new Error("Expected draft object");
+    }
+    copiedDraft = payload;
+    accountDraft = {
+      revision: String(Number(accountDraft?.revision ?? "0") + 1),
+      visits: payload.visits,
+    };
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(accountDraft),
     });
   });
 
@@ -142,6 +165,7 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await page.getByRole("button", { name: "Market" }).click();
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.locator(".imported-page__notice")).toContainText("Market added");
   await page.goto("/trips");
   await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
   await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
@@ -151,6 +175,7 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await details.getByLabel("Visit note").fill("Before lunch");
   await details.getByRole("button", { name: "Apply" }).click();
   await page.getByRole("button", { name: "Back to Plan" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
   await page.goto("/trips");
   await page.getByRole("button", { name: "Copy to account" }).click();
   await page
@@ -163,4 +188,20 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
     revision: null,
     visits: [{ time: "09:45", notes: "Before lunch" }],
   });
+  await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Edit time and note for Market" }).click();
+  await page.getByRole("dialog", { name: "Market" }).getByLabel("Visit note").fill("After lunch");
+  await page.getByRole("dialog", { name: "Market" }).getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Back to Plan" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
+  await page.goto("/trips");
+  await page.getByRole("button", { name: "Copy to account" }).click();
+  await page
+    .getByRole("dialog", { name: "Copy Lisbon to your account?" })
+    .getByRole("button", { name: "Copy trip" })
+    .click();
+  await expect(page.getByText(/1 saved draft copied/)).toBeVisible();
+  expect(copiedDraft).toMatchObject({ revision: "1", visits: [{ notes: "After lunch" }] });
+  expect(accountDraft).toMatchObject({ revision: "2" });
 });
