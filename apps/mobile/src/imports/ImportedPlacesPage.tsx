@@ -44,6 +44,7 @@ import {
   addAccountPlanPlace,
   loadAccountPlanDay,
   loadAccountTrips,
+  saveAccountPlaceCategory,
 } from "../plan/account-plan";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
@@ -989,11 +990,22 @@ export function ImportedPlacesPage(): React.JSX.Element {
     setCategorySaving(true);
     setError("");
     try {
-      const updated = await saveImportedPlaceCategory(selectedPlace.id, categoryOverride);
-      setPlaces((current) => current.map((point) => (point.id === updated.id ? updated : point)));
+      if (tripPoints.includes(selectedPlace) && requestedTrip !== null) {
+        const updated = await saveAccountPlaceCategory(
+          requestedTrip,
+          selectedPlace,
+          categoryOverride,
+        );
+        setTripPoints((current) =>
+          current.map((point) => (point.id === updated.id ? updated : point)),
+        );
+      } else {
+        const updated = await saveImportedPlaceCategory(selectedPlace.id, categoryOverride);
+        setPlaces((current) => current.map((point) => (point.id === updated.id ? updated : point)));
+      }
       setCategoryPickerOpen(false);
     } catch {
-      setError("This category could not be saved on this device.");
+      setError("This category could not be saved.");
     } finally {
       setCategorySaving(false);
     }

@@ -137,6 +137,14 @@ test("opening a server trip stop shows its details with directions", async ({ pa
   await page.route(`**/api/trips/${tripId}`, (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
   );
+  const placeSaves: { category: string | null }[] = [];
+  await page.route(`**/api/trips/${tripId}/places`, (route) => {
+    const saved = route.request().postDataJSON() as (typeof entries)[number]["place"];
+    placeSaves.push(saved);
+    entries[0]!.place = saved;
+
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(saved) });
+  });
   await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -155,4 +163,27 @@ test("opening a server trip stop shows its details with directions", async ({ pa
       name: "Directions to Senso-ji in Google Maps (opens another app or tab)",
     }),
   ).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796");
+  await page.getByRole("button", { name: "Category: Temple / Shrine. Change category" }).click();
+  await page
+    .getByRole("group", { name: "Choose place category" })
+    .getByRole("button", { name: "Museum" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Category: Museum. Change category" }),
+  ).toBeVisible();
+  expect(placeSaves).toEqual([
+    {
+      sourceKey: "pin-1",
+      name: "Senso-ji",
+      latitude: 35.715,
+      longitude: 139.796,
+      category: "museum",
+      imageUrl: null,
+      notes: null,
+    },
+  ]);
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Category: Museum. Change category" }),
+  ).toBeVisible();
 });

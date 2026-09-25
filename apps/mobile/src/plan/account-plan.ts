@@ -1,6 +1,6 @@
 import type { ImportedPoint } from "../imports/parse-place-file";
 import type { ItineraryEntry } from "../imports/itinerary-sheet";
-import { isPlaceCategory } from "../places/place-category";
+import { isPlaceCategory, type PlaceCategory } from "../places/place-category";
 import { effectivePlaceCategory } from "../places/place-category";
 import type { CreatedTrip } from "../trips/trip-store";
 
@@ -160,28 +160,60 @@ export async function saveAccountPlanDay(
   });
 }
 
+type AccountPlace = NonNullable<AccountPlanEntry["place"]>;
+
+function accountPlacePoint(place: AccountPlace): ImportedPoint | null {
+  if (place.latitude === null || place.longitude === null) {
+    return null;
+  }
+
+  return {
+    id: place.sourceKey,
+    sourceKey: place.sourceKey,
+    sourceFile: "account-plan",
+    folder: "Imported trip",
+    name: place.name,
+    description: place.notes ?? "",
+    latitude: place.latitude,
+    longitude: place.longitude,
+    styleRef: "",
+    ...(isPlaceCategory(place.category) ? { categoryOverride: place.category } : {}),
+    mediaReferences: place.imageUrl ? [place.imageUrl] : [],
+  };
+}
+
 export function accountPlanPoints(entries: readonly AccountPlanEntry[]): ImportedPoint[] {
   return entries.flatMap(({ place }) => {
-    if (!place || place.latitude === null || place.longitude === null) {
-      return [];
-    }
+    const point = place ? accountPlacePoint(place) : null;
 
-    return [
-      {
-        id: place.sourceKey,
-        sourceKey: place.sourceKey,
-        sourceFile: "account-plan",
-        folder: "Imported trip",
-        name: place.name,
-        description: place.notes ?? "",
-        latitude: place.latitude,
-        longitude: place.longitude,
-        styleRef: "",
-        ...(isPlaceCategory(place.category) ? { categoryOverride: place.category } : {}),
-        mediaReferences: place.imageUrl ? [place.imageUrl] : [],
-      },
-    ];
+    return point ? [point] : [];
   });
+}
+
+export async function saveAccountPlaceCategory(
+  tripId: string,
+  point: ImportedPoint,
+  category: PlaceCategory | null,
+): Promise<ImportedPoint> {
+  const saved = await request<AccountPlace>(`/api/trips/${encodeURIComponent(tripId)}/places`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sourceKey: point.sourceKey,
+      name: point.name,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      category,
+      imageUrl: point.mediaReferences[0] ?? null,
+      notes: point.description || null,
+    }),
+  });
+  const updated = accountPlacePoint(saved);
+  if (!updated) {
+    throw new Error("The saved place has no coordinates.");
+  }
+
+  return updated;
 }
 
 export function accountPlanItinerary(
