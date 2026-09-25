@@ -5,6 +5,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { BookOpen, ChevronRight, PenLine, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useAppMode, type AppMode } from "../app-mode";
 import "./journal.css";
 
 interface JournalDraft {
@@ -14,10 +15,13 @@ interface JournalDraft {
   title: string;
 }
 const JOURNAL_DRAFTS_KEY = "uroute.mock.journal-drafts";
+const REAL_JOURNAL_DRAFTS_KEY = "uroute.real.journal-drafts.v1";
 
-function loadDrafts(): readonly JournalDraft[] {
+function loadDrafts(mode: AppMode): readonly JournalDraft[] {
   try {
-    const stored = window.localStorage.getItem(JOURNAL_DRAFTS_KEY);
+    const stored = window.localStorage.getItem(
+      mode === "mock" ? JOURNAL_DRAFTS_KEY : REAL_JOURNAL_DRAFTS_KEY,
+    );
     if (stored === null) {
       return [];
     }
@@ -202,14 +206,19 @@ function JournalEditor({
 }
 
 export function JournalPage(): React.JSX.Element {
+  const mode = useAppMode();
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/journal" });
   const editorOpen = search.editor === "open";
-  const [drafts, setDrafts] = useState<readonly JournalDraft[]>(loadDrafts);
+  const [drafts, setDrafts] = useState<readonly JournalDraft[]>(() => loadDrafts(mode));
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const openedHereRef = useRef(false);
   const wasEditorOpenRef = useRef(false);
   const activeDraft = drafts.find((draft) => draft.id === search.draft);
+
+  useEffect(() => {
+    setDrafts(loadDrafts(mode));
+  }, [mode]);
 
   useEffect(() => {
     if (editorOpen) {
@@ -245,7 +254,10 @@ export function JournalPage(): React.JSX.Element {
       ? drafts.map((item) => (item.id === draft.id ? draft : item))
       : [draft, ...drafts];
     try {
-      window.localStorage.setItem(JOURNAL_DRAFTS_KEY, JSON.stringify(nextDrafts));
+      window.localStorage.setItem(
+        mode === "mock" ? JOURNAL_DRAFTS_KEY : REAL_JOURNAL_DRAFTS_KEY,
+        JSON.stringify(nextDrafts),
+      );
     } catch {
       return false;
     }

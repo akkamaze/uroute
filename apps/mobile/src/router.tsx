@@ -3,14 +3,45 @@ import {
   createRoute,
   createRouter,
   lazyRouteComponent,
+  redirect,
 } from "@tanstack/react-router";
 
+import { getAppMode } from "./app-mode";
 import { AppRoot, MobileShell, RootRedirect } from "./routes";
 import { TripsPage } from "./trips/TripsPage";
 import { isKyotoDay, type KyotoDay } from "./plan/plan-store";
 import { FRIDAY_STOPS } from "./plan/plan-data";
 import { isMapDestination, type ImportDestinationTrip } from "./imports/map-destination";
 import { isBookingId, type Booking } from "./plan/bookings-data";
+import { loadCreatedTrips } from "./trips/trip-store";
+
+function firstRealTripId(): string | undefined {
+  const today = new Date().toISOString().slice(0, 10);
+  const trips = loadCreatedTrips();
+  const upcoming = trips
+    .filter((trip) => trip.endDate >= today)
+    .sort((left, right) => left.startDate.localeCompare(right.startDate));
+
+  return (
+    upcoming[0]?.id ?? trips.sort((left, right) => right.endDate.localeCompare(left.endDate))[0]?.id
+  );
+}
+
+function requireReal(): ReturnType<typeof redirect> | undefined {
+  if (getAppMode() !== "real") {
+    return redirect({ to: "/plan" });
+  }
+
+  return undefined;
+}
+
+function requireMock(): ReturnType<typeof redirect> | undefined {
+  if (getAppMode() !== "mock") {
+    return redirect({ to: "/trips" });
+  }
+
+  return undefined;
+}
 
 interface LoginSearch {
   authError?: "1";
@@ -92,6 +123,17 @@ const tripsRoute = createRoute({
 const planRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan",
+  beforeLoad: () => {
+    if (getAppMode() === "real") {
+      const tripId = firstRealTripId();
+
+      return tripId
+        ? redirect({ to: "/plan/trip/$tripId", params: { tripId } })
+        : redirect({ to: "/trips" });
+    }
+
+    return undefined;
+  },
   validateSearch: (
     search: Record<string, unknown>,
   ): { day?: KyotoDay; members?: "open"; stop?: string; map?: "full"; stress?: "1200" } => ({
@@ -111,6 +153,13 @@ const planRoute = createRoute({
 const mapsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/maps",
+  beforeLoad: () => {
+    if (getAppMode() === "mock") {
+      return redirect({ to: "/places" });
+    }
+
+    return undefined;
+  },
   validateSearch: (
     search: Record<string, unknown>,
   ): {
@@ -133,6 +182,7 @@ const mapsRoute = createRoute({
 const createdTripPlanRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/trip/$tripId",
+  beforeLoad: requireReal,
   validateSearch: (search: Record<string, unknown>): { day?: string; map?: "full" } => ({
     ...(typeof search.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.day)
       ? { day: search.day }
@@ -145,6 +195,7 @@ const createdTripPlanRoute = createRoute({
 const createdTripBookingsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/trip/$tripId/bookings",
+  beforeLoad: requireReal,
   validateSearch: (search: Record<string, unknown>): { booking?: string; add?: "open" } => ({
     ...(typeof search.booking === "string" && search.booking.length < 120
       ? { booking: search.booking }
@@ -157,6 +208,7 @@ const createdTripBookingsRoute = createRoute({
 const createdTripExpensesRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/trip/$tripId/expenses",
+  beforeLoad: requireReal,
   validateSearch: (search: Record<string, unknown>): { editor?: "open" } => ({
     ...(search.editor === "open" ? { editor: "open" as const } : {}),
   }),
@@ -166,12 +218,23 @@ const createdTripExpensesRoute = createRoute({
 const kantoPlanRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/kanto",
+  beforeLoad: () => {
+    return redirect({ to: "/trips" });
+  },
   component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
 });
 
 const editPlanRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/plan/edit",
+  beforeLoad: ({ search }) => {
+    const createdTrip = typeof search.tripId === "string";
+    if (createdTrip !== (getAppMode() === "real")) {
+      return redirect({ to: "/trips" });
+    }
+
+    return undefined;
+  },
   validateSearch: (search: Record<string, unknown>): EditPlanSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(typeof search.tripId === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(search.tripId)
@@ -206,6 +269,7 @@ const bookingsRoute = createRoute({
 const tripBookingsRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/bookings",
+  beforeLoad: requireMock,
   validateSearch: (
     search: Record<string, unknown>,
   ): { booking?: Booking["id"]; members?: "open"; add?: "open" } => ({
@@ -219,6 +283,7 @@ const tripBookingsRoute = createRoute({
 const expensesRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/expenses",
+  beforeLoad: requireMock,
   validateSearch: (search: Record<string, unknown>): EditorSearch & { members?: "open" } =>
     search.members === "open"
       ? { members: "open" }
@@ -231,6 +296,13 @@ const expensesRoute = createRoute({
 const placesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/places",
+  beforeLoad: () => {
+    if (getAppMode() === "real") {
+      return redirect({ to: "/maps" });
+    }
+
+    return undefined;
+  },
   validateSearch: (search: Record<string, unknown>): PlaceSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
     ...(typeof search.place === "string" ? { place: search.place } : {}),

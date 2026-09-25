@@ -1,8 +1,10 @@
 import { ArrowLeft, Compass, Hotel, Plane, Ticket, TrainFront, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useAppMode } from "../app-mode";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
+import { loadCreatedTrips } from "../trips/trip-store";
 import { trips, type TripSummary } from "../trips/trips-data";
 import type { Booking } from "./bookings-data";
 import {
@@ -85,6 +87,22 @@ export function AddBookingDialog({
   onClose,
   onAdded,
 }: AddBookingDialogProps): React.JSX.Element {
+  const mode = useAppMode();
+  const availableTrips: readonly TripSummary[] =
+    mode === "mock"
+      ? trips
+      : loadCreatedTrips().map((created) => ({
+          id: created.id,
+          name: created.name,
+          startDay: created.startDate,
+          endDay: created.endDate,
+          dateLabel: `${created.startDate}–${created.endDate}`,
+          durationLabel: "",
+          featured: false,
+          imageAlt: "",
+          imageSrc: "",
+          period: "upcoming",
+        }));
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [draft, setDraft] = useState(() =>
@@ -149,8 +167,8 @@ export function AddBookingDialog({
       category,
       endDay:
         category === "stay" && current.endDay === current.startDay
-          ? ((trip ?? trips.find((candidate) => candidate.id === current.tripId))?.endDay ??
-            current.endDay)
+          ? ((trip ?? availableTrips.find((candidate) => candidate.id === current.tripId))
+              ?.endDay ?? current.endDay)
           : current.endDay,
     }));
     setError(null);
@@ -158,9 +176,9 @@ export function AddBookingDialog({
   }
 
   function selectTrip(tripId: string): void {
-    const selected = trips.find((candidate) => candidate.id === tripId);
+    const selected = availableTrips.find((candidate) => candidate.id === tripId);
     setDraft((current) => {
-      const previous = trips.find((candidate) => candidate.id === current.tripId);
+      const previous = availableTrips.find((candidate) => candidate.id === current.tripId);
       const useSuggestedDate = !current.startDay || current.startDay === previous?.startDay;
 
       return {
@@ -322,7 +340,7 @@ export function AddBookingDialog({
                 value={draft.tripId}
               >
                 <option value="">Choose a trip</option>
-                {trips.map((candidate) => (
+                {availableTrips.map((candidate) => (
                   <option key={candidate.id} value={candidate.id}>
                     {candidate.name} · {candidate.dateLabel}
                   </option>

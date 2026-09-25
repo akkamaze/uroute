@@ -9,8 +9,10 @@ import {
   LogOut,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { setAppMode, useAppMode, type AppMode } from "../app-mode";
+import { loadCreatedTrips } from "../trips/trip-store";
 import { InstallHelpDialog } from "../pwa/InstallHelpDialog";
 import { useInstallState } from "../pwa/install-state";
 import "./account.css";
@@ -19,6 +21,8 @@ export function AccountPage(): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/user" });
   const account = useAccount();
+  const mode = useAppMode();
+  const [modeError, setModeError] = useState("");
   const installation = useInstallState();
   const installOpen = search.install === "open";
   const installButtonRef = useRef<HTMLButtonElement>(null);
@@ -58,6 +62,16 @@ export function AccountPage(): React.JSX.Element {
     void navigate({ to: "/login" });
   }
 
+  function selectMode(next: AppMode): void {
+    try {
+      setAppMode(next);
+      setModeError("");
+      void navigate({ to: "/trips" });
+    } catch {
+      setModeError("Could not save this mode on your device.");
+    }
+  }
+
   const initial = account.user?.name.trim().slice(0, 1).toUpperCase() || "•";
 
   return (
@@ -68,24 +82,46 @@ export function AccountPage(): React.JSX.Element {
 
       <section aria-label="Profile" className="account-profile">
         <span aria-hidden="true" className="account-profile__avatar">
-          {account.loading ? "" : initial}
+          {mode === "mock" ? "M" : account.loading ? "" : initial}
         </span>
-        <h2>{account.loading ? "Checking your account…" : (account.user?.name ?? "Guest")}</h2>
+        <h2>
+          {mode === "mock"
+            ? "Mock mode"
+            : account.loading
+              ? "Checking your account…"
+              : (account.user?.name ?? "Guest")}
+        </h2>
         <p>
-          {account.user?.email ??
-            (account.unavailable
-              ? "Account service is unavailable"
-              : "Sign in to use your account across devices")}
+          {mode === "mock"
+            ? "Sample trips only. Your data is hidden."
+            : (account.user?.email ??
+              (account.unavailable
+                ? "Account service is unavailable"
+                : "Sign in to use your account across devices"))}
         </p>
       </section>
 
-      {(account.unavailable || account.actionError) && (
+      {mode === "real" && (account.unavailable || account.actionError) && (
         <p className="account-page__message" role="alert">
           {account.unavailable
             ? "We could not check your account. Please try again."
             : account.actionError}
         </p>
       )}
+
+      <div aria-label="App mode" className="account-mode" role="group">
+        <button aria-pressed={mode === "real"} onClick={() => selectMode("real")} type="button">
+          My trips
+        </button>
+        <button aria-pressed={mode === "mock"} onClick={() => selectMode("mock")} type="button">
+          Mock
+        </button>
+      </div>
+      {modeError ? (
+        <p className="account-page__message" role="alert">
+          {modeError}
+        </p>
+      ) : null}
 
       <nav aria-label="Account" className="account-menu">
         <Link to="/trips">
@@ -94,7 +130,11 @@ export function AccountPage(): React.JSX.Element {
           </span>
           <span className="account-menu__copy">
             <strong>Your trips</strong>
-            <span>2 upcoming trips</span>
+            <span>
+              {mode === "mock"
+                ? "2 sample trips"
+                : `${loadCreatedTrips().length} saved ${loadCreatedTrips().length === 1 ? "trip" : "trips"}`}
+            </span>
           </span>
           <ChevronRight aria-hidden="true" size={19} strokeWidth={1.8} />
         </Link>
@@ -123,7 +163,7 @@ export function AccountPage(): React.JSX.Element {
           <ChevronRight aria-hidden="true" size={19} strokeWidth={1.8} />
         </button>
 
-        {account.unavailable ? (
+        {mode === "mock" ? null : account.unavailable ? (
           <button disabled={account.working} onClick={account.retry} type="button">
             <span className="account-menu__icon">
               <RefreshCw aria-hidden="true" size={22} strokeWidth={1.8} />

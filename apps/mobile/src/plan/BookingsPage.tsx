@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { useAppMode } from "../app-mode";
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { trips, type TripSummary } from "../trips/trips-data";
 import { loadCreatedTrips, type CreatedTrip } from "../trips/trip-store";
@@ -230,13 +231,21 @@ function BookingScreen({
   scope: "all" | "trip";
   createdTrip?: CreatedTrip;
 }): React.JSX.Element {
+  const mode = useAppMode();
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
   const bookingState = useBookings();
   const route = scope === "all" ? "/bookings" : "/plan/bookings";
   const activeTrip = createdTrip ? createdTripSummary(createdTrip) : PLAN_TRIP;
+  const realTripIds = new Set(loadCreatedTrips().map((trip) => trip.id));
   const scopedBookings =
-    scope === "all" ? bookingState.bookings : bookingsForTrip(bookingState.bookings, activeTrip);
+    scope === "all"
+      ? bookingState.bookings.filter((booking) =>
+          mode === "mock"
+            ? trips.some((trip) => trip.id === booking.tripId)
+            : booking.origin === "manual" && realTripIds.has(booking.tripId),
+        )
+      : bookingsForTrip(bookingState.bookings, activeTrip);
   const selectedBooking = scopedBookings.find((booking) => booking.id === search.booking);
   const addOpen = search.add === "open";
   const dialogRef = useRef<HTMLDialogElement>(null);

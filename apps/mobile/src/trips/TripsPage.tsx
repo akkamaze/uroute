@@ -7,6 +7,7 @@ import { useAccount } from "@uroute/auth/useAccount";
 import { ChevronRight, ClipboardCheck, MapPin, Plus, Search, Tickets, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { useAppMode } from "../app-mode";
 import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import { createTrip, loadCreatedTrips, type CreatedTrip } from "./trip-store";
@@ -213,6 +214,7 @@ function BeforeYouGo({
   );
 }
 export function TripsPage(): React.JSX.Element {
+  const mode = useAppMode();
   const account = useAccount();
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/trips" });
@@ -248,7 +250,7 @@ export function TripsPage(): React.JSX.Element {
   const [importingToAccount, setImportingToAccount] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
   const accountDialogRef = useRef<HTMLDialogElement>(null);
-  const newTripOpen = search.newTrip === "open";
+  const newTripOpen = mode === "real" && search.newTrip === "open";
   const newTripButtonRef = useRef<HTMLButtonElement>(null);
   const newTripOpenedHereRef = useRef(false);
   const newTripWasOpenRef = useRef(false);
@@ -261,10 +263,14 @@ export function TripsPage(): React.JSX.Element {
   const destinationRef = useRef<HTMLInputElement>(null);
   const resultsScrollRef = useRef<HTMLDivElement>(null);
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleTrips = trips.filter(
-    (trip) => trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
-  );
-  const visibleCreatedTrips = createdTrips
+  const visibleTrips =
+    mode === "mock"
+      ? trips.filter(
+          (trip) =>
+            trip.period === period && trip.name.toLocaleLowerCase().includes(normalizedQuery),
+        )
+      : [];
+  const visibleCreatedTrips = (mode === "real" ? createdTrips : [])
     .filter(
       (trip) =>
         trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
@@ -409,15 +415,17 @@ export function TripsPage(): React.JSX.Element {
     <section className="trips-page keyboard-search-page">
       <div className="trips-page__title">
         <h1>Your trips</h1>
-        <button
-          className="trips-page__new"
-          onClick={openNewTrip}
-          ref={newTripButtonRef}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
-          New
-        </button>
+        {mode === "real" ? (
+          <button
+            className="trips-page__new"
+            onClick={openNewTrip}
+            ref={newTripButtonRef}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={18} strokeWidth={1.8} />
+            New
+          </button>
+        ) : null}
       </div>
 
       <label className="trip-search">
@@ -486,6 +494,7 @@ export function TripsPage(): React.JSX.Element {
                 />
               );
             }
+
             return (
               <CreatedCompactTrip
                 key={trip.id}
@@ -518,15 +527,25 @@ export function TripsPage(): React.JSX.Element {
           )}
         </div>
 
-        {period === "upcoming" && normalizedQuery.length === 0 ? (
+        {period === "upcoming" &&
+        normalizedQuery.length === 0 &&
+        (mode === "mock" || visibleCreatedTrips.length > 0) ? (
           <BeforeYouGo
             onOpenPacking={openPacking}
-            tripName={createdTrips.at(-1)?.name ?? "Kyoto"}
+            tripName={mode === "mock" ? "Kyoto" : (visibleCreatedTrips[0]?.name ?? "your trip")}
           />
         ) : null}
       </div>
 
-      <PackingListDialog onClose={closePacking} open={packingOpen} />
+      <PackingListDialog
+        key={mode === "mock" ? "mock" : (visibleCreatedTrips[0]?.id ?? "real")}
+        onClose={closePacking}
+        open={packingOpen}
+        {...(mode === "real" && visibleCreatedTrips[0]
+          ? { tripId: visibleCreatedTrips[0].id }
+          : {})}
+        tripName={mode === "mock" ? "Kyoto" : (visibleCreatedTrips[0]?.name ?? "your trip")}
+      />
 
       <dialog
         aria-labelledby="trip-account-title"

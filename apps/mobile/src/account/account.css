@@ -49,6 +49,33 @@
   font-size: var(--type-body-size);
 }
 
+.account-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f3f6fa;
+}
+
+.account-mode button {
+  min-height: 42px;
+  color: var(--color-muted);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-mode button[aria-pressed="true"] {
+  color: var(--color-active);
+  background: var(--color-surface);
+  box-shadow: 0 1px 4px rgb(32 33 36 / 10%);
+}
+
 .account-menu {
   border-top: 1px solid var(--color-border);
 }

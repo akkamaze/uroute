@@ -10,7 +10,7 @@ interface PackingItem {
   label: string;
   packed: boolean;
 }
-const PACKING_KEY = "uroute.mock.packing.kyoto";
+const MOCK_PACKING_KEY = "uroute.mock.packing.kyoto";
 const DEFAULT_ITEMS: readonly PackingItem[] = [
   { id: "passport", label: "Passport or ID", packed: false },
   { id: "documents", label: "Travel documents", packed: false },
@@ -19,9 +19,9 @@ const DEFAULT_ITEMS: readonly PackingItem[] = [
   { id: "clothes", label: "Clothes and a light jacket", packed: false },
   { id: "toiletries", label: "Toiletries", packed: false },
 ];
-function loadItems(): readonly PackingItem[] {
+function loadItems(storageKey: string): readonly PackingItem[] {
   try {
-    const stored = window.localStorage.getItem(PACKING_KEY);
+    const stored = window.localStorage.getItem(storageKey);
     if (stored === null) {
       return DEFAULT_ITEMS;
     }
@@ -46,9 +46,17 @@ function loadItems(): readonly PackingItem[] {
 interface PackingListDialogProps {
   open: boolean;
   onClose: () => void;
+  tripId?: string;
+  tripName: string;
 }
-export function PackingListDialog({ open, onClose }: PackingListDialogProps): React.JSX.Element {
-  const [items, setItems] = useState<readonly PackingItem[]>(loadItems);
+export function PackingListDialog({
+  open,
+  onClose,
+  tripId,
+  tripName,
+}: PackingListDialogProps): React.JSX.Element {
+  const storageKey = tripId ? `uroute.real.packing.${tripId}` : MOCK_PACKING_KEY;
+  const [items, setItems] = useState<readonly PackingItem[]>(() => loadItems(storageKey));
   const [label, setLabel] = useState("");
   const [message, setMessage] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -85,7 +93,7 @@ export function PackingListDialog({ open, onClose }: PackingListDialogProps): Re
   function updateItems(next: readonly PackingItem[]): void {
     setItems(next);
     try {
-      window.localStorage.setItem(PACKING_KEY, JSON.stringify(next));
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
       setMessage("");
     } catch {
       setMessage("Kept for this session. Device storage is unavailable.");
@@ -133,7 +141,7 @@ export function PackingListDialog({ open, onClose }: PackingListDialogProps): Re
           <div>
             <h2 id="packing-title">Packing list</h2>
             <p>
-              Kyoto · {packedCount} of {items.length} packed
+              {tripName} · {packedCount} of {items.length} packed
             </p>
           </div>
           <button

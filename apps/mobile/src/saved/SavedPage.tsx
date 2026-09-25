@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { Bookmark, ChevronRight, MapPin, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useAppMode } from "../app-mode";
 import { displayImportedImageUrl, importedPlaceImages } from "../imports/import-media";
 import { loadImportedPlaces } from "../imports/place-library";
 import type { ImportedPoint } from "../imports/parse-place-file";
@@ -91,9 +92,15 @@ function SavedImportedRow({
 }
 
 export function SavedPage(): React.JSX.Element {
+  const mode = useAppMode();
   const [query, setQuery] = useState("");
   const [importedPlaces, setImportedPlaces] = useState<ImportedPoint[]>([]);
   useEffect(() => {
+    if (mode === "mock") {
+      setImportedPlaces([]);
+
+      return;
+    }
     let active = true;
     void loadImportedPlaces()
       .then((places) => {
@@ -106,10 +113,11 @@ export function SavedPage(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [mode]);
   const savedIds = useSavedPlaceIds();
-  const savedPlaces = FRIDAY_STOPS.filter((place) => savedIds.has(place.id));
-  const savedImportedPlaces = importedPlaces.filter((place) => savedIds.has(place.id));
+  const savedPlaces = mode === "mock" ? FRIDAY_STOPS.filter((place) => savedIds.has(place.id)) : [];
+  const savedImportedPlaces =
+    mode === "real" ? importedPlaces.filter((place) => savedIds.has(place.id)) : [];
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visiblePlaces = savedPlaces.filter((place) =>
     `${place.name} ${place.type} ${place.area}`.toLocaleLowerCase().includes(normalizedQuery),
@@ -159,9 +167,13 @@ export function SavedPage(): React.JSX.Element {
             </span>
             <h2>Save places for later</h2>
             <p>Keep ideas here while you plan your trip.</p>
-            <Link search={{ place: "kiyomizu" }} to="/places">
-              Explore places
-            </Link>
+            {mode === "mock" ? (
+              <Link search={{ place: "kiyomizu" }} to="/places">
+                Explore places
+              </Link>
+            ) : (
+              <Link to="/maps">Explore places</Link>
+            )}
           </div>
         ) : visiblePlaces.length + visibleImportedPlaces.length === 0 ? (
           <div className="saved-empty saved-empty--search">

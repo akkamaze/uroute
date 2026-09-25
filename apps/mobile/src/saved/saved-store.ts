@@ -1,41 +1,56 @@
 import { useSyncExternalStore } from "react";
 
+import { getAppMode, useAppMode } from "../app-mode";
+import { FRIDAY_STOPS } from "../plan/plan-data";
+
 const SAVED_PLACES_KEY = "uroute.mock.saved-place-ids";
+const REAL_SAVED_PLACES_KEY = "uroute.real.saved-place-ids.v1";
 const DEFAULT_SAVED_IDS = ["kiyomizu", "arabica"];
+const SAMPLE_IDS = new Set(FRIDAY_STOPS.map((place) => place.id));
 
 type SavedListener = () => void;
 
-function loadSavedIds(): ReadonlySet<string> {
+function loadSavedIds(key: string, fallback: readonly string[]): ReadonlySet<string> {
   try {
-    const stored = window.localStorage.getItem(SAVED_PLACES_KEY);
+    const stored = window.localStorage.getItem(key);
 
     if (stored === null) {
-      return new Set(DEFAULT_SAVED_IDS);
+      return new Set(fallback);
     }
 
     const parsed: unknown = JSON.parse(stored);
 
     return Array.isArray(parsed)
       ? new Set(parsed.filter((value): value is string => typeof value === "string"))
-      : new Set(DEFAULT_SAVED_IDS);
+      : new Set(fallback);
   } catch {
-    return new Set(DEFAULT_SAVED_IDS);
+    return new Set(fallback);
   }
 }
 
-let savedIds = loadSavedIds();
+const legacyIds = loadSavedIds(SAVED_PLACES_KEY, DEFAULT_SAVED_IDS);
+let snapshots = {
+  mock: legacyIds,
+  real: loadSavedIds(
+    REAL_SAVED_PLACES_KEY,
+    [...legacyIds].filter((id) => !SAMPLE_IDS.has(id)),
+  ),
+};
 const listeners = new Set<SavedListener>();
 
-function saveSnapshot(): void {
+function saveSnapshot(mode: "mock" | "real"): void {
   try {
-    window.localStorage.setItem(SAVED_PLACES_KEY, JSON.stringify([...savedIds]));
+    window.localStorage.setItem(
+      mode === "mock" ? SAVED_PLACES_KEY : REAL_SAVED_PLACES_KEY,
+      JSON.stringify([...snapshots[mode]]),
+    );
   } catch {
     // The in-memory mock remains usable when session storage is unavailable.
   }
 }
 
-function emitChange(): void {
-  saveSnapshot();
+function emitChange(mode: "mock" | "real"): void {
+  saveSnapshot(mode);
   listeners.forEach((listener) => listener());
 }
 
@@ -45,16 +60,19 @@ function subscribe(listener: SavedListener): () => void {
   return () => listeners.delete(listener);
 }
 
-function getSnapshot(): ReadonlySet<string> {
-  return savedIds;
+function getSnapshot(): typeof snapshots {
+  return snapshots;
 }
 
 export function useSavedPlaceIds(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const mode = useAppMode();
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)[mode];
 }
 
 export function toggleSavedPlace(placeId: string): void {
-  const nextIds = new Set(savedIds);
+  const mode = getAppMode();
+  const nextIds = new Set(snapshots[mode]);
 
   if (nextIds.has(placeId)) {
     nextIds.delete(placeId);
@@ -62,17 +80,18 @@ export function toggleSavedPlace(placeId: string): void {
     nextIds.add(placeId);
   }
 
-  savedIds = nextIds;
-  emitChange();
+  snapshots = { ...snapshots, [mode]: nextIds };
+  emitChange(mode);
 }
 
 export function removeSavedPlace(placeId: string): void {
-  if (!savedIds.has(placeId)) {
+  const mode = getAppMode();
+  if (!snapshots[mode].has(placeId)) {
     return;
   }
 
-  const nextIds = new Set(savedIds);
+  const nextIds = new Set(snapshots[mode]);
   nextIds.delete(placeId);
-  savedIds = nextIds;
-  emitChange();
+  snapshots = { ...snapshots, [mode]: nextIds };
+  emitChange(mode);
 }

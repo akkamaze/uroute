@@ -1,4 +1,5 @@
 import { loadCreatedTrips, tripDays } from "../trips/trip-store";
+import { getAppMode } from "../app-mode";
 
 export type ImportDestinationTrip = string;
 export interface MapDestination {
@@ -31,10 +32,9 @@ export function destinationDays(tripId: string): { day: string; label: string }[
 }
 
 export function availableDestinations(): { id: string; name: string }[] {
-  return [
-    { id: "kyoto", name: "Kyoto" },
-    ...loadCreatedTrips().map((trip) => ({ id: trip.id, name: trip.name })),
-  ];
+  return getAppMode() === "mock"
+    ? [{ id: "kyoto", name: "Kyoto" }]
+    : loadCreatedTrips().map((trip) => ({ id: trip.id, name: trip.name }));
 }
 
 export function isMapDestination(value: unknown): value is MapDestination {

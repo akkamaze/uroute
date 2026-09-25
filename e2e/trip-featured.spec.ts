@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 function isoDate(daysFromToday: number): string {
   const date = new Date();
@@ -8,7 +8,7 @@ function isoDate(daysFromToday: number): string {
 }
 
 async function createTrip(
-  page: import("@playwright/test").Page,
+  page: Page,
   name: string,
   startDate: string,
   endDate: string,
