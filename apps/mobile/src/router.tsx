@@ -130,7 +130,34 @@ const mapsRoute = createRoute({
 const createdTripPlanRoute = createRoute({
   getParentRoute: () => mobileShellRoute,
   path: "/plan/trip/$tripId",
-  component: lazyRouteComponent(() => import("./imports/KantoPlanPage"), "KantoPlanPage"),
+  validateSearch: (search: Record<string, unknown>): { day?: string; map?: "full" } => ({
+    ...(typeof search.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.day)
+      ? { day: search.day }
+      : {}),
+    ...(search.map === "full" ? { map: "full" as const } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./plan/TripPlanPage"), "TripPlanPage"),
+});
+
+const createdTripBookingsRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/trip/$tripId/bookings",
+  validateSearch: (search: Record<string, unknown>): { booking?: string; add?: "open" } => ({
+    ...(typeof search.booking === "string" && search.booking.length < 120
+      ? { booking: search.booking }
+      : {}),
+    ...(search.add === "open" ? { add: "open" as const } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./plan/BookingsPage"), "CreatedTripBookingsPage"),
+});
+
+const createdTripExpensesRoute = createRoute({
+  getParentRoute: () => mobileShellRoute,
+  path: "/plan/trip/$tripId/expenses",
+  validateSearch: (search: Record<string, unknown>): { editor?: "open" } => ({
+    ...(search.editor === "open" ? { editor: "open" as const } : {}),
+  }),
+  component: lazyRouteComponent(() => import("./plan/ExpensesPage"), "CreatedTripExpensesPage"),
 });
 
 const kantoPlanRoute = createRoute({
@@ -248,6 +275,8 @@ const mobileShellTree = mobileShellRoute.addChildren([
   planRoute,
   kantoPlanRoute,
   createdTripPlanRoute,
+  createdTripBookingsRoute,
+  createdTripExpensesRoute,
   bookingsRoute,
   tripBookingsRoute,
   expensesRoute,

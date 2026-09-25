@@ -1,10 +1,11 @@
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import "../keyboard/keyboard-dialog.css";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Hotel, Plus, TrainFront, Utensils, Wallet, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { loadCreatedTrips, type CreatedTrip } from "../trips/trip-store";
 import { TripHeader } from "./TripHeader";
 import "./expenses.css";
 
@@ -32,11 +33,61 @@ const yen = new Intl.NumberFormat("en", {
   maximumFractionDigits: 0,
 });
 
-export function ExpensesPage(): React.JSX.Element {
+const CURRENCIES =
+  typeof Intl.supportedValuesOf === "function"
+    ? Intl.supportedValuesOf("currency")
+    : ["EUR", "JPY", "THB", "USD", "ZAR"];
+
+function currencyDigits(currency: string): number {
+  return (
+    new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits ?? 2
+  );
+}
+
+function loadTripExpenses(tripId: string): Expense[] {
+  try {
+    const data: unknown = JSON.parse(
+      localStorage.getItem(`uroute.trip-expenses.${tripId}`) ?? "[]",
+    );
+
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    const rows: unknown[] = data;
+
+    return rows.filter((item): item is Expense => {
+      if (typeof item !== "object" || item === null) {
+        return false;
+      }
+      const entry = item as Partial<Expense>;
+
+      return (
+        typeof entry.id === "string" &&
+        typeof entry.amount === "number" &&
+        Number.isFinite(entry.amount) &&
+        entry.amount > 0 &&
+        CATEGORIES.some(({ id }) => id === entry.category) &&
+        typeof entry.description === "string"
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+function ExpenseScreen({ trip }: { trip?: CreatedTrip }): React.JSX.Element {
   const navigate = useNavigate();
-  const search = useSearch({ from: "/mobile-shell/expenses" });
+  const search = useSearch({ strict: false });
   const editorOpen = search.editor === "open";
-  const [expenses, setExpenses] = useState<readonly Expense[]>(INITIAL_EXPENSES);
+  const [expenses, setExpenses] = useState<readonly Expense[]>(() =>
+    trip ? loadTripExpenses(trip.id) : INITIAL_EXPENSES,
+  );
+  const [currency, setCurrency] = useState<string>(() => {
+    const stored = trip ? localStorage.getItem(`uroute.trip-currency.${trip.id}`) : null;
+
+    return trip ? (CURRENCIES.find((value) => value === stored) ?? "") : "JPY";
+  });
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<Category>("food");
@@ -48,6 +99,36 @@ export function ExpensesPage(): React.JSX.Element {
   const openedHereRef = useRef(false);
   const wasOpenRef = useRef(false);
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const money =
+    trip && currency ? new Intl.NumberFormat("en", { style: "currency", currency }) : yen;
+
+  useEffect(() => {
+    if (trip) {
+      localStorage.setItem(`uroute.trip-expenses.${trip.id}`, JSON.stringify(expenses));
+      if (currency) {
+        localStorage.setItem(`uroute.trip-currency.${trip.id}`, currency);
+      }
+    }
+  }, [currency, expenses, trip]);
+
+  function navigateExpense(open: boolean, replace = false): void {
+    if (trip) {
+      void navigate({
+        to: "/plan/trip/$tripId/expenses",
+        params: { tripId: trip.id },
+        search: open ? { editor: "open" } : {},
+        replace,
+        resetScroll: false,
+      });
+    } else {
+      void navigate({
+        to: "/expenses",
+        search: open ? { editor: "open" } : {},
+        replace,
+        resetScroll: false,
+      });
+    }
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -67,9 +148,14 @@ export function ExpensesPage(): React.JSX.Element {
   }, [editorOpen]);
 
   function openEditor(): void {
+    if (trip && !currency) {
+      setError("Choose a currency before adding an expense.");
+
+      return;
+    }
     openedHereRef.current = true;
     setNotice("");
-    void navigate({ to: "/expenses", search: { editor: "open" }, resetScroll: false });
+    navigateExpense(true);
   }
 
   function closeEditor(): void {
@@ -80,12 +166,17 @@ export function ExpensesPage(): React.JSX.Element {
     if (openedHereRef.current) {
       window.history.back();
     } else {
-      void navigate({ to: "/expenses", search: {}, replace: true, resetScroll: false });
+      navigateExpense(false, true);
     }
   }
 
   function saveExpense(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (!currency) {
+      setError("Choose a currency before adding an expense.");
+
+      return;
+    }
     const value = Number(amount);
     if (description.trim().length === 0) {
       setError("Give this expense a name.");
@@ -93,8 +184,14 @@ export function ExpensesPage(): React.JSX.Element {
 
       return;
     }
-    if (!/^\d+$/.test(amount) || !Number.isSafeInteger(value) || value < 1 || value > 9999999) {
-      setError("Enter an amount from ¥1 to ¥9,999,999, without decimals.");
+    const digits = currencyDigits(currency);
+    const amountPattern = digits === 0 ? /^\d+$/ : new RegExp(`^\\d+(?:\\.\\d{1,${digits}})?$`);
+    if (!amountPattern.test(amount) || !Number.isFinite(value) || value <= 0 || value > 9_999_999) {
+      setError(
+        digits === 0
+          ? "Enter a whole amount up to 9,999,999."
+          : `Enter an amount up to 9,999,999 with up to ${digits} decimal places.`,
+      );
 
       return;
     }
@@ -102,7 +199,7 @@ export function ExpensesPage(): React.JSX.Element {
       ...current,
       {
         id: crypto.randomUUID(),
-        amount: value,
+        amount: Number(value.toFixed(digits)),
         category,
         description: description.trim(),
       },
@@ -115,16 +212,40 @@ export function ExpensesPage(): React.JSX.Element {
 
   return (
     <section className="plan-page">
-      <TripHeader active="expenses" />
+      <TripHeader active="expenses" trip={trip} />
       <div className="trip-secondary">
         <header className="trip-secondary__heading">
           <h2>Expenses</h2>
-          <p>Planning estimate for 4 travelers</p>
+          <p>{trip ? `Planning estimate for ${trip.name}` : "Planning estimate for 4 travelers"}</p>
+          {trip ? (
+            <label>
+              Currency{" "}
+              <select
+                aria-label="Expense currency"
+                disabled={expenses.length > 0}
+                onChange={(event) => {
+                  setCurrency(event.target.value);
+                  setError("");
+                }}
+                value={currency}
+              >
+                <option value="">Choose currency</option>
+                {CURRENCIES.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              {expenses.length > 0 ? (
+                <small>Currency is fixed after the first expense.</small>
+              ) : null}
+            </label>
+          ) : null}
         </header>
         <section aria-label="Trip expense estimate" className="expense-total">
           <span>Planning estimate</span>
-          <strong>{yen.format(total)}</strong>
-          <p>4 people</p>
+          <strong>{trip && !currency ? "Choose currency" : money.format(total)}</strong>
+          {trip ? null : <p>4 people</p>}
         </section>
         <div className="expense-list">
           {expenses.map((expense) => {
@@ -141,7 +262,7 @@ export function ExpensesPage(): React.JSX.Element {
                   <h3>{details.label}</h3>
                   <p>{expense.description}</p>
                 </div>
-                <strong>{yen.format(expense.amount)}</strong>
+                <strong>{currency ? money.format(expense.amount) : expense.amount}</strong>
               </article>
             );
           })}
@@ -150,6 +271,7 @@ export function ExpensesPage(): React.JSX.Element {
           <Plus aria-hidden="true" size={20} strokeWidth={1.9} />
           Add expense
         </button>
+        {trip && !currency && error ? <p role="alert">{error}</p> : null}
         {notice.length > 0 ? (
           <p aria-live="polite" className="expense-notice">
             {notice}
@@ -181,7 +303,7 @@ export function ExpensesPage(): React.JSX.Element {
           <header>
             <div>
               <h2 id="expense-editor-title">Add expense</h2>
-              <p>Kyoto · Japanese yen</p>
+              <p>{trip ? `${trip.name} · ${currency}` : "Kyoto · Japanese yen"}</p>
             </div>
             <button
               aria-label="Close expense"
@@ -200,7 +322,7 @@ export function ExpensesPage(): React.JSX.Element {
                 enterKeyHint="next"
                 maxLength={100}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Lunch at Nishiki Market"
+                placeholder={trip ? "Expense description" : "Lunch at Nishiki Market"}
                 ref={descriptionRef}
                 value={description}
               />
@@ -208,17 +330,17 @@ export function ExpensesPage(): React.JSX.Element {
             <label className="expense-editor__field">
               Amount
               <span className="expense-editor__amount">
-                <span aria-hidden="true">¥</span>
+                <span aria-hidden="true">{trip ? "" : "¥"}</span>
                 <input
                   aria-describedby={error.length > 0 ? "expense-editor-error" : undefined}
                   enterKeyHint="done"
-                  inputMode="numeric"
-                  maxLength={7}
+                  inputMode={currencyDigits(currency || "JPY") === 0 ? "numeric" : "decimal"}
+                  maxLength={14}
                   onChange={(event) => setAmount(event.target.value)}
                   placeholder="0"
                   value={amount}
                 />
-                <span>JPY</span>
+                <span>{currency}</span>
               </span>
             </label>
             <fieldset className="expense-editor__categories">
@@ -263,4 +385,15 @@ export function ExpensesPage(): React.JSX.Element {
       </dialog>
     </section>
   );
+}
+
+export function ExpensesPage(): React.JSX.Element {
+  return <ExpenseScreen />;
+}
+
+export function CreatedTripExpensesPage(): React.JSX.Element {
+  const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId/expenses" });
+  const trip = loadCreatedTrips().find((item) => item.id === tripId);
+
+  return trip ? <ExpenseScreen trip={trip} /> : <section>Trip not found.</section>;
 }

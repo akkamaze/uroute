@@ -262,7 +262,9 @@ test("system back from Plan Add to trip returns to the selected place", async ({
 
   await expect(page).toHaveURL(/\/places\?.*place=arabica.*day=13/);
   await expect(page).not.toHaveURL(/add=open/);
-  await expect(page.getByRole("heading", { name: "% Arabica Higashiyama", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "% Arabica Higashiyama", exact: true }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to trip" })).toBeVisible();
 });
 
@@ -305,6 +307,8 @@ test("only the itinerary scrolls while plan chrome stays fixed", async ({ page }
 
 test("swipe left reveals remove and undo restores the stop", async ({ page }) => {
   await page.goto("/plan?day=13");
+  await expect(page.locator('[data-stop-id="arabica"]')).toBeVisible();
+  const initialStopCount = await page.locator("[data-stop-id]").count();
   await swipeStopLeft(page, "arabica");
 
   const remove = page.getByRole("button", {
@@ -317,7 +321,7 @@ test("swipe left reveals remove and undo restores the stop", async ({ page }) =>
 
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.locator('[data-stop-id="arabica"]')).toHaveCount(1);
-  await expect(page.locator("[data-stop-id]")).toHaveCount(3);
+  await expect(page.locator("[data-stop-id]")).toHaveCount(initialStopCount);
 });
 
 test("revealed remove action hides add on a compact viewport", async ({ page }) => {

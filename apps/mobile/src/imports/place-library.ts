@@ -291,6 +291,18 @@ export async function removeImportedVisit(
   }
 }
 
+export async function restoreImportedVisit(visit: ImportedVisit): Promise<void> {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("visits", "readwrite");
+    const done = complete(transaction);
+    transaction.objectStore("visits").put(visit);
+    await done;
+  } finally {
+    database.close();
+  }
+}
+
 export async function saveImportedVisitDetails(
   visitId: string,
   time: string,
@@ -348,14 +360,17 @@ export async function moveImportedVisit(visitId: string, direction: -1 | 1): Pro
   }
 }
 
-export async function copyLegacyKantoVisits(tripId: string): Promise<number> {
+export async function copyLegacyVisitsToTrip(
+  tripId: string,
+  tripDays: readonly string[],
+): Promise<number> {
   const database = await openDatabase();
   try {
     const read = database.transaction("visits", "readonly");
     const known = await requestResult(
       read.objectStore("visits").getAll() as IDBRequest<ImportedVisit[]>,
     );
-    const days = new Set<string>(KANTO_DAYS.map(({ date }) => date));
+    const days = new Set(tripDays);
     const existingIds = new Set(known.map(({ id }) => id));
     const additions = known
       .filter((visit) => visit.tripId === undefined && days.has(visit.day))
@@ -377,4 +392,11 @@ export async function copyLegacyKantoVisits(tripId: string): Promise<number> {
   } finally {
     database.close();
   }
+}
+
+export function copyLegacyKantoVisits(tripId: string): Promise<number> {
+  return copyLegacyVisitsToTrip(
+    tripId,
+    KANTO_DAYS.map(({ date }) => date),
+  );
 }

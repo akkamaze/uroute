@@ -1,4 +1,4 @@
-import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   ArrowLeft,
   CalendarDays,
@@ -16,7 +16,8 @@ import {
 import { useEffect, useRef, useState } from "react";
 
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
-import { trips } from "../trips/trips-data";
+import { trips, type TripSummary } from "../trips/trips-data";
+import { loadCreatedTrips, type CreatedTrip } from "../trips/trip-store";
 import { AddBookingDialog } from "./AddBookingDialog";
 import { addManualBooking, useBookings } from "./booking-store";
 import {
@@ -47,6 +48,31 @@ const FILTERS: readonly { id: BookingFilter; label: string; emptyLabel: string }
 ];
 
 const PLAN_TRIP = trips[0];
+
+function createdTripSummary(trip: CreatedTrip): TripSummary {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  const start = new Date(`${trip.startDate}T12:00:00Z`);
+  const end = new Date(`${trip.endDate}T12:00:00Z`);
+  const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+
+  return {
+    id: trip.id,
+    name: trip.name,
+    startDay: trip.startDate,
+    endDay: trip.endDate,
+    dateLabel: `${formatter.format(start)}–${formatter.format(end)}`,
+    durationLabel: `${duration} ${duration === 1 ? "day" : "days"}`,
+    featured: false,
+    imageAlt: "",
+    imageSrc: "",
+    period: trip.endDate < new Date().toISOString().slice(0, 10) ? "past" : "upcoming",
+  };
+}
 
 interface BookingItemsProps {
   bookings: readonly Booking[];
@@ -197,13 +223,20 @@ function BookingItems({ bookings, onOpen }: BookingItemsProps): React.JSX.Elemen
   );
 }
 
-function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element {
+function BookingScreen({
+  scope,
+  createdTrip,
+}: {
+  scope: "all" | "trip";
+  createdTrip?: CreatedTrip;
+}): React.JSX.Element {
   const navigate = useNavigate();
   const search = useSearch({ strict: false });
   const bookingState = useBookings();
   const route = scope === "all" ? "/bookings" : "/plan/bookings";
+  const activeTrip = createdTrip ? createdTripSummary(createdTrip) : PLAN_TRIP;
   const scopedBookings =
-    scope === "all" ? bookingState.bookings : bookingsForTrip(bookingState.bookings, PLAN_TRIP);
+    scope === "all" ? bookingState.bookings : bookingsForTrip(bookingState.bookings, activeTrip);
   const selectedBooking = scopedBookings.find((booking) => booking.id === search.booking);
   const addOpen = search.add === "open";
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -224,6 +257,20 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
   const { upcoming, past } = splitBookingTimeline(scopedBookings, filter, now);
   const pastOpen = pastPreference ?? upcoming.length === 0;
   const emptyLabel = FILTERS.find((option) => option.id === filter)?.emptyLabel ?? "bookings";
+
+  function navigateBooking(search: { add?: "open"; booking?: string }, replace = false): void {
+    if (createdTrip) {
+      void navigate({
+        to: "/plan/trip/$tripId/bookings",
+        params: { tripId: createdTrip.id },
+        search,
+        replace,
+        resetScroll: false,
+      });
+    } else {
+      void navigate({ to: route, search, replace, resetScroll: false });
+    }
+  }
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60_000);
@@ -294,20 +341,20 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
   function openAdd(): void {
     addOpenedHereRef.current = true;
     setSaveMessage("");
-    void navigate({ to: route, search: { add: "open" }, resetScroll: false });
+    navigateBooking({ add: "open" });
   }
 
   function closeAdd(): void {
     if (addOpenedHereRef.current) {
       window.history.back();
     } else {
-      void navigate({ to: route, search: {}, replace: true, resetScroll: false });
+      navigateBooking({}, true);
     }
   }
 
   function addBooking(booking: Booking): void {
     const saveResult = addManualBooking(booking);
-    const inScope = scope === "all" || bookingsForTrip([booking], PLAN_TRIP).length > 0;
+    const inScope = scope === "all" || bookingsForTrip([booking], activeTrip).length > 0;
     const visibleInFilter =
       filter === "all" ||
       (filter === "tickets" ? booking.group === "tickets" : booking.category === filter);
@@ -334,7 +381,7 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
     lastTriggerRef.current = trigger;
     openedHereRef.current = true;
     setShareMessage("");
-    void navigate({ to: route, search: { booking: booking.id }, resetScroll: false });
+    navigateBooking({ booking: booking.id });
   }
 
   function closeBooking(): void {
@@ -344,7 +391,7 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
     if (openedHereRef.current) {
       window.history.back();
     } else {
-      void navigate({ to: route, search: {}, replace: true, resetScroll: false });
+      navigateBooking({}, true);
     }
   }
 
@@ -369,7 +416,7 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
   return (
     <section className={`booking-page booking-page--${scope}`}>
       {scope === "trip" ? (
-        <TripHeader active="bookings" />
+        <TripHeader active="bookings" trip={createdTrip} />
       ) : (
         <header className="booking-page__header">
           <Link aria-label="Back to trips" className="booking-page__back" to="/trips">
@@ -636,7 +683,7 @@ function BookingScreen({ scope }: { scope: "all" | "trip" }): React.JSX.Element 
         onAdded={addBooking}
         onClose={closeAdd}
         open={addOpen}
-        trip={scope === "trip" ? PLAN_TRIP : undefined}
+        trip={scope === "trip" ? activeTrip : undefined}
       />
     </section>
   );
@@ -648,4 +695,15 @@ export function BookingsPage(): React.JSX.Element {
 
 export function TripBookingsPage(): React.JSX.Element {
   return <BookingScreen scope="trip" />;
+}
+
+export function CreatedTripBookingsPage(): React.JSX.Element {
+  const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId/bookings" });
+  const trip = loadCreatedTrips().find((item) => item.id === tripId);
+
+  return trip ? (
+    <BookingScreen createdTrip={trip} scope="trip" />
+  ) : (
+    <section>Trip not found.</section>
+  );
 }

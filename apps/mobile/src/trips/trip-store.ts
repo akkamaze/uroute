@@ -4,6 +4,7 @@ export interface CreatedTrip {
   startDate: string;
   endDate: string;
   dayOptions?: Record<string, string>;
+  rowOrder?: Record<string, string[]>;
 }
 
 const STORAGE_KEY = "uroute.created-trips.v1";
@@ -79,6 +80,51 @@ export function setTripDayOption(id: string, day: string, option: string): Creat
     throw new Error("Could not save this itinerary option.");
   }
   const updated = { ...existing, dayOptions: { ...existing.dayOptions, [day]: option } };
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
+  );
+
+  return updated;
+}
+
+export function setTripRowOrder(
+  id: string,
+  day: string,
+  option: string,
+  rowIds: readonly string[],
+): CreatedTrip {
+  const trips = loadCreatedTrips();
+  const existing = trips.find((trip) => trip.id === id);
+  if (
+    !existing ||
+    day < existing.startDate ||
+    day > existing.endDate ||
+    !/^[A-Z]$/.test(option) ||
+    rowIds.length > 10_000 ||
+    rowIds.some((rowId) => typeof rowId !== "string" || rowId.length > 160) ||
+    new Set(rowIds).size !== rowIds.length
+  ) {
+    throw new Error("Could not save this itinerary order.");
+  }
+  const key = `${day}:${option}`;
+  const updated = { ...existing, rowOrder: { ...existing.rowOrder, [key]: [...rowIds] } };
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
+  );
+
+  return updated;
+}
+
+export function clearTripRowOrder(id: string): CreatedTrip {
+  const trips = loadCreatedTrips();
+  const existing = trips.find((trip) => trip.id === id);
+  if (!existing) {
+    throw new Error("Trip not found on this device.");
+  }
+  const updated = { ...existing };
+  delete updated.rowOrder;
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),

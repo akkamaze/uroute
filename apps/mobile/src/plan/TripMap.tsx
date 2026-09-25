@@ -74,6 +74,7 @@ interface TripMapProps {
   expanded?: boolean;
   focusSelectedId?: string | null;
   frameKey?: string;
+  fallbackViewport?: MapViewport;
   initialViewport?: MapViewport | null;
   onViewportChange?: (viewport: MapViewport) => void;
   onExpandedChange?: (expanded: boolean) => void;
@@ -145,6 +146,11 @@ function framePlaces(
   animated: boolean,
   bottomInset = 0,
   geometry: MapGeometryCollection = EMPTY_MAP_GEOMETRY,
+  fallbackViewport: MapViewport = {
+    longitude: KYOTO_CENTER[0],
+    latitude: KYOTO_CENTER[1],
+    zoom: 13.4,
+  },
 ): void {
   const cameraPadding = {
     top: 104,
@@ -181,10 +187,10 @@ function framePlaces(
   }
   if (west === Number.POSITIVE_INFINITY) {
     map.easeTo({
-      center: [KYOTO_CENTER[0], KYOTO_CENTER[1]],
+      center: [fallbackViewport.longitude, fallbackViewport.latitude],
       duration: animated ? 350 : 0,
       padding: cameraPadding,
-      zoom: 13.4,
+      zoom: fallbackViewport.zoom,
     });
 
     return;
@@ -337,6 +343,7 @@ export function TripMap({
   expanded: controlledExpanded,
   focusSelectedId = null,
   frameKey,
+  fallbackViewport = { longitude: KYOTO_CENTER[0], latitude: KYOTO_CENTER[1], zoom: 13.4 },
   initialViewport = null,
   onViewportChange,
   onExpandedChange,
@@ -369,6 +376,7 @@ export function TripMap({
   const selectedIdRef = useRef(selectedId);
   const focusSelectedIdRef = useRef(focusSelectedId);
   const initialViewportRef = useRef(initialViewport);
+  const fallbackViewportRef = useRef(fallbackViewport);
   const viewportChangeRef = useRef(onViewportChange);
   const skippedRestoredFrameRef = useRef(false);
   const syncLabelPlacementRef = useRef<() => void>(() => undefined);
@@ -388,6 +396,7 @@ export function TripMap({
   selectedIdRef.current = selectedId;
   focusSelectedIdRef.current = focusSelectedId;
   viewportChangeRef.current = onViewportChange;
+  fallbackViewportRef.current = fallbackViewport;
   bottomInsetRef.current = bottomInset;
   statusRef.current = status;
 
@@ -439,8 +448,8 @@ export function TripMap({
         style: BASEMAP_STYLE,
         center: initialViewportRef.current
           ? [initialViewportRef.current.longitude, initialViewportRef.current.latitude]
-          : [KYOTO_CENTER[0], KYOTO_CENTER[1]],
-        zoom: initialViewportRef.current?.zoom ?? 13.4,
+          : [fallbackViewportRef.current.longitude, fallbackViewportRef.current.latitude],
+        zoom: initialViewportRef.current?.zoom ?? fallbackViewportRef.current.zoom,
         attributionControl: { compact: true },
         cooperativeGestures: false,
       });
@@ -1021,6 +1030,7 @@ export function TripMap({
                   false,
                   bottomInsetRef.current,
                   geometryRef.current,
+                  fallbackViewportRef.current,
                 );
               }
               focusMapPlace(
@@ -1176,7 +1186,14 @@ export function TripMap({
             skippedRestoredFrameRef.current = true;
           } else if (shouldFrame) {
             if (!searchResultsMode || places.features.length > 0) {
-              framePlaces(map, places, true, bottomInsetRef.current, geometryRef.current);
+              framePlaces(
+                map,
+                places,
+                true,
+                bottomInsetRef.current,
+                geometryRef.current,
+                fallbackViewportRef.current,
+              );
             }
           }
           if (shouldFrame) {
@@ -1208,7 +1225,14 @@ export function TripMap({
       .then(() => {
         if (mapRef.current === map) {
           if (frameKey === undefined && placesRef.current.features.length === 0) {
-            framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometry);
+            framePlaces(
+              map,
+              placesRef.current,
+              true,
+              bottomInsetRef.current,
+              geometry,
+              fallbackViewportRef.current,
+            );
           }
           map.triggerRepaint();
         }
@@ -1281,7 +1305,14 @@ export function TripMap({
     const map = mapRef.current;
 
     if (map !== null) {
-      framePlaces(map, placesRef.current, true, bottomInsetRef.current, geometryRef.current);
+      framePlaces(
+        map,
+        placesRef.current,
+        true,
+        bottomInsetRef.current,
+        geometryRef.current,
+        fallbackViewportRef.current,
+      );
     }
   }
 

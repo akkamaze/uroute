@@ -1,23 +1,12 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  CloudSun,
-  Footprints,
-  Landmark,
-  Map as MapIcon,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { CloudSun, Landmark, Map as MapIcon, Pencil, Plus, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
-import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import { loadImportedPlaces } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
 import type { ImportedPoint } from "../imports/parse-place-file";
 import { loadEditPlanDraft, visitsSignature } from "./edit-plan-store";
-import { MapLoading } from "./MapLoading";
 import { createOrderedPlaces, createStressPlaces } from "./map-data";
 import { FRIDAY_STOPS } from "./plan-data";
 import {
@@ -27,8 +16,9 @@ import {
   type KyotoDay,
   type RemovedVisit,
 } from "./plan-store";
-import { TripHeader } from "./TripHeader";
-import { VisitTime } from "./VisitTime";
+import { PlanWorkspace } from "./PlanWorkspace";
+import { PlanTimelineRow } from "./PlanTimelineRow";
+import { usePlanStopSwipe } from "./usePlanStopSwipe";
 import "./stop-actions.css";
 
 const TRIP_DAYS = [
@@ -39,9 +29,6 @@ const TRIP_DAYS = [
   { date: 16, fullWeekday: "Monday", weekday: "Mon" },
 ] as const;
 
-const REVEAL_PX = 64;
-const REVEAL_THRESHOLD_PX = 32;
-const DeferredTripMap = lazy(async () => ({ default: (await import("./TripMap")).TripMap }));
 const TRAVEL_BY_PAIR = new Map(
   FRIDAY_STOPS.flatMap((stop, index) => {
     const next = FRIDAY_STOPS[index + 1];
@@ -51,15 +38,6 @@ const TRAVEL_BY_PAIR = new Map(
       : [[`${stop.id}:${next.id}`, stop.travelAfter] as const];
   }),
 );
-
-interface StopGesture {
-  direction: "pending" | "swipe" | "vertical";
-  id: string;
-  initialOffset: number;
-  pointerId: number;
-  startX: number;
-  startY: number;
-}
 
 interface RemovalOperation {
   dayLabel: string;
@@ -125,15 +103,12 @@ export function PlanPage(): React.JSX.Element {
   const [showMap, setShowMap] = useState(false);
   const mapVisible = showMap || mapExpanded;
   const [selectedId, setSelectedId] = useState<string | null>("kiyomizu");
-  const [openSwipeId, setOpenSwipeId] = useState<string | null>(null);
-  const [swipeOffset, setSwipeOffset] = useState(0);
+  const stopSwipe = usePlanStopSwipe();
   const [removal, setRemoval] = useState<RemovalOperation | null>(null);
   const [liveNotice, setLiveNotice] = useState("");
-  const gestureRef = useRef<StopGesture | null>(null);
   const stopRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const mapViewButtonRef = useRef<HTMLButtonElement>(null);
   const emptyHeadingRef = useRef<HTMLHeadingElement>(null);
-  const suppressClickRef = useRef(false);
   const mapOpenedHereRef = useRef(false);
   const wasMapExpandedRef = useRef(false);
   const stressEnabled = isStressFixtureEnabled(search.stress);
@@ -196,25 +171,8 @@ export function PlanPage(): React.JSX.Element {
   const weekday = TRIP_DAYS.find(({ date }) => date === selectedDay)?.fullWeekday ?? "Selected day";
   const dayLabel = `${weekday}, ${selectedDay} November`;
 
-  function clearGesture(): void {
-    gestureRef.current = null;
-  }
-
-  function suppressClick(): void {
-    suppressClickRef.current = true;
-    window.setTimeout(() => {
-      suppressClickRef.current = false;
-    }, 300);
-  }
-
-  function closeSwipe(): void {
-    clearGesture();
-    setOpenSwipeId(null);
-    setSwipeOffset(0);
-  }
-
   useEffect(() => {
-    closeSwipe();
+    stopSwipe.close();
     setSelectedId(stressEnabled ? null : (plan.days[selectedDay][0]?.placeId ?? null));
     // Reset only when the active day changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,76 +180,11 @@ export function PlanPage(): React.JSX.Element {
 
   useEffect(() => {
     if (mapExpanded) {
-      closeSwipe();
+      stopSwipe.close();
     }
     // Reset only when the full-screen map opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapExpanded]);
-
-  useEffect(() => () => clearGesture(), []);
-
-  function startStopGesture(event: React.PointerEvent<HTMLDivElement>, id: string): void {
-    if (event.button !== 0) {
-      return;
-    }
-    if (gestureRef.current !== null && gestureRef.current.pointerId !== event.pointerId) {
-      closeSwipe();
-
-      return;
-    }
-    gestureRef.current = {
-      direction: "pending",
-      id,
-      initialOffset: openSwipeId === id ? -REVEAL_PX : 0,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-  }
-
-  function moveStopGesture(event: React.PointerEvent<HTMLDivElement>): void {
-    const gesture = gestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) {
-      return;
-    }
-    const dx = event.clientX - gesture.startX;
-    const dy = event.clientY - gesture.startY;
-    if (gesture.direction === "pending") {
-      if (Math.abs(dx) >= 10 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-        gesture.direction = "swipe";
-        event.currentTarget.setPointerCapture(event.pointerId);
-        setOpenSwipeId(gesture.id);
-      } else if (Math.abs(dy) >= 10 && Math.abs(dy) >= Math.abs(dx) / 1.25) {
-        gesture.direction = "vertical";
-      }
-    }
-    if (gesture.direction === "swipe") {
-      setSwipeOffset(Math.max(-REVEAL_PX, Math.min(0, gesture.initialOffset + dx)));
-    }
-  }
-
-  function endStopGesture(event: React.PointerEvent<HTMLDivElement>): void {
-    const gesture = gestureRef.current;
-    if (gesture === null || gesture.pointerId !== event.pointerId) {
-      return;
-    }
-    const wasSwipe = gesture.direction === "swipe";
-    const finalOffset = Math.max(
-      -REVEAL_PX,
-      Math.min(0, gesture.initialOffset + event.clientX - gesture.startX),
-    );
-    clearGesture();
-    if (!wasSwipe) {
-      return;
-    }
-    suppressClick();
-    if (finalOffset <= -REVEAL_THRESHOLD_PX) {
-      setOpenSwipeId(gesture.id);
-      setSwipeOffset(-REVEAL_PX);
-    } else {
-      closeSwipe();
-    }
-  }
 
   function focusAfterRemoval(removedIds: ReadonlySet<string>): void {
     const index = stops.findIndex(({ id }) => removedIds.has(id));
@@ -320,7 +213,7 @@ export function PlanPage(): React.JSX.Element {
     if (selectedId !== null && removedIds.has(selectedId)) {
       setSelectedId(null);
     }
-    closeSwipe();
+    stopSwipe.close();
     focusAfterRemoval(removedIds);
   }
 
@@ -342,7 +235,7 @@ export function PlanPage(): React.JSX.Element {
   }
 
   function selectDay(day: KyotoDay): void {
-    closeSwipe();
+    stopSwipe.close();
     void navigate({ to: "/plan", search: { ...search, day }, replace: true, resetScroll: false });
   }
 
@@ -368,7 +261,7 @@ export function PlanPage(): React.JSX.Element {
   }, [mapExpanded, showMap]);
 
   function changeMapExpanded(next: boolean): void {
-    closeSwipe();
+    stopSwipe.close();
     if (next) {
       mapOpenedHereRef.current = true;
       void navigate({ to: "/plan", search: { ...search, map: "full" }, resetScroll: false });
@@ -388,289 +281,203 @@ export function PlanPage(): React.JSX.Element {
   }
 
   return (
-    <section className={mapVisible ? "plan-page" : "plan-page plan-page--plan-only"}>
-      <TripHeader active="plan" inactive={mapExpanded} />
-      <div
-        aria-hidden={mapExpanded}
-        aria-label="Trip days"
-        className="day-strip"
-        inert={mapExpanded}
-        role="group"
-      >
-        {TRIP_DAYS.map((day) => {
-          const dayHasDraft = draftDays.has(day.date);
-
-          return (
-            <button
-              aria-label={`${day.fullWeekday} ${day.date}${dayHasDraft ? ", draft available" : ""}`}
-              aria-pressed={selectedDay === day.date}
-              className={
-                selectedDay === day.date
-                  ? "day-strip__day day-strip__day--selected"
-                  : "day-strip__day"
-              }
-              key={day.date}
-              onClick={() => selectDay(day.date)}
-              type="button"
-            >
-              <span>{day.weekday}</span>
-              <strong>
-                {day.date}
-                {dayHasDraft ? (
-                  <span aria-hidden="true" className="day-strip__draft-indicator" />
-                ) : null}
-              </strong>
-            </button>
-          );
-        })}
-      </div>
-      {stressEnabled ? (
-        <p aria-hidden={mapExpanded} className="stress-fixture-label">
-          Synthetic stress fixture · {places.features.length.toLocaleString()} points
-        </p>
-      ) : null}
-      {mapExpanded ? <div aria-hidden="true" className="plan-map-placeholder" /> : null}
-      {mapVisible ? (
-        <Suspense
-          fallback={
+    <PlanWorkspace
+      days={TRIP_DAYS.map((day) => ({
+        id: String(day.date),
+        weekday: day.weekday,
+        date: day.date,
+        label: `${day.fullWeekday} ${day.date}`,
+        draft: draftDays.has(day.date),
+      }))}
+      selectedDay={String(selectedDay)}
+      onDayChange={(day) => selectDay(Number(day) as KyotoDay)}
+      mapVisible={mapVisible}
+      mapExpanded={mapExpanded}
+      onMapExpandedChange={changeMapExpanded}
+      onMapSelect={(id) => {
+        setSelectedId(id);
+        window.requestAnimationFrame(() =>
+          stopRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
+        );
+      }}
+      places={places}
+      orderPlaces={orderPlaces}
+      selectedPlaceId={selectedId}
+      stressLabel={
+        stressEnabled
+          ? `Synthetic stress fixture · ${places.features.length.toLocaleString()} points`
+          : undefined
+      }
+      overlay={
+        <>
+          {removal === null ? null : (
             <div
-              aria-label="Map"
-              className={`trip-map trip-map--planner${mapExpanded ? " trip-map--expanded" : ""}`}
-              id="plan-map"
-              role="region"
+              aria-hidden={mapExpanded}
+              className="plan-undo"
+              data-swipe-back-ignore="true"
+              inert={mapExpanded}
             >
-              <MapLoading />
-            </div>
-          }
-        >
-          <DeferredTripMap
-            id="plan-map"
-            expanded={mapExpanded}
-            onExpandedChange={changeMapExpanded}
-            onSelect={(id) => {
-              setSelectedId(id);
-              window.requestAnimationFrame(() =>
-                stopRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "nearest" }),
-              );
-            }}
-            places={places}
-            orderPlaces={orderPlaces}
-            selectedId={selectedId}
-          />
-        </Suspense>
-      ) : null}
-
-      <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
-        <header className="day-plan__header">
-          <span className="day-plan__heading">
-            <h2>{dayLabel}</h2>
-            <span className="day-plan__weather">
-              <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
-              18°
-            </span>
-          </span>
-          <span className="day-plan__header-actions">
-            <button
-              aria-controls="plan-map"
-              aria-label="Map view"
-              aria-pressed={mapVisible}
-              className="day-plan__view-toggle"
-              ref={mapViewButtonRef}
-              onClick={() => setShowMap((current) => !current)}
-              type="button"
-            >
-              <MapIcon aria-hidden="true" size={22} strokeWidth={1.8} />
-            </button>
-            <span className="day-plan__select-wrap">
+              <span>
+                <strong>
+                  {removal.removed.length} {removal.removed.length === 1 ? "place" : "places"}{" "}
+                  removed
+                </strong>
+                {removal.dayLabel === "Trip plan"
+                  ? "From your trip plan"
+                  : `From ${removal.dayLabel.replace(/^\w+, /, "")}`}
+              </span>
+              <button onClick={undoRemoval} type="button">
+                Undo
+              </button>
               <button
-                aria-label={`Edit plan for ${dayLabel}`}
-                className="day-plan__select-toggle"
-                onClick={() => {
-                  captureNavigationSnapshot("/plan/edit");
-                  void navigate({
-                    to: "/plan/edit",
-                    search: { day: selectedDay },
-                    state: (current) => ({ ...current, editPlanEntry: true }),
-                  });
-                }}
+                aria-label="Dismiss removal message"
+                onClick={() => setRemoval(null)}
                 type="button"
               >
-                <span className="day-plan__edit-icon">
-                  <Pencil aria-hidden="true" size={21} strokeWidth={1.8} />
-                  {hasDraft ? (
-                    <span aria-hidden="true" className="day-plan__draft-indicator" />
-                  ) : null}
-                </span>
+                <X aria-hidden="true" size={18} strokeWidth={1.8} />
               </button>
-            </span>
+            </div>
+          )}
+          <span aria-hidden={mapExpanded} aria-live="polite" className="sr-only">
+            {liveNotice}
           </span>
-        </header>
-        {plan.persistenceFailed ? (
-          <p role="status" className="day-plan__storage-notice">
-            Changes are kept for this session. Device storage is unavailable.
-          </p>
-        ) : null}
-
-        {stops.length > 0 ? (
-          <div aria-label={`${weekday} itinerary`} className="timeline">
-            {stops.map((stop, index) => {
-              const next = stops[index + 1];
-              const travel =
-                next === undefined ? undefined : TRAVEL_BY_PAIR.get(`${stop.id}:${next.id}`);
-              const swipeOpen = openSwipeId === stop.id;
-
-              return (
-                <div className="timeline__entry" data-plan-stop-id={stop.id} key={stop.id}>
-                  <div className="timeline__swipe-shell" data-swipe-back-ignore="true">
-                    <button
-                      aria-hidden={!swipeOpen}
-                      aria-label={`Remove ${stop.name} from ${dayLabel}`}
-                      className="timeline__remove"
-                      onClick={() => removeStop(stop.id)}
-                      tabIndex={swipeOpen ? 0 : -1}
-                      type="button"
-                    >
-                      <Trash2 aria-hidden="true" size={18} strokeWidth={1.8} />
-                      <span>Remove</span>
-                    </button>
-                    <div
-                      className={`timeline__surface timeline__surface--plan${swipeOpen ? " timeline__surface--swipe-open" : ""}`}
-                      onLostPointerCapture={clearGesture}
-                      onPointerCancel={clearGesture}
-                      onPointerDown={(event) => startStopGesture(event, stop.id)}
-                      onPointerMove={moveStopGesture}
-                      onPointerUp={endStopGesture}
-                      style={
-                        {
-                          "--swipe-offset": `${swipeOpen ? swipeOffset : 0}px`,
-                        } as React.CSSProperties
-                      }
-                    >
-                      <button
-                        aria-pressed={selectedId === stop.id}
-                        className="timeline__stop"
-                        data-stop-id={stop.id}
-                        onClick={() => {
-                          if (suppressClickRef.current) {
-                            return;
-                          }
-                          if (swipeOpen) {
-                            closeSwipe();
-
-                            return;
-                          }
-                          setSelectedId(stop.id);
-                          if (stop.id.startsWith("import-")) {
-                            void navigate({
-                              to: "/maps",
-                              search: {
-                                trip: "kyoto",
-                                day: `2026-11-${selectedDay}`,
-                                place: stop.id,
-                              },
-                            });
-                          } else {
-                            captureNavigationSnapshot("/places");
-                            void navigate({
-                              search: { place: stop.id, day: selectedDay },
-                              to: "/places",
-                            });
-                          }
-                        }}
-                        ref={(element) => {
-                          stopRefs.current[stop.id] = element;
-                        }}
-                        type="button"
-                      >
-                        <VisitTime className="timeline__time" time={stop.time} />
-                        <span className={`timeline__icon timeline__icon--${stop.category}`}>
-                          <PlaceCategoryIcon category={stop.category} />
-                        </span>
-                        <span className="timeline__info">
-                          <strong>{stop.name}</strong>
-                          <span>
-                            {stop.type} · {stop.duration}
-                          </span>
-                        </span>
-                        {stop.image ? (
-                          <img alt="" className="timeline__photo" src={stop.image} />
-                        ) : null}
-                      </button>
-                    </div>
-                  </div>
-                  {travel === undefined ? null : (
-                    <div className="timeline__travel">
-                      <span aria-hidden="true" className="timeline__line" />
-                      <span aria-hidden="true" className="timeline__travel-marker">
-                        <Footprints size={19} strokeWidth={1.8} />
-                      </span>
-                      <span>Walk · {travel.detail}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="day-plan__empty">
-            <Landmark aria-hidden="true" size={26} strokeWidth={1.7} />
-            <h3 ref={emptyHeadingRef} tabIndex={-1}>
-              A day to make your own
-            </h3>
-            <p>Add your first place when you are ready.</p>
-          </div>
-        )}
-        <button
-          className="day-plan__browse-maps"
-          onClick={() =>
-            void navigate({ to: "/maps", search: { trip: "kyoto", day: `2026-11-${selectedDay}` } })
-          }
-          type="button"
-        >
-          Browse imported maps
-        </button>
-        {removal === null && openSwipeId === null ? (
+        </>
+      }
+    >
+      <header className="day-plan__header">
+        <span className="day-plan__heading">
+          <h2>{dayLabel}</h2>
+          <span className="day-plan__weather">
+            <CloudSun aria-hidden="true" size={22} strokeWidth={1.8} />
+            18°
+          </span>
+        </span>
+        <span className="day-plan__header-actions">
           <button
-            aria-label={`Add a place to ${dayLabel}`}
-            className="floating-add-button"
-            onClick={addPlace}
+            aria-controls="plan-map"
+            aria-label="Map view"
+            aria-pressed={mapVisible}
+            className="day-plan__view-toggle"
+            ref={mapViewButtonRef}
+            onClick={() => setShowMap((current) => !current)}
             type="button"
           >
-            <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
+            <MapIcon aria-hidden="true" size={22} strokeWidth={1.8} />
           </button>
-        ) : null}
-      </section>
-
-      {removal === null ? null : (
-        <div
-          aria-hidden={mapExpanded}
-          className="plan-undo"
-          data-swipe-back-ignore="true"
-          inert={mapExpanded}
-        >
-          <span>
-            <strong>
-              {removal.removed.length} {removal.removed.length === 1 ? "place" : "places"} removed
-            </strong>
-            {removal.dayLabel === "Trip plan"
-              ? "From your trip plan"
-              : `From ${removal.dayLabel.replace(/^\w+, /, "")}`}
+          <span className="day-plan__select-wrap">
+            <button
+              aria-label={`Edit plan for ${dayLabel}`}
+              className="day-plan__select-toggle"
+              onClick={() => {
+                captureNavigationSnapshot("/plan/edit");
+                void navigate({
+                  to: "/plan/edit",
+                  search: { day: selectedDay },
+                  state: (current) => ({ ...current, editPlanEntry: true }),
+                });
+              }}
+              type="button"
+            >
+              <span className="day-plan__edit-icon">
+                <Pencil aria-hidden="true" size={21} strokeWidth={1.8} />
+                {hasDraft ? (
+                  <span aria-hidden="true" className="day-plan__draft-indicator" />
+                ) : null}
+              </span>
+            </button>
           </span>
-          <button onClick={undoRemoval} type="button">
-            Undo
-          </button>
-          <button
-            aria-label="Dismiss removal message"
-            onClick={() => setRemoval(null)}
-            type="button"
-          >
-            <X aria-hidden="true" size={18} strokeWidth={1.8} />
-          </button>
+        </span>
+      </header>
+      {plan.persistenceFailed ? (
+        <p role="status" className="day-plan__storage-notice">
+          Changes are kept for this session. Device storage is unavailable.
+        </p>
+      ) : null}
+
+      {stops.length > 0 ? (
+        <div aria-label={`${weekday} itinerary`} className="timeline">
+          {stops.map((stop, index) => {
+            const next = stops[index + 1];
+            const travel =
+              next === undefined ? undefined : TRAVEL_BY_PAIR.get(`${stop.id}:${next.id}`);
+            const swipeOpen = stopSwipe.openId === stop.id;
+
+            return (
+              <PlanTimelineRow
+                buttonRef={(element) => {
+                  stopRefs.current[stop.id] = element;
+                }}
+                category={stop.category}
+                id={stop.id}
+                image={stop.image}
+                key={stop.id}
+                onOpen={() => {
+                  if (stopSwipe.clickSuppressed()) {
+                    return;
+                  }
+                  if (swipeOpen) {
+                    stopSwipe.close();
+
+                    return;
+                  }
+                  setSelectedId(stop.id);
+                  if (stop.id.startsWith("import-")) {
+                    void navigate({
+                      to: "/maps",
+                      search: { trip: "kyoto", day: `2026-11-${selectedDay}`, place: stop.id },
+                    });
+                  } else {
+                    captureNavigationSnapshot("/places");
+                    void navigate({ search: { place: stop.id, day: selectedDay }, to: "/places" });
+                  }
+                }}
+                onRemove={() => removeStop(stop.id)}
+                removeLabel={`Remove ${stop.name} from ${dayLabel}`}
+                selected={selectedId === stop.id}
+                subtitle={`${stop.type} · ${stop.duration}`}
+                swipe={{
+                  open: swipeOpen,
+                  offset: stopSwipe.offset,
+                  onStart: (event) => stopSwipe.start(event, stop.id),
+                  onMove: stopSwipe.move,
+                  onEnd: stopSwipe.end,
+                  onCancel: stopSwipe.clear,
+                }}
+                time={stop.time}
+                title={stop.name}
+                travel={travel === undefined ? undefined : `Walk · ${travel.detail}`}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="day-plan__empty">
+          <Landmark aria-hidden="true" size={26} strokeWidth={1.7} />
+          <h3 ref={emptyHeadingRef} tabIndex={-1}>
+            A day to make your own
+          </h3>
+          <p>Add your first place when you are ready.</p>
         </div>
       )}
-      <span aria-hidden={mapExpanded} aria-live="polite" className="sr-only">
-        {liveNotice}
-      </span>
-    </section>
+      <button
+        className="day-plan__browse-maps"
+        onClick={() =>
+          void navigate({ to: "/maps", search: { trip: "kyoto", day: `2026-11-${selectedDay}` } })
+        }
+        type="button"
+      >
+        Browse imported maps
+      </button>
+      {removal === null && stopSwipe.openId === null ? (
+        <button
+          aria-label={`Add a place to ${dayLabel}`}
+          className="floating-add-button"
+          onClick={addPlace}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={28} strokeWidth={1.9} />
+        </button>
+      ) : null}
+    </PlanWorkspace>
   );
 }
