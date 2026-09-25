@@ -1,4 +1,5 @@
 import type { ImportedPoint } from "../imports/parse-place-file";
+import { refreshCachedAccountPlanDay } from "./account-plan-cache";
 import type { ItineraryEntry } from "../imports/itinerary-sheet";
 import { isPlaceCategory, type PlaceCategory } from "../places/place-category";
 import { effectivePlaceCategory } from "../places/place-category";
@@ -153,11 +154,17 @@ export async function saveAccountPlanDay(
   version: string,
   entries: readonly Omit<AccountPlanEntry, "id" | "place">[],
 ): Promise<{ version: string; entries: AccountPlanEntry[] }> {
-  return request(`/api/trips/${encodeURIComponent(tripId)}/plan?day=${encodeURIComponent(day)}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ version, entries }),
-  });
+  const saved = await request<{ version: string; entries: AccountPlanEntry[] }>(
+    `/api/trips/${encodeURIComponent(tripId)}/plan?day=${encodeURIComponent(day)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version, entries }),
+    },
+  );
+  refreshCachedAccountPlanDay(tripId, day, saved);
+
+  return saved;
 }
 
 type AccountPlace = NonNullable<AccountPlanEntry["place"]>;

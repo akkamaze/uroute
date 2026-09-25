@@ -18,6 +18,12 @@ import {
   type ItineraryEntry,
 } from "../imports/itinerary-sheet";
 import type { ImportedPoint } from "../imports/parse-place-file";
+import {
+  cacheAccountPlanDay,
+  cacheAccountTrip,
+  cachedAccountPlanDay,
+  cachedAccountTrip,
+} from "./account-plan-cache";
 import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import {
   loadCreatedTrips,
@@ -152,15 +158,33 @@ export function TripPlanPage(): React.JSX.Element {
   const search = useSearch({ from: "/mobile-shell/plan/trip/$tripId" });
   const account = useAccount();
   const accountUserId = account.user?.id;
-  const [accountTripChecked, setAccountTripChecked] = useState(false);
-  const [remoteTrip, setRemoteTrip] = useState<AccountTrip | null>(null);
-  const [remoteEntries, setRemoteEntries] = useState<AccountPlanEntry[]>([]);
-  const [remoteVersion, setRemoteVersion] = useState("");
-  const [trip, setTrip] = useState<CreatedTrip | undefined>(() =>
-    loadCreatedTrips().find((item) => item.id === tripId),
+  const [initialCache] = useState(() => {
+    const cachedTrip = cachedAccountTrip(accountUserId, tripId);
+    const cachedDay = cachedTrip
+      ? (tripDays(cachedTrip).find((item) => item.day === search.day) ?? tripDays(cachedTrip)[0])
+          ?.day
+      : undefined;
+
+    return {
+      trip: cachedTrip,
+      plan: cachedDay ? cachedAccountPlanDay(accountUserId, tripId, cachedDay) : null,
+    };
+  });
+  const [accountTripChecked, setAccountTripChecked] = useState(initialCache.trip !== null);
+  const [remoteTrip, setRemoteTrip] = useState<AccountTrip | null>(initialCache.trip);
+  const [remoteEntries, setRemoteEntries] = useState<AccountPlanEntry[]>(
+    initialCache.plan?.entries ?? [],
   );
-  const [points, setPoints] = useState<ImportedPoint[]>([]);
-  const [itinerary, setItinerary] = useState<ItineraryEntry[]>([]);
+  const [remoteVersion, setRemoteVersion] = useState(initialCache.plan?.version ?? "");
+  const [trip, setTrip] = useState<CreatedTrip | undefined>(
+    () => initialCache.trip ?? loadCreatedTrips().find((item) => item.id === tripId),
+  );
+  const [points, setPoints] = useState<ImportedPoint[]>(() =>
+    initialCache.plan ? accountPlanPoints(initialCache.plan.entries) : [],
+  );
+  const [itinerary, setItinerary] = useState<ItineraryEntry[]>(() =>
+    initialCache.plan ? accountPlanItinerary(tripId, initialCache.plan.entries) : [],
+  );
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
   const [showMap, setShowMap] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -191,18 +215,24 @@ export function TripPlanPage(): React.JSX.Element {
   const mapOpenedHereRef = useRef(false);
 
   useEffect(() => {
-    setAccountTripChecked(false);
     if (!accountUserId) {
       setAccountTripChecked(true);
 
       return;
     }
+    const cachedTrip = cachedAccountTrip(accountUserId, tripId);
+    if (cachedTrip) {
+      setRemoteTrip((current) => (current?.id === tripId ? current : cachedTrip));
+      setTrip((current) => (current?.id === tripId ? current : cachedTrip));
+    }
+    setAccountTripChecked(cachedTrip !== null);
     let active = true;
     void loadAccountTrip(tripId)
       .then((loaded) => {
         if (!active) {
           return;
         }
+        cacheAccountTrip(accountUserId, loaded);
         setRemoteTrip(loaded);
         setTrip(loaded);
         setTripName(loaded.name);
@@ -226,11 +256,22 @@ export function TripPlanPage(): React.JSX.Element {
     if (!remoteTrip || !day) {
       return;
     }
+    const cachedPlan = cachedAccountPlanDay(accountUserId, tripId, day);
+    if (cachedPlan) {
+      setRemoteVersion(cachedPlan.version);
+      setRemoteEntries(cachedPlan.entries);
+      setPoints(accountPlanPoints(cachedPlan.entries));
+      setItinerary(accountPlanItinerary(tripId, cachedPlan.entries));
+      setVisits([]);
+    }
     let active = true;
     void loadAccountPlanDay(tripId, day)
       .then((loaded) => {
         if (!active) {
           return;
+        }
+        if (accountUserId) {
+          cacheAccountPlanDay(accountUserId, tripId, day, loaded);
         }
         setRemoteVersion(loaded.version);
         setRemoteEntries(loaded.entries);
@@ -248,7 +289,7 @@ export function TripPlanPage(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [remoteTrip, tripId, day]);
+  }, [accountUserId, remoteTrip, tripId, day]);
 
   useEffect(() => {
     if (!mapExpanded) {
@@ -387,6 +428,9 @@ export function TripPlanPage(): React.JSX.Element {
       try {
         const next = remoteEntries.filter((entry) => entry.sourceKey !== row.id);
         const saved = await saveAccountPlanDay(tripId, day, remoteVersion, next);
+        if (accountUserId) {
+          cacheAccountPlanDay(accountUserId, tripId, day, saved);
+        }
         setRemoteVersion(saved.version);
         setRemoteEntries(saved.entries);
         setItinerary(accountPlanItinerary(tripId, saved.entries));
@@ -466,6 +510,9 @@ export function TripPlanPage(): React.JSX.Element {
           startDate: tripStart,
           endDate: tripEnd,
         });
+        if (accountUserId) {
+          cacheAccountTrip(accountUserId, saved);
+        }
         setRemoteTrip(saved);
         setTrip(saved);
       } else {

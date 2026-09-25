@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 
 const tripId = "7fb9672e-3f50-41f7-99e7-05c2b9030d8f";
 const day = "2026-10-01";
@@ -490,4 +490,60 @@ test("a server trip opens its bookings and expenses and accepts a flight booking
 
   await page.goto(`/plan/trip/${tripId}/expenses`);
   await expect(page.getByRole("heading", { name: "Kanto" })).toBeVisible();
+});
+
+test("a cached server trip plan appears before the account API answers", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = [
+    {
+      id: "entry-1",
+      sourceKey: "entry:1",
+      day,
+      variant: "A",
+      position: 0,
+      kind: "place",
+      title: "Senso-ji",
+      timeLabel: "09:00",
+      detail: "Visit temple",
+      area: "Asakusa",
+      placeId: "pin-1",
+      place: {
+        sourceKey: "pin-1",
+        name: "Senso-ji",
+        latitude: 35.715,
+        longitude: 139.796,
+        category: "temple",
+        imageUrl: null,
+        notes: null,
+      },
+    },
+  ];
+  let slow = false;
+  async function answer(route: Route, body: unknown): Promise<void> {
+    if (slow) {
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+  }
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) => answer(route, { trips: [trip] }));
+  await page.route(`**/api/trips/${tripId}`, (route) => answer(route, trip));
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    answer(route, { trip, version: trip.version, entries }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const itinerary = page.getByLabel(/Thursday 1 October itinerary/);
+  await expect(itinerary).toContainText("Senso-ji");
+  slow = true;
+  await page.reload();
+  await expect(itinerary).toContainText("Senso-ji", { timeout: 1_500 });
 });

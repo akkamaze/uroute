@@ -39,6 +39,7 @@ import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
+import { cacheAccountPlanDay, cachedAccountPlanDay } from "../plan/account-plan-cache";
 import {
   accountPlanPoints,
   addAccountPlanPlace,
@@ -317,7 +318,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [libraryPlaces, setPlaces] = useState<ImportedPoint[]>([]);
-  const [tripPoints, setTripPoints] = useState<ImportedPoint[]>([]);
+  const [tripPoints, setTripPoints] = useState<ImportedPoint[]>(() => {
+    const trip = requested.get("trip");
+    const day = requested.get("day");
+    const cached = trip && day ? cachedAccountPlanDay(accountUserId, trip, day) : null;
+
+    return cached ? accountPlanPoints(cached.entries) : [];
+  });
   const places = useMemo(() => {
     const libraryIds = new Set(libraryPlaces.map((place) => place.id));
     const trip = tripPoints.filter((point) => !libraryIds.has(point.id));
@@ -405,15 +412,20 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
       return;
     }
+    const cached = cachedAccountPlanDay(accountUserId, requestedTrip, requestedDay);
+    if (cached) {
+      setTripPoints(accountPlanPoints(cached.entries));
+    }
     let active = true;
     void loadAccountPlanDay(requestedTrip, requestedDay)
       .then((plan) => {
         if (active) {
+          cacheAccountPlanDay(accountUserId, requestedTrip, requestedDay, plan);
           setTripPoints(accountPlanPoints(plan.entries));
         }
       })
       .catch(() => {
-        if (active) {
+        if (active && !cached) {
           setTripPoints([]);
         }
       });
