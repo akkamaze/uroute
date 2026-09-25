@@ -1,5 +1,14 @@
 import { expect, test } from "./fixtures";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({ contentType: "application/json", body: "null" }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+  });
+});
+
 test("login supports touch swipe back to welcome", async ({ page }) => {
   await page.goto("/welcome");
   await page.locator('a[href="/login"]').click();
