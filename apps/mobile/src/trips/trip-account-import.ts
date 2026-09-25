@@ -1,6 +1,9 @@
 import { loadImportedPlaces, loadImportedVisits } from "../imports/place-library";
 import { loadItinerary } from "../imports/itinerary-sheet";
-import { buildCreatedPlanRows } from "../plan/created-plan-rows";
+import { buildCreatedPlanRows, startTime } from "../plan/created-plan-rows";
+import { createdEditorKey, loadCreatedEditDraft } from "../plan/created-edit-plan-store";
+import { visitsSignature } from "../plan/edit-plan-store";
+import type { PlannedVisit } from "../plan/plan-store";
 import { tripDays, type CreatedTrip } from "./trip-store";
 
 interface AccountTrip {
@@ -22,6 +25,12 @@ interface AccountEntry {
   detail: string;
   area: string;
   placeId: string | null;
+}
+
+interface LocalDraft {
+  day: string;
+  variant: string;
+  visits: PlannedVisit[];
 }
 
 class AccountImportError extends Error {
@@ -66,19 +75,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function listAccountTripIds(): Promise<Set<string>> {
-  const ids = new Set<string>();
-  for (let offset = 0; offset <= 10_000; offset += 50) {
-    const page = await request<{ trips: AccountTrip[] }>(`/api/trips?limit=50&offset=${offset}`);
-    page.trips.forEach((trip) => ids.add(trip.id));
-    if (page.trips.length < 50) {
-      break;
-    }
-  }
-
-  return ids;
-}
-
 function validEntry(entry: AccountEntry): boolean {
   return (
     entry.sourceKey.length <= 240 &&
@@ -91,13 +87,16 @@ function validEntry(entry: AccountEntry): boolean {
   );
 }
 
-async function localEntries(trip: CreatedTrip): Promise<AccountEntry[]> {
+async function localSnapshot(
+  trip: CreatedTrip,
+): Promise<{ entries: AccountEntry[]; drafts: LocalDraft[] }> {
   const [points, itinerary, visits] = await Promise.all([
     loadImportedPlaces(),
     loadItinerary(trip.id),
     loadImportedVisits(),
   ]);
   const result: AccountEntry[] = [];
+  const drafts: LocalDraft[] = [];
   for (const { day } of tripDays(trip)) {
     const variants = new Set([
       "A",
@@ -130,6 +129,18 @@ async function localEntries(trip: CreatedTrip): Promise<AccountEntry[]> {
           placeId: row.point?.id ?? row.entry?.placeId ?? null,
         });
       });
+      const savedVisits = rows.map((row) => ({
+        placeId: row.id,
+        time: startTime(row.time),
+        notes: row.detail,
+      }));
+      const draft = loadCreatedEditDraft(
+        createdEditorKey(trip.id, day, variant),
+        visitsSignature(savedVisits),
+      );
+      if (draft) {
+        drafts.push({ day, variant, visits: draft.visits });
+      }
     }
   }
   if (
@@ -143,7 +154,7 @@ async function localEntries(trip: CreatedTrip): Promise<AccountEntry[]> {
     );
   }
 
-  return result;
+  return { entries: result, drafts };
 }
 
 async function remoteEntries(
@@ -185,9 +196,11 @@ function sameEntries(left: readonly AccountEntry[], right: readonly AccountEntry
   return JSON.stringify(left.map(select)) === JSON.stringify(right.map(select));
 }
 
-export async function importLocalTripToAccount(trip: CreatedTrip): Promise<number> {
+export async function importLocalTripToAccount(
+  trip: CreatedTrip,
+): Promise<{ entries: number; drafts: number }> {
   // Validate the whole local snapshot before creating a server-side trip.
-  const entries = await localEntries(trip);
+  const { entries, drafts } = await localSnapshot(trip);
   const saved = await request<AccountTrip>("/api/trips", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -199,23 +212,49 @@ export async function importLocalTripToAccount(trip: CreatedTrip): Promise<numbe
     }),
   });
   const remote = await remoteEntries(saved.id);
-  if (sameEntries(remote.entries, entries)) {
-    return entries.length;
-  }
-  if (remote.entries.length > 0) {
+  if (!sameEntries(remote.entries, entries) && remote.entries.length > 0) {
     throw new AccountImportError(
       "This trip already has a different itinerary on your account. Nothing was overwritten.",
       409,
     );
   }
-  if (entries.length === 0) {
-    return 0;
+  let version = remote.version;
+  if (!sameEntries(remote.entries, entries) && entries.length > 0) {
+    const updated = await request<{ tripVersion: string }>(
+      `/api/trips/${encodeURIComponent(saved.id)}/entries`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ version, entries }),
+      },
+    );
+    version = updated.tripVersion;
   }
-  await request(`/api/trips/${encodeURIComponent(saved.id)}/entries`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ version: remote.version, entries }),
-  });
+  for (const draft of drafts) {
+    const path = `/api/trips/${encodeURIComponent(saved.id)}/drafts/${draft.day}/${draft.variant}`;
+    let known: { visits: PlannedVisit[] } | null = null;
+    try {
+      known = await request<{ visits: PlannedVisit[] }>(path);
+    } catch (error) {
+      if (!(error instanceof AccountImportError) || error.status !== 404) {
+        throw error;
+      }
+    }
+    if (known) {
+      if (visitsSignature(known.visits) !== visitsSignature(draft.visits)) {
+        throw new AccountImportError(
+          "A different draft already exists on your account. Nothing was overwritten.",
+          409,
+        );
+      }
+      continue;
+    }
+    await request(path, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseVersion: version, revision: null, visits: draft.visits }),
+    });
+  }
 
-  return entries.length;
+  return { entries: entries.length, drafts: drafts.length };
 }

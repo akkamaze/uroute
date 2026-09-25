@@ -253,9 +253,9 @@ export function TripsPage(): React.JSX.Element {
     setImportingToAccount(true);
     setAccountMessage("");
     try {
-      const count = await importLocalTripToAccount(tripToImport);
+      const copied = await importLocalTripToAccount(tripToImport);
       setAccountMessage(
-        `${tripToImport.name} and ${count} visible itinerary ${count === 1 ? "row" : "rows"} copied to your account. Imported map pins and edit history remain on this device.`,
+        `${tripToImport.name}, ${copied.entries} visible itinerary ${copied.entries === 1 ? "row" : "rows"} and ${copied.drafts} saved ${copied.drafts === 1 ? "draft" : "drafts"} copied to your account. Imported map pins and edit history remain on this device.`,
       );
       setTripToImport(null);
     } catch (error) {
@@ -526,9 +526,9 @@ export function TripsPage(): React.JSX.Element {
       >
         <h2 id="trip-account-title">Copy {tripToImport?.name} to your account?</h2>
         <p>
-          This copies trip details and visible itinerary rows. KML map pins, removed rows and
-          version history stay on this device for now. Existing account rows will never be
-          overwritten.
+          This copies trip details, visible itinerary rows and current unsaved drafts. KML map pins,
+          removed rows and version history stay on this device for now. Later edits are not synced
+          automatically yet. Existing account rows will never be overwritten.
         </p>
         <div>
           <button disabled={importingToAccount} onClick={() => setTripToImport(null)} type="button">
