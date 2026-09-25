@@ -123,7 +123,7 @@ test("empty Maps results keep the sheet anchored while dragging", async ({ page 
 
   await expect(page.getByText("No places match this search.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
-  await expect(page.locator(".imported-page__list-heading")).toContainText("0");
+  await expect(page.locator(".imported-page__list-heading span")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
   await expect(page.getByLabel("Filter by folder")).toHaveCount(0);
 
@@ -197,6 +197,8 @@ test("Maps hides map controls when search results cover the map", async ({ page 
 });
 
 test("Maps details obey the same expanded top boundary as Plan", async ({ page }) => {
+  await page.goto("/trips");
+  await page.evaluate(() => localStorage.setItem("uroute.app-mode.v1", "mock"));
   await page.goto("/places?place=kiyomizu&day=13");
   const planTransition = await page.locator(".place-sheet").evaluate((sheet) => ({
     duration: getComputedStyle(sheet).transitionDuration,
@@ -210,6 +212,7 @@ test("Maps details obey the same expanded top boundary as Plan", async ({ page }
     .locator(".place-sheet")
     .evaluate((sheet) => sheet.getBoundingClientRect().top);
 
+  await page.evaluate(() => localStorage.setItem("uroute.app-mode.v1", "real"));
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
     name: "sample.kml",
@@ -375,9 +378,12 @@ test("Maps Add to trip uses Plan form sizing and spacing", async ({ page }) => {
         buttonRadius: getComputedStyle(button).borderRadius,
       };
     });
+  await page.goto("/trips");
+  await page.evaluate(() => localStorage.setItem("uroute.app-mode.v1", "mock"));
   await page.goto("/places?place=kiyomizu&day=13");
   await page.getByRole("button", { name: "Add to trip" }).click();
   const plan = await metrics();
+  await page.evaluate(() => localStorage.setItem("uroute.app-mode.v1", "real"));
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
     name: "sample.kml",
@@ -526,6 +532,21 @@ test("shows KML photos in a swipeable gallery and on the map marker", async ({ p
 test("clears the import notice and opens trip selection when Add has no destination", async ({
   page,
 }) => {
+  await page.goto("/trips");
+  await page.evaluate(() => {
+    localStorage.setItem("uroute.app-mode.v1", "real");
+    localStorage.setItem(
+      "uroute.created-trips.v1",
+      JSON.stringify([
+        {
+          id: "a1111111-1111-4111-8111-111111111111",
+          name: "Lisbon",
+          startDate: "2027-01-10",
+          endDate: "2027-01-10",
+        },
+      ]),
+    );
+  });
   await page.goto("/maps");
   await page.getByLabel("Choose KML or KMZ file").setInputFiles({
     name: "sample.kml",
@@ -543,16 +564,16 @@ test("clears the import notice and opens trip selection when Add has no destinat
   const trip = page.getByLabel("Destination trip");
   await expect(trip).toBeVisible();
   await expect(page.locator(".imported-page__selected select")).toHaveCount(2);
-  await expect(trip.locator("option:checked")).toHaveText("Kyoto · 12–16 Nov 2026");
+  await expect(trip.locator("option:checked")).toHaveText("Lisbon · 10–10 Jan 2027");
   await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
-    "Friday, 13 November",
+    "Sunday, 10 January",
   );
   await expect(page.getByRole("button", { name: "Add to plan", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Back to place details" }).click();
   await expect(page.getByRole("form", { name: "Add to plan" })).toBeHidden();
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
-    "Friday, 13 November",
+    "Sunday, 10 January",
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("form", { name: "Add to plan" })).toBeHidden();
@@ -846,6 +867,21 @@ test("uses the KML map name instead of its file name for imported layers", async
 });
 
 test("reviews KML geometry, imports points once, and adds a place to a day", async ({ page }) => {
+  await page.goto("/trips");
+  await page.evaluate(() => {
+    localStorage.setItem("uroute.app-mode.v1", "real");
+    localStorage.setItem(
+      "uroute.created-trips.v1",
+      JSON.stringify([
+        {
+          id: "b2222222-2222-4222-8222-222222222222",
+          name: "Tokyo",
+          startDate: "2026-11-12",
+          endDate: "2026-11-13",
+        },
+      ]),
+    );
+  });
   await page.goto("/maps");
   await expect(page.getByRole("heading", { name: "Maps" })).toBeVisible();
 
@@ -868,10 +904,10 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await page.getByLabel("Destination day").selectOption("2026-11-12");
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Market added to Kyoto · Thu 12 Nov");
-  await page.goto("/plan?day=12");
-  await expect(page.getByRole("heading", { name: "Kyoto" })).toBeVisible();
-  await expect(page.getByLabel("Thursday itinerary")).toContainText("Market");
+  await expect(page.getByRole("status")).toContainText("Market added to Tokyo · Thu 12 Nov");
+  await page.goto("/plan/trip/b2222222-2222-4222-8222-222222222222?day=2026-11-12");
+  await expect(page.getByRole("heading", { name: "Tokyo" })).toBeVisible();
+  await expect(page.locator("[data-plan-stop-id]")).toContainText("Market");
   await page.goto("/maps");
   await expect(page.locator(".imported-page__map")).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to trips" })).toHaveCount(0);
@@ -879,7 +915,7 @@ test("reviews KML geometry, imports points once, and adds a place to a day", asy
   await page.getByRole("button", { name: "Market Tokyo" }).click();
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
   await expect(page.getByLabel("Destination trip").locator("option:checked")).toContainText(
-    "Kyoto",
+    "Tokyo",
   );
   await expect(page.getByLabel("Destination day").locator("option:checked")).toHaveText(
     "Thursday, 12 November",
