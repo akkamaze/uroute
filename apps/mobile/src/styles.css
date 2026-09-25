@@ -1329,6 +1329,10 @@ a,
   cursor: pointer;
 }
 
+.mobile-shell--focused .floating-add-button {
+  bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+}
+
 .maplibregl-ctrl-attrib {
   font-size: var(--type-micro-size);
 }

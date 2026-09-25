@@ -437,6 +437,12 @@ test("a server trip plan hides the app navigation and folds its day chrome while
   await expect(page.getByLabel(/Thursday 1 October itinerary/)).toContainText("Stop 13");
   await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit trip details" })).toHaveCount(0);
+  const addButton = await page.locator(".floating-add-button").boundingBox();
+  const viewport = page.viewportSize();
+  if (addButton === null || viewport === null) {
+    throw new Error("The add button must be visible");
+  }
+  expect(viewport.height - (addButton.y + addButton.height)).toBeLessThan(32);
   const days = page.getByRole("group", { name: "Trip days" });
   const sections = page.getByRole("navigation", { name: "Trip sections" });
   await expect(days).toBeVisible();
