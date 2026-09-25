@@ -310,3 +310,142 @@ test("swipe back returns from a server trip plan and its map place", async ({ pa
   await expect(page).toHaveURL(new RegExp(`/plan/trip/${tripId}`));
   await expect(navigation).toHaveAttribute("data-swipe-phase", "idle");
 });
+
+test("returning from a map place keeps the plan scroll position", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = Array.from({ length: 14 }, (_, index) => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "place",
+    title: `Stop ${index}`,
+    timeLabel: `${String(8 + Math.floor(index / 2)).padStart(2, "0")}:00`,
+    detail: "A place to visit during the day",
+    area: "Tokyo",
+    placeId: `pin-${index}`,
+    place: {
+      sourceKey: `pin-${index}`,
+      name: `Stop ${index}`,
+      latitude: 35.68 + index / 1000,
+      longitude: 139.76 + index / 1000,
+      category: "sightseeing",
+      imageUrl: null,
+      notes: null,
+    },
+  }));
+  let sessionLoads = 0;
+  await page.route("**/api/auth/get-session", async (route) => {
+    sessionLoads += 1;
+    if (sessionLoads > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    });
+  });
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  let tripLoads = 0;
+  await page.route(`**/api/trips/${tripId}`, async (route) => {
+    tripLoads += 1;
+    if (tripLoads > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    await route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) });
+  });
+  let planLoads = 0;
+  await page.route(`**/api/trips/${tripId}/plan?*`, async (route) => {
+    planLoads += 1;
+    if (planLoads > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    });
+  });
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const itinerary = page.getByLabel(/Thursday 1 October itinerary/);
+  const stop = itinerary.getByRole("button", { name: /Stop 11/ });
+  await stop.scrollIntoViewIfNeeded();
+  await expect(page.getByRole("group", { name: "Trip days" })).toBeHidden();
+  const before = await stop.evaluate((element) => element.getBoundingClientRect().top);
+  expect(
+    await page.locator(".trip-plan .day-plan").evaluate((element) => element.scrollTop),
+  ).toBeGreaterThan(100);
+  await stop.click();
+  await expect(page).toHaveURL(/\/maps\?.*place=pin-11/);
+  await page.goBack();
+  await expect(itinerary).toContainText("Stop 11");
+  await expect
+    .poll(() => stop.evaluate((element) => element.getBoundingClientRect().top))
+    .toBeGreaterThan(before - 5);
+  expect(await stop.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(
+    before + 5,
+  );
+});
+
+test("a server trip plan hides the app navigation and folds its day chrome while reading", async ({
+  page,
+}) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = Array.from({ length: 14 }, (_, index) => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "place",
+    title: `Stop ${index}`,
+    timeLabel: "09:00",
+    detail: "A place to visit during the day",
+    area: "Tokyo",
+    placeId: null,
+    place: null,
+  }));
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  await expect(page.getByLabel(/Thursday 1 October itinerary/)).toContainText("Stop 13");
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit trip details" })).toHaveCount(0);
+  const days = page.getByRole("group", { name: "Trip days" });
+  const sections = page.getByRole("navigation", { name: "Trip sections" });
+  await expect(days).toBeVisible();
+  const scroller = page.locator(".trip-plan .day-plan");
+  await scroller.evaluate((element) => element.scrollBy(0, 400));
+  await expect(days).toBeHidden();
+  await expect(sections).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Kanto" })).toBeVisible();
+  await scroller.evaluate((element) => element.scrollBy(0, -200));
+  await expect(days).toBeVisible();
+  await expect(sections).toBeVisible();
+});

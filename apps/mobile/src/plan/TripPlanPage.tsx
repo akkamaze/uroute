@@ -93,6 +93,59 @@ function mapPlaces(rows: readonly CreatedPlanRow[]): PlaceCollection {
   };
 }
 
+const PLAN_SCROLL_KEY = "uroute.trip-plan-scroll.v1";
+
+function planScroller(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".trip-plan .day-plan");
+}
+
+function historyEntryKey(): string | null {
+  const state: unknown = window.history.state;
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+  const key =
+    (state as { __TSR_key?: unknown; key?: unknown }).__TSR_key ?? (state as { key?: unknown }).key;
+
+  return typeof key === "string" ? key : null;
+}
+
+function savePlanScroll(): void {
+  const entry = historyEntryKey();
+  if (entry === null) {
+    return;
+  }
+  try {
+    sessionStorage.setItem(
+      PLAN_SCROLL_KEY,
+      JSON.stringify({ entry, top: planScroller()?.scrollTop ?? 0 }),
+    );
+  } catch {
+    return;
+  }
+}
+
+function restorePlanScroll(): void {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(PLAN_SCROLL_KEY) ?? "null");
+    if (
+      typeof saved !== "object" ||
+      saved === null ||
+      (saved as { entry?: unknown }).entry !== historyEntryKey()
+    ) {
+      return;
+    }
+    const scroller = planScroller();
+    const top = (saved as { top?: unknown }).top;
+    if (scroller !== null && typeof top === "number") {
+      sessionStorage.removeItem(PLAN_SCROLL_KEY);
+      scroller.scrollTop = top;
+    }
+  } catch {
+    return;
+  }
+}
+
 export function TripPlanPage(): React.JSX.Element {
   const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId" });
   const navigate = useNavigate();
@@ -277,6 +330,12 @@ export function TripPlanPage(): React.JSX.Element {
     [day, itinerary, points, rowEdits, rowHidden, rowOrder, tripId, variant, visits],
   );
   const places = useMemo(() => mapPlaces(rows), [rows]);
+
+  useEffect(() => {
+    if (rows.length > 0) {
+      restorePlanScroll();
+    }
+  }, [rows.length]);
   const legacyCount = visits.filter(
     (visit) =>
       visit.tripId === undefined &&
@@ -440,7 +499,7 @@ export function TripPlanPage(): React.JSX.Element {
   return (
     <PlanWorkspace
       trip={trip}
-      onEditTrip={() => setEditingTrip((current) => !current)}
+      onEditTrip={remoteTrip ? undefined : () => setEditingTrip((current) => !current)}
       className="trip-plan"
       days={days.map((item) => {
         const date = new Date(`${item.day}T12:00:00Z`);
@@ -642,6 +701,7 @@ export function TripPlanPage(): React.JSX.Element {
                   if (!point) {
                     return;
                   }
+                  savePlanScroll();
                   captureNavigationSnapshot("/maps");
                   void navigate({ to: "/maps", search: { trip: tripId, day, place: point.id } });
                 }}

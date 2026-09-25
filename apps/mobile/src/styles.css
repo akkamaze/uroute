@@ -294,6 +294,46 @@ a,
   background: var(--color-surface);
 }
 
+.plan-page--plan-only > .trip-sections,
+.plan-page--plan-only > .day-strip {
+  max-height: 96px;
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease,
+    padding 180ms ease,
+    visibility 0s linear 0s;
+}
+
+.plan-page--chrome-hidden > .trip-sections,
+.plan-page--chrome-hidden > .day-strip {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  border-bottom-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    max-height 180ms ease,
+    opacity 180ms ease,
+    padding 180ms ease,
+    border-bottom-width 180ms ease,
+    visibility 0s linear 180ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-page--plan-only > .trip-sections,
+  .plan-page--plan-only > .day-strip {
+    transition: none;
+  }
+}
+
+.mobile-shell--focused {
+  grid-template-rows: minmax(0, 1fr);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 .plan-page > .plan-header,
 .plan-page > .trip-sections,
 .plan-page > .day-strip,

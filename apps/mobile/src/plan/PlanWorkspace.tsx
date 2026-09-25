@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 
 import type { CreatedTrip } from "../trips/trip-store";
 import type { PlaceCollection } from "./map-data";
@@ -52,9 +52,25 @@ export function PlanWorkspace({
   children,
   overlay,
 }: PlanWorkspaceProps): React.JSX.Element {
+  const [chromeHidden, setChromeHidden] = useState(false);
+  const lastScrollTopRef = useRef(0);
+
+  function trackPlanScroll(event: React.UIEvent<HTMLElement>): void {
+    const top = event.currentTarget.scrollTop;
+    const delta = top - lastScrollTopRef.current;
+    lastScrollTopRef.current = top;
+    if (mapVisible || top < 16) {
+      setChromeHidden(false);
+    } else if (delta > 6) {
+      setChromeHidden(true);
+    } else if (delta < -6) {
+      setChromeHidden(false);
+    }
+  }
+
   return (
     <section
-      className={`plan-page${mapVisible ? "" : " plan-page--plan-only"}${className ? ` ${className}` : ""}`}
+      className={`plan-page${mapVisible ? "" : " plan-page--plan-only"}${chromeHidden && !mapVisible ? " plan-page--chrome-hidden" : ""}${className ? ` ${className}` : ""}`}
     >
       <TripHeader active="plan" inactive={mapExpanded} onEditTrip={onEditTrip} trip={trip} />
       <div
@@ -117,7 +133,12 @@ export function PlanWorkspace({
           />
         </Suspense>
       ) : null}
-      <section aria-hidden={mapExpanded} className="day-plan" inert={mapExpanded}>
+      <section
+        aria-hidden={mapExpanded}
+        className="day-plan"
+        inert={mapExpanded}
+        onScroll={trackPlanScroll}
+      >
         {children}
       </section>
       {overlay}

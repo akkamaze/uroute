@@ -60,35 +60,39 @@ export function MobileShell(): React.JSX.Element {
     }
   }, [pathname, expandedMap]);
 
+  const focused = /^\/plan\/trip\/[^/]+$/.test(pathname);
+
   return (
-    <div className="mobile-shell">
+    <div className={`mobile-shell${focused ? " mobile-shell--focused" : ""}`}>
       <main className="mobile-shell__main" data-scroll-restoration-id="mobile-main">
         <Outlet />
       </main>
 
-      <nav
-        aria-hidden={expandedMap}
-        aria-label="Primary"
-        className="bottom-navigation"
-        inert={expandedMap}
-      >
-        {navigationItems.map(({ icon, label, to }) => {
-          const active = isNavigationItemActive(to, pathname);
+      {focused ? null : (
+        <nav
+          aria-hidden={expandedMap}
+          aria-label="Primary"
+          className="bottom-navigation"
+          inert={expandedMap}
+        >
+          {navigationItems.map(({ icon, label, to }) => {
+            const active = isNavigationItemActive(to, pathname);
 
-          return (
-            <Link
-              aria-current={active ? "page" : undefined}
-              className={`bottom-navigation__link${active ? " bottom-navigation__link--active" : ""}`}
-              key={to}
-              to={to}
-            >
-              <NavigationIcon active={active} name={icon} />
+            return (
+              <Link
+                aria-current={active ? "page" : undefined}
+                className={`bottom-navigation__link${active ? " bottom-navigation__link--active" : ""}`}
+                key={to}
+                to={to}
+              >
+                <NavigationIcon active={active} name={icon} />
 
-              <span>{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+                <span>{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }
