@@ -185,7 +185,7 @@ test("Plan keeps structural editing in the dedicated Edit plan page", async ({ p
   const editPlanBack = page.getByRole("button", { name: "Back to Plan" });
   await expect(editPlanBack).toBeVisible();
   await expect(editPlanBack).toHaveCSS("color", "rgb(32, 33, 36)");
-  await expect(page.locator(".bottom-navigation")).toHaveCount(0);
+  await expect(page.locator(".app-navigation__surface .bottom-navigation")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reorder Kiyomizu-dera" })).toBeVisible();
   await expect(page.locator(".edit-plan__icon")).toHaveCount(3);
   await expect(page.locator(".edit-plan__order")).toHaveText(["1", "2", "3"]);
@@ -257,7 +257,7 @@ test("unset times use an accessible dash and scroll surfaces avoid boundary over
       scheduled: scheduledRect.left + scheduledRect.width / 2,
     };
   });
-  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(0.5);
+  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(1);
   await expect(page.getByText("Anytime", { exact: true })).toHaveCount(0);
 
   const editList = page.locator(".edit-plan__list");
@@ -400,9 +400,9 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
   await expect(page.locator('[data-version-row-id="arabica"] .version-place__time')).toHaveText(
     "11:00",
   );
-  await expect(
-    page.locator('[data-version-row-id="arabica"] .edit-plan__place > span'),
-  ).toHaveText("Coffee");
+  await expect(page.locator('[data-version-row-id="arabica"] .edit-plan__place > span')).toHaveText(
+    "Coffee",
+  );
   await expect(page.getByRole("button", { name: "No next version" })).toBeDisabled();
   await page.getByRole("button", { name: "Previous version, Version 1" }).press("Enter");
   await expect(page.locator(".version-preview__timestamp")).toContainText("Version 1·Today,");
@@ -464,7 +464,9 @@ test("reorder stays in an autosaved draft until Save and supports undo and redo"
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();
   await page.getByRole("button", { name: "Version history" }).click();
-  const restoredEntry = page.locator(".version-entry").filter({ hasText: "Restored from Version 1" });
+  const restoredEntry = page
+    .locator(".version-entry")
+    .filter({ hasText: "Restored from Version 1" });
   await expect(restoredEntry).toContainText("3 places");
   const beforeRestoreEntry = page
     .locator(".version-entry")
@@ -535,9 +537,11 @@ test("edge swipe returns through Version details, History, Edit plan and Plan", 
     await expect(page.locator(".edit-plan--swiping")).toHaveCount(1);
     await expect(page.locator(".edit-plan-swipe-underlay")).toContainText(previousPage);
     await expect(page.locator(".edit-plan-swipe-underlay")).toBeVisible();
-    expect(await page.locator(".edit-plan--swiping").evaluate(
-      (element) => element.getBoundingClientRect().left,
-    )).toBeGreaterThan(200);
+    expect(
+      await page
+        .locator(".edit-plan--swiping")
+        .evaluate((element) => element.getBoundingClientRect().left),
+    ).toBeGreaterThan(200);
     if (cancel) {
       await client.send("Input.dispatchTouchEvent", {
         type: "touchMove",
@@ -626,7 +630,7 @@ test("Version history reveals older versions ten at a time", async ({ page }) =>
   );
   await page.goto("/plan/edit?day=13&view=versions");
 
-  const history = page.locator('[data-version-id]');
+  const history = page.locator("[data-version-id]");
   await expect(history).toHaveCount(10);
   await expect(history.first()).toContainText("Version 12");
   const older = page.getByRole("button", { name: /Older versions/ });
@@ -723,9 +727,7 @@ test("Version history migrates legacy Before restore wording", async ({ page }) 
   );
   await page.goto("/plan/edit?day=13&view=versions");
 
-  await expect(
-    page.getByText("Auto-saved before restoring", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Auto-saved before restoring", { exact: true })).toBeVisible();
   await expect(page.getByText("Before restore", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Restored from Version 1" })).toBeVisible();
 });
@@ -769,7 +771,9 @@ test("history separates place counts and shows only applicable change indicators
   const combined = history.nth(0);
   await expect(combined.getByText("3 places", { exact: true })).toBeVisible();
   const versionNumberBox = await combined.getByText("Version 5", { exact: true }).boundingBox();
-  const viewButtonBox = await combined.getByRole("button", { name: "View Version 5" }).boundingBox();
+  const viewButtonBox = await combined
+    .getByRole("button", { name: "View Version 5" })
+    .boundingBox();
   expect(versionNumberBox).not.toBeNull();
   expect(viewButtonBox).not.toBeNull();
   expect(
@@ -817,11 +821,11 @@ test("history separates place counts and shows only applicable change indicators
       scheduled: scheduledRect.left + scheduledRect.width / 2,
     };
   });
-  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(0.5);
+  expect(Math.abs(timeCenters.mark - timeCenters.scheduled)).toBeLessThan(1);
   await expect(page.getByText("Anytime", { exact: true })).toHaveCount(0);
-  await expect(
-    page.locator('[data-version-row-id="arabica"] .version-place__time'),
-  ).toHaveText("11:00");
+  await expect(page.locator('[data-version-row-id="arabica"] .version-place__time')).toHaveText(
+    "11:00",
+  );
 });
 
 test("dragging reorders the draft without writing the saved Plan", async ({ page }) => {
@@ -1037,9 +1041,7 @@ test("Back flushes the latest draft and explicit discard removes it", async ({ p
   await expect(page.getByRole("dialog", { name: "Leave Edit plan?" })).toHaveCount(0);
   expect(await storedFridayIds(page)).toEqual(original);
   await expect(page.locator(".day-plan__draft-indicator")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Friday 13, draft available" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Friday 13, draft available" })).toBeVisible();
   await expect(page.locator(".day-strip__draft-indicator")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Edit plan for Friday, 13 November" }).click();

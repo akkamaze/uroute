@@ -50,7 +50,7 @@ function getVisiblePage(): HTMLElement | null {
 }
 
 export function shouldCaptureForwardNavigation(fromPath: string, toPath: string): boolean {
-  if (fromPath === "/plan" && toPath === "/plan/edit") {
+  if (toPath === "/plan/edit" && (fromPath === "/plan" || /^\/plan\/trip\/[^/]+$/.test(fromPath))) {
     return true;
   }
   if (fromPath === "/welcome" && toPath === "/login") {

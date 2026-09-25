@@ -5,6 +5,7 @@ export interface CreatedTrip {
   endDate: string;
   dayOptions?: Record<string, string>;
   rowOrder?: Record<string, string[]>;
+  rowHidden?: Record<string, string[]>;
 }
 
 const STORAGE_KEY = "uroute.created-trips.v1";
@@ -125,6 +126,41 @@ export function clearTripRowOrder(id: string): CreatedTrip {
   }
   const updated = { ...existing };
   delete updated.rowOrder;
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),
+  );
+
+  return updated;
+}
+
+export function setTripPlanRows(
+  id: string,
+  day: string,
+  option: string,
+  orderedIds: readonly string[],
+  hiddenIds: readonly string[],
+): CreatedTrip {
+  const trips = loadCreatedTrips();
+  const existing = trips.find((trip) => trip.id === id);
+  const allIds = [...orderedIds, ...hiddenIds];
+  if (
+    !existing ||
+    day < existing.startDate ||
+    day > existing.endDate ||
+    !/^[A-Z]$/.test(option) ||
+    allIds.length > 10_000 ||
+    allIds.some((rowId) => typeof rowId !== "string" || rowId.length > 300) ||
+    new Set(allIds).size !== allIds.length
+  ) {
+    throw new Error("Could not save this plan day.");
+  }
+  const key = `${day}:${option}`;
+  const updated: CreatedTrip = {
+    ...existing,
+    rowOrder: { ...existing.rowOrder, [key]: [...orderedIds] },
+    rowHidden: { ...existing.rowHidden, [key]: [...hiddenIds] },
+  };
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify(trips.map((trip) => (trip.id === id ? updated : trip))),

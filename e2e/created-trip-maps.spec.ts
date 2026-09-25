@@ -41,7 +41,7 @@ test("creates a trip before using imported places and remembers the selected day
     "Sunday, 10 January",
   );
   await page.getByRole("button", { name: "Add to plan", exact: true }).click();
-  await expect(page.getByRole("status")).toContainText("Market added to Lisbon");
+  await expect(page.locator(".imported-page__notice")).toContainText("Market added to Lisbon");
   await page.reload();
   await page.getByLabel("Search imported places").fill("Market");
   await page
@@ -68,18 +68,51 @@ test("creates a trip before using imported places and remembers the selected day
   await expect(page.getByText("1 place removed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText("Market");
-  await page.getByRole("button", { name: "Edit plan" }).click();
-  await page.getByLabel("Time for Market").fill("14:30");
-  await page.getByLabel("Note for Market").fill("Meet at the east entrance");
-  await page.getByRole("button", { name: "Save Market" }).click();
-  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText(
-    "Meet at the east entrance",
-  );
-  await page.reload();
-  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText("14:30");
-  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText(
-    "Meet at the east entrance",
-  );
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await expect(page).toHaveURL(/\/plan\/edit\?tripId=.*date=2027-01-10/);
+  await expect(page.getByRole("heading", { name: "Edit plan" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reorder Market" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to Plan" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
+  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText("Market");
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Mark Market for removal" }).click();
+  await page.getByRole("button", { name: "Remove 1 place" }).click();
+  await expect(page.locator("[data-edit-plan-row-id]")).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Reorder Market" })).toBeVisible();
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
+  await expect(page.getByRole("heading", { name: "A day to make your own" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Version history" }).click();
+  await expect(page.getByText("Current saved version")).toBeVisible();
+  await page.getByRole("button", { name: "View Version 1" }).click();
+  await page.getByRole("button", { name: "Restore Version 1" }).click();
+  await page
+    .getByRole("dialog", { name: "Restore Version 1?" })
+    .getByRole("button", { name: "Restore & save" })
+    .click();
+  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText("Market");
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Mark Market for removal" }).click();
+  await page.getByRole("button", { name: "Remove 1 place" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: /Add a place/ }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page
+    .getByRole("region", { name: "Search suggestions" })
+    .getByRole("button", { name: "Market Unfiled" })
+    .click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await page.getByRole("button", { name: "Add to plan", exact: true }).click();
+  await expect(page.locator(".imported-page__notice")).toContainText("Market added to Lisbon");
+  await page.goto("/trips");
+  await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
+  await expect(page.getByLabel(/Sunday 10 January itinerary/)).toContainText("Market");
 });
 
 test("offers to copy previous Kanto day selections into a newly created Kanto trip", async ({

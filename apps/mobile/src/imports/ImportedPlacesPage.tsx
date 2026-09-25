@@ -39,6 +39,7 @@ import { TripMap, type MapViewport } from "../plan/TripMap";
 import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
+import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
 import { ImportedPlaceGallery } from "./ImportedPlaceGallery";
 import { MapPlanForm } from "./MapPlanForm";
@@ -979,7 +980,33 @@ export function ImportedPlacesPage(): React.JSX.Element {
           point.id,
           target.trip === "kanto" ? undefined : target.trip,
         );
-        setVisits(await loadImportedVisits());
+        const updatedVisits = await loadImportedVisits();
+        if (result === "duplicate" && target.trip !== "kanto") {
+          const visit = updatedVisits.find(
+            (candidate) =>
+              candidate.tripId === target.trip &&
+              candidate.day === target.day &&
+              candidate.placeId === point.id,
+          );
+          const trip = loadCreatedTrips().find((candidate) => candidate.id === target.trip);
+          if (visit && trip) {
+            for (const [key, hiddenIds] of Object.entries(trip.rowHidden ?? {})) {
+              if (!key.startsWith(`${target.day}:`) || !hiddenIds.includes(visit.id)) {
+                continue;
+              }
+              const option = key.slice(target.day.length + 1);
+              setTripPlanRows(
+                target.trip,
+                target.day,
+                option,
+                trip.rowOrder?.[key] ?? [],
+                hiddenIds.filter((id) => id !== visit.id),
+              );
+              result = "added";
+            }
+          }
+        }
+        setVisits(updatedVisits);
       } else {
         result = addPlaceToKyotoDay(Number(target.day.slice(-2)), {
           placeId: point.id,

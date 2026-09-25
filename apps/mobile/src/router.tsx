@@ -36,6 +36,9 @@ interface EditorSearch {
 
 interface EditPlanSearch {
   day?: KyotoDay;
+  tripId?: string;
+  date?: string;
+  option?: string;
   view?: "versions";
   version?: string;
 }
@@ -171,6 +174,15 @@ const editPlanRoute = createRoute({
   path: "/plan/edit",
   validateSearch: (search: Record<string, unknown>): EditPlanSearch => ({
     ...(isKyotoDay(Number(search.day)) ? { day: Number(search.day) as KyotoDay } : {}),
+    ...(typeof search.tripId === "string" && /^[a-zA-Z0-9-]{1,80}$/.test(search.tripId)
+      ? { tripId: search.tripId }
+      : {}),
+    ...(typeof search.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(search.date)
+      ? { date: search.date }
+      : {}),
+    ...(typeof search.option === "string" && /^[A-Z]$/.test(search.option)
+      ? { option: search.option }
+      : {}),
     ...(search.view === "versions" ? { view: "versions" } : {}),
     ...(search.view === "versions" &&
     typeof search.version === "string" &&

@@ -1,24 +1,11 @@
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
-import {
-  ArrowDown,
-  ArrowUp,
-  Landmark,
-  Map as MapIcon,
-  Pencil,
-  Plus,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+import { Landmark, Map as MapIcon, Pencil, Plus, Upload, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   loadImportedPlaces,
   loadImportedVisits,
   copyLegacyVisitsToTrip,
-  removeImportedVisit,
-  restoreImportedVisit,
-  saveImportedVisitDetails,
   type ImportedVisit,
 } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
@@ -30,37 +17,28 @@ import {
   type ItineraryEntry,
 } from "../imports/itinerary-sheet";
 import type { ImportedPoint } from "../imports/parse-place-file";
+import { captureNavigationSnapshot } from "../navigation/swipe-back";
 import {
   loadCreatedTrips,
   clearTripRowOrder,
   setTripDayOption,
-  setTripRowOrder,
+  setTripPlanRows,
   tripDays,
   updateTrip,
   type CreatedTrip,
 } from "../trips/trip-store";
 import type { PlaceCollection } from "./map-data";
+import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
 import { PlanWorkspace } from "./PlanWorkspace";
 import { PlanTimelineRow } from "./PlanTimelineRow";
 import { usePlanStopSwipe } from "./usePlanStopSwipe";
 import "./stop-actions.css";
 
-interface PlanRow {
-  id: string;
-  title: string;
-  time: string;
-  detail: string;
-  area: string;
-  kind: "place" | "transport" | "note";
-  point?: ImportedPoint | undefined;
-  entry?: ItineraryEntry;
-  visit?: ImportedVisit;
-}
-
 interface RemovedPlanRow {
   day: string;
-  entry?: ItineraryEntry;
-  visit?: ImportedVisit;
+  option: string;
+  orderedIds: string[];
+  hiddenIds: string[];
 }
 
 function dayHeading(day: string): string {
@@ -72,13 +50,7 @@ function dayHeading(day: string): string {
   }).format(new Date(`${day}T12:00:00Z`));
 }
 
-function startTime(label: string): string {
-  const matched = /(?:^|\D)([01]?\d|2[0-3])[.:]([0-5]\d)/.exec(label);
-
-  return matched ? `${matched[1]!.padStart(2, "0")}:${matched[2]}` : label.slice(0, 8);
-}
-
-function mapPlaces(rows: readonly PlanRow[]): PlaceCollection {
+function mapPlaces(rows: readonly CreatedPlanRow[]): PlaceCollection {
   return {
     type: "FeatureCollection",
     features: rows.flatMap((row, index) => {
@@ -123,7 +95,6 @@ export function TripPlanPage(): React.JSX.Element {
   const [showMap, setShowMap] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const stopSwipe = usePlanStopSwipe();
-  const [editing, setEditing] = useState(false);
   const [editingTrip, setEditingTrip] = useState(false);
   const [tripName, setTripName] = useState(trip?.name ?? "");
   const [tripStart, setTripStart] = useState(trip?.startDate ?? "");
@@ -143,6 +114,7 @@ export function TripPlanPage(): React.JSX.Element {
   const savedOption = trip?.dayOptions?.[day] ?? "A";
   const variant = variants.includes(savedOption) ? savedOption : (variants[0] ?? "A");
   const rowOrder = trip?.rowOrder?.[`${day}:${variant}`];
+  const rowHidden = trip?.rowHidden?.[`${day}:${variant}`];
   const mapExpanded = search.map === "full";
   const mapVisible = showMap || mapExpanded;
   const mapOpenedHereRef = useRef(false);
@@ -208,59 +180,11 @@ export function TripPlanPage(): React.JSX.Element {
     };
   }, [tripId]);
 
-  const byId = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
-  const rows = useMemo<PlanRow[]>(() => {
-    const sheetRows = itinerary
-      .filter((entry) => entry.day === day && entry.variant === variant)
-      .sort((left, right) => left.order - right.order)
-      .map((entry) => ({
-        id: entry.id,
-        title: entry.title,
-        time: entry.time,
-        detail: entry.detail,
-        area: entry.area,
-        kind: entry.kind,
-        point: entry.placeId ? byId.get(entry.placeId) : undefined,
-        entry,
-      }));
-    const addedRows = visits
-      .filter((visit) => visit.tripId === tripId && visit.day === day)
-      .sort((left, right) => left.order - right.order)
-      .flatMap((visit) => {
-        const point = byId.get(visit.placeId);
-
-        return point
-          ? [
-              {
-                id: visit.id,
-                title: point.name,
-                time: visit.time,
-                detail: visit.notes ?? "",
-                area: point.folder,
-                kind: "place" as const,
-                point,
-                visit,
-              },
-            ]
-          : [];
-      });
-
-    const combined = [...sheetRows, ...addedRows];
-    if (!Array.isArray(rowOrder) || rowOrder.length === 0) {
-      return combined;
-    }
-    const ranks = new Map(rowOrder.map((id, index) => [id, index]));
-
-    return combined.sort((left, right) => {
-      const leftRank = ranks.get(left.id);
-      const rightRank = ranks.get(right.id);
-      if (leftRank === undefined) {
-        return rightRank === undefined ? 0 : 1;
-      }
-
-      return rightRank === undefined ? -1 : leftRank - rightRank;
-    });
-  }, [byId, day, itinerary, rowOrder, tripId, variant, visits]);
+  const rows = useMemo(
+    () =>
+      buildCreatedPlanRows(tripId, day, variant, points, itinerary, visits, rowOrder, rowHidden),
+    [day, itinerary, points, rowHidden, rowOrder, tripId, variant, visits],
+  );
   const places = useMemo(() => mapPlaces(rows), [rows]);
   const legacyCount = visits.filter(
     (visit) =>
@@ -303,57 +227,47 @@ export function TripPlanPage(): React.JSX.Element {
     }
   }
 
-  async function saveRows(next: ItineraryEntry[]): Promise<boolean> {
+  function removeRow(row: CreatedPlanRow): void {
     try {
-      await saveItinerary(tripId, next);
-      setItinerary(next);
+      setTrip(
+        setTripPlanRows(
+          tripId,
+          day,
+          variant,
+          rows.filter((candidate) => candidate.id !== row.id).map((candidate) => candidate.id),
+          [...(rowHidden ?? []), row.id],
+        ),
+      );
+      setRemovedRows((current) => [
+        ...current,
+        {
+          day,
+          option: variant,
+          orderedIds: rows.map((candidate) => candidate.id),
+          hiddenIds: [...(rowHidden ?? [])],
+        },
+      ]);
       setError("");
-
-      return true;
     } catch {
-      setError("Could not save itinerary changes.");
-
-      return false;
+      setError("Could not remove this place.");
     }
   }
 
-  async function removeRow(row: PlanRow): Promise<void> {
-    const entry = row.entry;
-    const visit = row.visit;
-    if (entry) {
-      if (await saveRows(itinerary.filter((entry) => entry.id !== row.id))) {
-        setRemovedRows((current) => [...current, { day, entry }]);
-      }
-    } else if (visit?.placeId) {
-      try {
-        await removeImportedVisit(day, visit.placeId, tripId);
-        setVisits(await loadImportedVisits());
-        setRemovedRows((current) => [...current, { day, visit }]);
-      } catch {
-        setError("Could not remove this place.");
-      }
-    }
-  }
-
-  async function undoRemoval(): Promise<void> {
+  function undoRemoval(): void {
     if (removedRows.length === 0) {
       return;
     }
-    const entries = removedRows.flatMap((removed) => (removed.entry ? [removed.entry] : []));
-    const missingEntries = entries.filter(
-      (entry) => !itinerary.some((current) => current.id === entry.id),
-    );
-    if (missingEntries.length > 0 && !(await saveRows([...itinerary, ...missingEntries]))) {
-      return;
-    }
     try {
-      for (const removed of removedRows) {
-        if (removed.visit) {
-          await restoreImportedVisit(removed.visit);
-        }
-      }
-      if (removedRows.some((removed) => removed.visit)) {
-        setVisits(await loadImportedVisits());
+      for (const removed of [...removedRows].reverse()) {
+        setTrip(
+          setTripPlanRows(
+            tripId,
+            removed.day,
+            removed.option,
+            removed.orderedIds,
+            removed.hiddenIds,
+          ),
+        );
       }
     } catch {
       setError("Could not restore this place.");
@@ -361,47 +275,6 @@ export function TripPlanPage(): React.JSX.Element {
       return;
     }
     setRemovedRows([]);
-  }
-
-  async function saveRowDetails(row: PlanRow, time: string, detail: string): Promise<void> {
-    if (row.entry) {
-      await saveRows(
-        itinerary.map((entry) =>
-          entry.id === row.id
-            ? { ...entry, time: time.slice(0, 80), detail: detail.slice(0, 1500) }
-            : entry,
-        ),
-      );
-    } else if (row.visit) {
-      try {
-        if (!(await saveImportedVisitDetails(row.visit.id, time, detail))) {
-          setError("Use a time such as 14:30 and a note under 5,000 characters.");
-
-          return;
-        }
-        setVisits(await loadImportedVisits());
-      } catch {
-        setError("Could not save this place.");
-      }
-    }
-  }
-
-  function moveRow(row: PlanRow, direction: -1 | 1): void {
-    const index = rows.findIndex((candidate) => candidate.id === row.id);
-    if (index < 0 || !rows[index + direction]) {
-      return;
-    }
-    const orderedIds = rows.map((candidate) => candidate.id);
-    [orderedIds[index], orderedIds[index + direction]] = [
-      orderedIds[index + direction]!,
-      orderedIds[index]!,
-    ];
-    try {
-      setTrip(setTripRowOrder(tripId, day, variant, orderedIds));
-      setError("");
-    } catch {
-      setError("Could not reorder this day.");
-    }
   }
 
   function saveTripDetails(event: React.FormEvent<HTMLFormElement>): void {
@@ -482,7 +355,7 @@ export function TripPlanPage(): React.JSX.Element {
                 ? `From ${dayHeading(removedRows[0]!.day)}`
                 : "From your trip plan"}
             </span>
-            <button onClick={() => void undoRemoval()} type="button">
+            <button onClick={undoRemoval} type="button">
               Undo
             </button>
             <button
@@ -512,10 +385,17 @@ export function TripPlanPage(): React.JSX.Element {
             <MapIcon aria-hidden="true" size={22} strokeWidth={1.8} />
           </button>
           <button
-            aria-label={editing ? "Done editing plan" : "Edit plan"}
-            aria-pressed={editing}
+            aria-label={`Edit plan for ${dayHeading(day)}`}
             className="day-plan__select-toggle"
-            onClick={() => setEditing((current) => !current)}
+            onClick={() => {
+              stopSwipe.close();
+              captureNavigationSnapshot("/plan/edit");
+              void navigate({
+                to: "/plan/edit",
+                search: { tripId, date: day, option: variant },
+                state: (current) => ({ ...current, editPlanEntry: true }),
+              });
+            }}
             type="button"
           >
             <span className="day-plan__edit-icon">
@@ -626,14 +506,14 @@ export function TripPlanPage(): React.JSX.Element {
                     return;
                   }
                   const point = row.point;
-                  if (editing || !point) {
+                  if (!point) {
                     return;
                   }
                   void navigate({ to: "/maps", search: { trip: tripId, day, place: point.id } });
                 }}
                 onRemove={() => {
                   stopSwipe.close();
-                  void removeRow(row);
+                  removeRow(row);
                 }}
                 removeLabel={`Remove ${row.title} from ${dayHeading(day)}`}
                 selected={row.point?.id === selectedId}
@@ -642,7 +522,7 @@ export function TripPlanPage(): React.JSX.Element {
                     ? `${stop.type} · ${row.area}`
                     : `${row.kind} · ${row.area || "Not linked to a map pin"}`
                 }
-                time={startTime(row.time)}
+                time={startTime(row.time) || row.time.slice(0, 8)}
                 title={row.title}
                 swipe={{
                   open: swipeOpen,
@@ -659,63 +539,6 @@ export function TripPlanPage(): React.JSX.Element {
                 }
               >
                 {row.detail ? <p className="trip-plan__detail">{row.detail}</p> : null}
-                {editing ? (
-                  <form
-                    className="trip-plan__edit-row"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      const values = new FormData(event.currentTarget);
-                      const time = values.get("time");
-                      const note = values.get("note");
-                      void saveRowDetails(
-                        row,
-                        typeof time === "string" ? time : "",
-                        typeof note === "string" ? note : "",
-                      );
-                    }}
-                  >
-                    <label>
-                      Time{" "}
-                      <input
-                        aria-label={`Time for ${row.title}`}
-                        defaultValue={row.time}
-                        maxLength={80}
-                        name="time"
-                      />
-                    </label>
-                    <label>
-                      Note{" "}
-                      <input
-                        aria-label={`Note for ${row.title}`}
-                        defaultValue={row.detail}
-                        maxLength={row.entry ? 1500 : 5000}
-                        name="note"
-                      />
-                    </label>
-                    <button
-                      aria-label={`Move ${row.title} up`}
-                      onClick={() => moveRow(row, -1)}
-                      type="button"
-                    >
-                      <ArrowUp aria-hidden="true" size={17} />
-                    </button>
-                    <button
-                      aria-label={`Move ${row.title} down`}
-                      onClick={() => moveRow(row, 1)}
-                      type="button"
-                    >
-                      <ArrowDown aria-hidden="true" size={17} />
-                    </button>
-                    <button
-                      onClick={() => void removeRow(row)}
-                      type="button"
-                      aria-label={`Remove ${row.title}`}
-                    >
-                      <Trash2 aria-hidden="true" size={17} />
-                    </button>
-                    <button type="submit">Save {row.title}</button>
-                  </form>
-                ) : null}
               </PlanTimelineRow>
             );
           })}
@@ -727,7 +550,7 @@ export function TripPlanPage(): React.JSX.Element {
           <p>Add your first place when you are ready.</p>
         </div>
       )}
-      {editing || itinerary.length === 0 ? (
+      {itinerary.length === 0 ? (
         <label className="trip-plan__upload">
           <Upload aria-hidden="true" size={18} />{" "}
           {importing

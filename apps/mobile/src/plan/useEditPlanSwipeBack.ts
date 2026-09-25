@@ -52,7 +52,10 @@ export function useEditPlanSwipeBack(onBack: () => void): React.RefObject<HTMLEl
       const level =
         url.searchParams.get("view") !== "versions" ? 0 : url.searchParams.has("version") ? 2 : 1;
 
-      return { key: `${url.searchParams.get("day")}:${level}`, level };
+      return {
+        key: `${url.searchParams.get("tripId") ?? "kyoto"}:${url.searchParams.get("date") ?? url.searchParams.get("day")}:${level}`,
+        level,
+      };
     }
 
     function revealPreviousPage(): void {

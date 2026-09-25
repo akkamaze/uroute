@@ -25,10 +25,23 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isSwipeBackEdgeStart } from "../navigation/swipe-back";
 import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import { loadImportedPlaces } from "../imports/place-library";
+import { loadImportedVisits, type ImportedVisit } from "../imports/place-library";
 import { importedPointAsStop } from "../imports/imported-stop";
+import { loadItinerary, type ItineraryEntry } from "../imports/itinerary-sheet";
 import type { ImportedPoint } from "../imports/parse-place-file";
+import { loadCreatedTrips, setTripPlanRows, type CreatedTrip } from "../trips/trip-store";
 
-import { FRIDAY_STOPS } from "./plan-data";
+import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
+import {
+  addCreatedEditVersion,
+  clearCreatedEditDraft,
+  createdEditorKey,
+  loadCreatedEditDraft,
+  loadCreatedEditVersions,
+  recordCreatedVersionRestore,
+  saveCreatedEditDraft,
+} from "./created-edit-plan-store";
+import { FRIDAY_STOPS, type PlannedStop } from "./plan-data";
 import {
   addEditPlanVersion,
   clearEditPlanDraft,
@@ -37,6 +50,7 @@ import {
   restoreAndSaveEditPlanVersion,
   saveEditPlanDraft,
   visitsSignature,
+  type EditPlanDraft,
   type EditPlanVersion,
 } from "./edit-plan-store";
 import { saveKyotoDay, useKyotoPlan, type PlannedVisit } from "./plan-store";
@@ -66,6 +80,27 @@ const VERSION_CHANGE_GROUPS: ReadonlyArray<{
   { kind: "time", title: "Time" },
   { kind: "added", title: "Added" },
 ];
+
+export interface PlanEditorAdapter {
+  tripId: string;
+  date: string;
+  option: string;
+  tripName: string;
+  dayName: string;
+  dayLabel: string;
+  savedVisits: PlannedVisit[];
+  stops: Map<string, PlannedStop>;
+  loadDraft: (signature: string) => EditPlanDraft | null;
+  saveDraft: (signature: string, visits: readonly PlannedVisit[]) => boolean;
+  clearDraft: () => void;
+  loadVersions: () => EditPlanVersion[];
+  addVersion: (visits: readonly PlannedVisit[], summary: string) => EditPlanVersion[];
+  restoreVersion: (
+    current: readonly PlannedVisit[],
+    selected: EditPlanVersion,
+  ) => Promise<{ ok: boolean; versions: EditPlanVersion[] }>;
+  savePlan: (visits: readonly PlannedVisit[]) => Promise<boolean>;
+}
 
 interface DragState {
   active: boolean;
@@ -416,13 +451,202 @@ function RestoreVersionDialog({
   );
 }
 
+interface CreatedEditorData {
+  trip: CreatedTrip;
+  points: ImportedPoint[];
+  itinerary: ItineraryEntry[];
+  visits: ImportedVisit[];
+}
+
+function createdRowAsStop(row: CreatedPlanRow): PlannedStop {
+  const imported = row.point ? importedPointAsStop(row.point, startTime(row.time)) : null;
+
+  return {
+    address: imported?.address ?? "",
+    area: row.area,
+    category: imported?.category ?? "unknown",
+    duration: imported?.duration ?? "",
+    hours: imported?.hours ?? "",
+    id: row.id,
+    image: imported?.image ?? "",
+    name: row.title,
+    rating: imported?.rating ?? "",
+    reviews: imported?.reviews ?? "",
+    secondImage: imported?.secondImage ?? "",
+    time: startTime(row.time),
+    type: imported?.type ?? (row.kind === "transport" ? "Transport" : "Note"),
+  };
+}
+
+function CreatedTripEditPlanLoader({
+  tripId,
+  date,
+  option,
+}: {
+  tripId: string;
+  date: string;
+  option?: string;
+}): React.JSX.Element {
+  const [data, setData] = useState<CreatedEditorData | null>(null);
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const trip = loadCreatedTrips().find((candidate) => candidate.id === tripId);
+    if (!trip || date < trip.startDate || date > trip.endDate) {
+      setLoadError(true);
+
+      return;
+    }
+    void Promise.all([loadImportedPlaces(), loadItinerary(tripId), loadImportedVisits()])
+      .then(([points, itinerary, visits]) => {
+        if (active) {
+          setData({ trip, points, itinerary, visits });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setLoadError(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [date, tripId]);
+
+  const adapter = useMemo<PlanEditorAdapter | null>(() => {
+    if (!data) {
+      return null;
+    }
+    const selectedOption = option ?? data.trip.dayOptions?.[date] ?? "A";
+    const rowKey = `${date}:${selectedOption}`;
+    const allRows = buildCreatedPlanRows(
+      tripId,
+      date,
+      selectedOption,
+      data.points,
+      data.itinerary,
+      data.visits,
+      data.trip.rowOrder?.[rowKey],
+    );
+    const visibleRows = buildCreatedPlanRows(
+      tripId,
+      date,
+      selectedOption,
+      data.points,
+      data.itinerary,
+      data.visits,
+      data.trip.rowOrder?.[rowKey],
+      data.trip.rowHidden?.[rowKey],
+    );
+    const editorKey = createdEditorKey(tripId, date, selectedOption);
+    const dateValue = new Date(`${date}T12:00:00Z`);
+    const dayName = new Intl.DateTimeFormat("en", {
+      weekday: "long",
+      timeZone: "UTC",
+    }).format(dateValue);
+    const dayLabel = new Intl.DateTimeFormat("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(dateValue);
+    const savedVisits = visibleRows.map((row) => ({
+      placeId: row.id,
+      time: startTime(row.time),
+      notes: row.detail,
+    }));
+    const stops = new Map(allRows.map((row) => [row.id, createdRowAsStop(row)]));
+    const savePlan = async (visits: readonly PlannedVisit[]): Promise<boolean> => {
+      const knownIds = new Set(allRows.map((row) => row.id));
+      const orderedIds = visits.map((visit) => visit.placeId);
+      if (
+        orderedIds.some((id) => !knownIds.has(id)) ||
+        new Set(orderedIds).size !== orderedIds.length
+      ) {
+        return false;
+      }
+      const kept = new Set(orderedIds);
+      const hiddenIds = allRows.filter((row) => !kept.has(row.id)).map((row) => row.id);
+      try {
+        setTripPlanRows(tripId, date, selectedOption, orderedIds, hiddenIds);
+
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    return {
+      tripId,
+      date,
+      option: selectedOption,
+      tripName: data.trip.name,
+      dayName,
+      dayLabel,
+      savedVisits,
+      stops,
+      loadDraft: (signature) => loadCreatedEditDraft(editorKey, signature),
+      saveDraft: (signature, visits) => saveCreatedEditDraft(editorKey, signature, visits),
+      clearDraft: () => clearCreatedEditDraft(editorKey),
+      loadVersions: () => loadCreatedEditVersions(editorKey),
+      addVersion: (visits, summary) => addCreatedEditVersion(editorKey, visits, summary),
+      savePlan,
+      restoreVersion: async (current, selected) => {
+        if (!(await savePlan(selected.visits))) {
+          return { ok: false, versions: loadCreatedEditVersions(editorKey) };
+        }
+        const result = recordCreatedVersionRestore(editorKey, current, selected);
+        if (!result.ok) {
+          await savePlan(current);
+        }
+
+        return result;
+      },
+    };
+  }, [data, date, option, tripId]);
+
+  if (loadError) {
+    return <section className="edit-plan">Trip plan not found.</section>;
+  }
+  if (!adapter) {
+    return <section aria-busy="true" className="edit-plan" />;
+  }
+
+  return <EditPlanCore adapter={adapter} key={`${tripId}:${date}:${adapter.option}`} />;
+}
+
 export function EditPlanPage(): React.JSX.Element {
+  const search = useSearch({ from: "/plan/edit" });
+
+  return search.tripId ? (
+    search.date ? (
+      <CreatedTripEditPlanLoader
+        date={search.date}
+        {...(search.option === undefined ? {} : { option: search.option })}
+        tripId={search.tripId}
+      />
+    ) : (
+      <section className="edit-plan">Trip plan not found.</section>
+    )
+  ) : (
+    <EditPlanCore />
+  );
+}
+
+function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.Element {
   const navigate = useNavigate();
   const router = useRouter();
   const search = useSearch({ from: "/plan/edit" });
   const routeState = useRouterState({ select: (state) => state.location.state });
   const day = search.day ?? 13;
   const plan = useKyotoPlan();
+  const savedVisits = adapter?.savedVisits ?? plan.days[day];
+  const editorSearch = adapter
+    ? { tripId: adapter.tripId, date: adapter.date, option: adapter.option }
+    : { day };
   const [importedPoints, setImportedPoints] = useState<ImportedPoint[]>([]);
   useEffect(() => {
     let active = true;
@@ -438,15 +662,21 @@ export function EditPlanPage(): React.JSX.Element {
       active = false;
     };
   }, []);
-  const initialVisitsRef = useRef(cloneVisits(plan.days[day]));
+  const initialVisitsRef = useRef(cloneVisits(savedVisits));
   const baseSignatureRef = useRef(visitsSignature(initialVisitsRef.current));
-  const storedDraftRef = useRef(loadEditPlanDraft(day, baseSignatureRef.current));
+  const storedDraftRef = useRef(
+    adapter
+      ? adapter.loadDraft(baseSignatureRef.current)
+      : loadEditPlanDraft(day, baseSignatureRef.current),
+  );
   const [draft, setDraft] = useState<PlannedVisit[]>(() =>
     cloneVisits(storedDraftRef.current?.visits ?? initialVisitsRef.current),
   );
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
-  const [versions, setVersions] = useState<EditPlanVersion[]>(() => loadEditPlanVersions(day));
+  const [versions, setVersions] = useState<EditPlanVersion[]>(() =>
+    adapter ? adapter.loadVersions() : loadEditPlanVersions(day),
+  );
   const [listScrollable, setListScrollable] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -477,22 +707,24 @@ export function EditPlanPage(): React.JSX.Element {
   const displayedVisits = dragPreview ?? draft;
   const baseSignature = baseSignatureRef.current;
   const dirty = visitsSignature(draft) !== baseSignature;
-  const externalChange = visitsSignature(plan.days[day]) !== baseSignature;
+  const externalChange = visitsSignature(savedVisits) !== baseSignature;
   const removedCount = initialVisitsRef.current.filter(
     (visit) => !draft.some((candidate) => candidate.placeId === visit.placeId),
   ).length;
-  const dayName = DAY_NAMES.get(day) ?? "Selected day";
-  const dayLabel = `${dayName}, ${day} November`;
+  const dayName = adapter?.dayName ?? DAY_NAMES.get(day) ?? "Selected day";
+  const dayLabel = adapter?.dayLabel ?? `${dayName}, ${day} November`;
+  const tripName = adapter?.tripName ?? "Kyoto";
   const selectionCount = selectedIds.size;
 
   const stops = useMemo(
     () =>
+      adapter?.stops ??
       new Map(
         [...FRIDAY_STOPS, ...importedPoints.map((point) => importedPointAsStop(point))].map(
           (stop) => [stop.id, stop],
         ),
       ),
-    [importedPoints],
+    [adapter, importedPoints],
   );
 
   const navigationBlocker = useBlocker({
@@ -531,7 +763,11 @@ export function EditPlanPage(): React.JSX.Element {
     if (hasNavigationEntry("editPlanVersionEntry")) {
       router.history.back();
     } else {
-      void navigate({ to: "/plan/edit", search: { day, view: "versions" }, replace: true });
+      void navigate({
+        to: "/plan/edit",
+        search: { ...editorSearch, view: "versions" },
+        replace: true,
+      });
     }
   }
 
@@ -539,12 +775,17 @@ export function EditPlanPage(): React.JSX.Element {
     if (hasNavigationEntry("editPlanHistoryEntry")) {
       router.history.back();
     } else {
-      void navigate({ to: "/plan/edit", search: { day }, replace: true });
+      void navigate({ to: "/plan/edit", search: editorSearch, replace: true });
     }
   }
 
   function backToPlan(): void {
-    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
+    if (
+      dirty &&
+      !(adapter
+        ? adapter.saveDraft(baseSignature, draft)
+        : saveEditPlanDraft(day, baseSignature, draft))
+    ) {
       setDraftStorageFailed(true);
       showNotice("Could not save the latest draft. Stay here and try again.", true);
 
@@ -689,11 +930,13 @@ export function EditPlanPage(): React.JSX.Element {
     setHighlightedVersionId(sourceId);
   }
 
-  function confirmRestoreVersion(): void {
+  async function confirmRestoreVersion(): Promise<void> {
     if (restoreCandidate === null) {
       return;
     }
-    const result = restoreAndSaveEditPlanVersion(day, plan.days[day], restoreCandidate);
+    const result = adapter
+      ? await adapter.restoreVersion(savedVisits, restoreCandidate)
+      : restoreAndSaveEditPlanVersion(day, savedVisits, restoreCandidate);
     if (!result.ok) {
       setRestoreCandidate(null);
       setRestoreError(
@@ -705,7 +948,7 @@ export function EditPlanPage(): React.JSX.Element {
     setVersions(result.versions);
     allowExitRef.current = true;
     setRestoreCandidate(null);
-    void navigate({ to: "/plan", search: { day }, replace: true });
+    exitToPlan();
   }
 
   function undo(): void {
@@ -748,19 +991,33 @@ export function EditPlanPage(): React.JSX.Element {
 
   function exitToPlan(): void {
     allowExitRef.current = true;
-    void navigate({ to: "/plan", search: { day }, replace: true });
+    if (adapter) {
+      void navigate({
+        to: "/plan/trip/$tripId",
+        params: { tripId: adapter.tripId },
+        search: { day: adapter.date },
+        replace: true,
+      });
+    } else {
+      void navigate({ to: "/plan", search: { day }, replace: true });
+    }
   }
 
   function discardDraftAndExit(): void {
-    clearEditPlanDraft(day);
+    if (adapter) {
+      adapter.clearDraft();
+    } else {
+      clearEditPlanDraft(day);
+    }
     setConfirmDiscard(false);
     exitToPlan();
   }
 
-  function finishSave(): void {
+  async function finishSave(): Promise<void> {
     setConfirmSave(false);
     setSaving(true);
-    if (!saveKyotoDay(day, draft)) {
+    const saved = adapter ? await adapter.savePlan(draft) : saveKyotoDay(day, draft);
+    if (!saved) {
       setSaving(false);
       showNotice("Could not save. Your draft is still here.", true);
 
@@ -768,11 +1025,19 @@ export function EditPlanPage(): React.JSX.Element {
     }
     let nextVersions = versions;
     if (nextVersions.length === 0) {
-      nextVersions = addEditPlanVersion(day, initialVisitsRef.current, "Initial plan");
+      nextVersions = adapter
+        ? adapter.addVersion(initialVisitsRef.current, "Initial plan")
+        : addEditPlanVersion(day, initialVisitsRef.current, "Initial plan");
     }
-    nextVersions = addEditPlanVersion(day, draft, describeChange(initialVisitsRef.current, draft));
+    nextVersions = adapter
+      ? adapter.addVersion(draft, describeChange(initialVisitsRef.current, draft))
+      : addEditPlanVersion(day, draft, describeChange(initialVisitsRef.current, draft));
     setVersions(nextVersions);
-    clearEditPlanDraft(day);
+    if (adapter) {
+      adapter.clearDraft();
+    } else {
+      clearEditPlanDraft(day);
+    }
     setSaving(false);
     exitToPlan();
   }
@@ -784,7 +1049,7 @@ export function EditPlanPage(): React.JSX.Element {
     if (removedCount > 1) {
       setConfirmSave(true);
     } else {
-      finishSave();
+      void finishSave();
     }
   }
 
@@ -1131,26 +1396,38 @@ export function EditPlanPage(): React.JSX.Element {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (dirty) {
-        setDraftStorageFailed(!saveEditPlanDraft(day, baseSignature, draft));
+        setDraftStorageFailed(
+          !(adapter
+            ? adapter.saveDraft(baseSignature, draft)
+            : saveEditPlanDraft(day, baseSignature, draft)),
+        );
       } else {
-        clearEditPlanDraft(day);
+        if (adapter) {
+          adapter.clearDraft();
+        } else {
+          clearEditPlanDraft(day);
+        }
         setDraftStorageFailed(false);
       }
     }, 120);
 
     return () => window.clearTimeout(timer);
-  }, [baseSignature, day, dirty, draft]);
+  }, [adapter, baseSignature, day, dirty, draft]);
 
   useEffect(() => {
     const flushDraft = (): void => {
       if (dirty) {
-        saveEditPlanDraft(day, baseSignature, draft);
+        if (adapter) {
+          adapter.saveDraft(baseSignature, draft);
+        } else {
+          saveEditPlanDraft(day, baseSignature, draft);
+        }
       }
     };
     window.addEventListener("pagehide", flushDraft);
 
     return () => window.removeEventListener("pagehide", flushDraft);
-  }, [baseSignature, day, dirty, draft]);
+  }, [adapter, baseSignature, day, dirty, draft]);
 
   useEffect(() => {
     if (notice === null || notice.persistent) {
@@ -1165,7 +1442,12 @@ export function EditPlanPage(): React.JSX.Element {
     if (navigationBlocker.status !== "blocked") {
       return;
     }
-    if (dirty && !saveEditPlanDraft(day, baseSignature, draft)) {
+    if (
+      dirty &&
+      !(adapter
+        ? adapter.saveDraft(baseSignature, draft)
+        : saveEditPlanDraft(day, baseSignature, draft))
+    ) {
       setDraftStorageFailed(true);
       setNotice({
         detail: undefined,
@@ -1389,7 +1671,7 @@ export function EditPlanPage(): React.JSX.Element {
       setRestoreError("");
       void navigate({
         to: "/plan/edit",
-        search: { day, view: "versions", version: version.id },
+        search: { ...editorSearch, view: "versions", version: version.id },
         replace: true,
         state: (current) => current,
       });
@@ -1403,9 +1685,7 @@ export function EditPlanPage(): React.JSX.Element {
         ? []
         : createVersionDiff(previewVersion.visits, previewVersion.visits).places;
     const restoreDiff =
-      previewVersion === undefined
-        ? null
-        : createVersionDiff(plan.days[day], previewVersion.visits);
+      previewVersion === undefined ? null : createVersionDiff(savedVisits, previewVersion.visits);
     const previewPlaceDelta =
       previewVersion === undefined || previousVersion === undefined
         ? null
@@ -1458,7 +1738,9 @@ export function EditPlanPage(): React.JSX.Element {
                 <span aria-hidden="true">·</span>
                 {formatVersionTime(previewVersion.savedAt)}
               </strong>
-              <span className="version-preview__location">Kyoto · {dayLabel}</span>
+              <span className="version-preview__location">
+                {tripName} · {dayLabel}
+              </span>
               <div className="version-preview__metadata">
                 <VersionPlaceCount count={previewVersion.visits.length} delta={previewPlaceDelta} />
                 <VersionDiffIndicators counts={previewChangeCounts} />
@@ -1568,7 +1850,7 @@ export function EditPlanPage(): React.JSX.Element {
           changedPlaceCount={restoreDiff?.changedPlaceCount ?? 0}
           hasDraft={dirty}
           onCancel={() => setRestoreCandidate(null)}
-          onConfirm={confirmRestoreVersion}
+          onConfirm={() => void confirmRestoreVersion()}
           version={restoreCandidate}
         />
       </section>
@@ -1599,7 +1881,9 @@ export function EditPlanPage(): React.JSX.Element {
         </header>
         <div className="edit-plan__versions-content">
           <div className="edit-plan__context">
-            <strong>Kyoto · {dayLabel}</strong>
+            <strong>
+              {tripName} · {dayLabel}
+            </strong>
             <span>Open a version to compare it with your current saved plan.</span>
           </div>
           <div className="version-timeline">
@@ -1624,7 +1908,7 @@ export function EditPlanPage(): React.JSX.Element {
               <div className="version-entry__details">
                 <span className="version-entry__eyebrow">In use</span>
                 <strong>Current saved version</strong>
-                <span>{plan.days[day].length} places</span>
+                <span>{savedVisits.length} places</span>
               </div>
             </article>
             {visibleVersions.map((version, index) => {
@@ -1663,7 +1947,7 @@ export function EditPlanPage(): React.JSX.Element {
                         setRestoreError("");
                         void navigate({
                           to: "/plan/edit",
-                          search: { day, view: "versions", version: version.id },
+                          search: { ...editorSearch, view: "versions", version: version.id },
                           state: (current) => ({ ...current, editPlanVersionEntry: true }),
                         });
                       }}
@@ -1723,7 +2007,9 @@ export function EditPlanPage(): React.JSX.Element {
       </header>
 
       <div className="edit-plan__context">
-        <strong>Kyoto · {dayLabel}</strong>
+        <strong>
+          {tripName} · {dayLabel}
+        </strong>
         <span className="edit-plan__draft-status">
           <span>
             {externalChange
@@ -1954,7 +2240,7 @@ export function EditPlanPage(): React.JSX.Element {
           onClick={() =>
             void navigate({
               to: "/plan/edit",
-              search: { day, view: "versions" },
+              search: { ...editorSearch, view: "versions" },
               state: (current) => ({ ...current, editPlanHistoryEntry: true }),
             })
           }
@@ -2048,7 +2334,11 @@ export function EditPlanPage(): React.JSX.Element {
           <button onClick={() => setConfirmSave(false)} type="button">
             Keep editing
           </button>
-          <button className="remove-stops-dialog__confirm" onClick={finishSave} type="button">
+          <button
+            className="remove-stops-dialog__confirm"
+            onClick={() => void finishSave()}
+            type="button"
+          >
             Save changes
           </button>
         </div>
