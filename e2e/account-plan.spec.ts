@@ -95,3 +95,64 @@ test("a server trip uses the existing plan UI and saves edited rows back to the 
   await page.reload();
   await expect(page.getByRole("heading", { name: "A day to make your own" })).toBeVisible();
 });
+
+test("opening a server trip stop shows its details with directions", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = [
+    {
+      id: "entry-1",
+      sourceKey: "entry:1",
+      day,
+      variant: "A",
+      position: 0,
+      kind: "place",
+      title: "Senso-ji",
+      timeLabel: "09:00",
+      detail: "Visit temple",
+      area: "Asakusa",
+      placeId: "pin-1",
+      place: {
+        sourceKey: "pin-1",
+        name: "Senso-ji",
+        latitude: 35.715,
+        longitude: 139.796,
+        category: "temple",
+        imageUrl: null,
+        notes: null,
+      },
+    },
+  ];
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  await page
+    .getByLabel(/Thursday 1 October itinerary/)
+    .getByRole("button", { name: /Senso-ji/ })
+    .click();
+  await expect(page).toHaveURL(/\/maps\?.*place=pin-1/);
+  await expect(
+    page.getByRole("link", {
+      name: "Directions to Senso-ji in Google Maps (opens another app or tab)",
+    }),
+  ).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796");
+});

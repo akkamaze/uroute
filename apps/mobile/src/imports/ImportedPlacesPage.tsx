@@ -39,7 +39,12 @@ import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
-import { addAccountPlanPlace, loadAccountTrips } from "../plan/account-plan";
+import {
+  accountPlanPoints,
+  addAccountPlanPlace,
+  loadAccountPlanDay,
+  loadAccountTrips,
+} from "../plan/account-plan";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
@@ -306,7 +311,15 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const [places, setPlaces] = useState<ImportedPoint[]>([]);
+  const [libraryPlaces, setPlaces] = useState<ImportedPoint[]>([]);
+  const [tripPoints, setTripPoints] = useState<ImportedPoint[]>([]);
+  const places = useMemo(() => {
+    const libraryIds = new Set(libraryPlaces.map((place) => place.id));
+
+    return [...libraryPlaces, ...tripPoints.filter((point) => !libraryIds.has(point.id))];
+  }, [libraryPlaces, tripPoints]);
+  const requestedTrip = requested.get("trip");
+  const requestedDay = requested.get("day");
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
@@ -370,6 +383,37 @@ export function ImportedPlacesPage(): React.JSX.Element {
       active = false;
     };
   }, [accountUserId, globalMaps]);
+
+  useEffect(() => {
+    if (
+      !globalMaps ||
+      !accountUserId ||
+      requestedTrip === null ||
+      requestedDay === null ||
+      requestedTrip === "kyoto" ||
+      requestedTrip === "kanto"
+    ) {
+      setTripPoints([]);
+
+      return;
+    }
+    let active = true;
+    void loadAccountPlanDay(requestedTrip, requestedDay)
+      .then((plan) => {
+        if (active) {
+          setTripPoints(accountPlanPoints(plan.entries));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setTripPoints([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountUserId, globalMaps, requestedDay, requestedTrip]);
   const [selectedDay, setSelectedDay] = useState<KantoDay>(KANTO_DAYS[0].date);
   const [folder, setFolder] = useState(savedMapsState.folder ?? "All folders");
   const [query, setQuery] = useState(savedMapsState.query ?? "");
