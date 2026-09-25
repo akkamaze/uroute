@@ -1113,12 +1113,8 @@ test("toggles imported file, geometry and folder layers without deleting places"
   expect(afterFolderToggle?.zoom).toBeCloseTo(beforeFolderToggle!.zoom, 6);
   await layers.getByRole("button", { name: "Close map layers" }).click();
   await page.getByLabel("Search imported places").fill("Market");
-  await expect(page.getByRole("button", { name: "Market Tokyo" })).toBeVisible();
-  await page.getByRole("button", { name: "Market Tokyo" }).click();
-  await expect(
-    page.getByText("Hidden on map. You can still use this place in your plan."),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Close place details" }).click();
+  await expect(page.getByRole("button", { name: "Market Tokyo" })).toHaveCount(0);
+  await page.getByLabel("Search imported places").press("Escape");
   await page.getByRole("button", { name: "Map layers" }).click();
   await layers.getByRole("switch", { name: "Show osaka.kml" }).uncheck();
   await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
@@ -1128,8 +1124,8 @@ test("toggles imported file, geometry and folder layers without deleting places"
   await expect(page.getByRole("button", { name: "Map layers" })).toBeFocused();
   await page.getByRole("button", { name: "Open layers" }).click();
   await layers.getByRole("button", { name: "Show all", exact: true }).click();
-  await expect.poll(async () => (await readMap())?.featureCount).toBe(1);
-  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(0);
+  await expect.poll(async () => (await readMap())?.featureCount).toBe(2);
+  await expect.poll(async () => (await readMap())?.geometryFeatureCount).toBe(2);
   await layers.getByRole("button", { name: "Close map layers" }).click();
   await page.getByLabel("Search imported places").fill("");
   await page.getByLabel("Search imported places").press("Enter");
@@ -1137,6 +1133,15 @@ test("toggles imported file, geometry and folder layers without deleting places"
   await page.getByRole("button", { name: "Map layers" }).click();
   await expect(layers.getByRole("switch", { name: "Show Tokyo in sample.kml" })).toBeChecked();
   await expect(page.getByText("All imported layers are hidden.")).toHaveCount(0);
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await page.getByLabel("Search imported places").fill("Market");
+  await page.getByRole("button", { name: "Market Tokyo" }).click();
+  await page.getByRole("button", { name: "Map layers" }).click();
+  await layers.getByRole("switch", { name: "Show Tokyo in sample.kml" }).uncheck();
+  await layers.getByRole("button", { name: "Close map layers" }).click();
+  await expect(
+    page.getByText("Hidden on map. You can still use this place in your plan."),
+  ).toBeVisible();
 });
 
 test("imports supported parts of nested MultiGeometry and reports the rest", async ({ page }) => {
