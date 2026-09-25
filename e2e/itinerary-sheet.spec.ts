@@ -20,6 +20,45 @@ function itineraryFile(includeOptionB = true): Buffer {
   );
 }
 
+function overnightItineraryFile(): Buffer {
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="D1-1" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`;
+  const worksheet = `<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="3"><c r="D3" t="inlineStr"><is><t>October first stop</t></is></c></row><row r="4"><c r="C4" t="inlineStr"><is><t>2 OCT 2026 (FRI)</t></is></c></row><row r="5"><c r="C5" t="inlineStr"><is><t>05:00</t></is></c><c r="D5" t="inlineStr"><is><t>Narita Tobu Hotel Airport</t></is></c></row><row r="6"><c r="C6" t="inlineStr"><is><t>08:55</t></is></c><c r="D6" t="inlineStr"><is><t>NRT - BKK (Thai VietJet Air)</t></is></c></row></sheetData></worksheet>`;
+
+  return Buffer.from(
+    zipSync({
+      "xl/workbook.xml": strToU8(workbook),
+      "xl/_rels/workbook.xml.rels": strToU8(relationships),
+      "xl/worksheets/sheet1.xml": strToU8(worksheet),
+    }),
+  );
+}
+
+test("splits rows after an explicit date marker into the next trip day", async ({ page }) => {
+  await page.goto("/trips");
+  await page.getByRole("button", { name: "New" }).click();
+  const dialog = page.getByRole("dialog", { name: "New trip" });
+  await dialog.getByLabel("Destination").fill("Overnight test");
+  await dialog.getByLabel("Start date").fill("2026-10-01");
+  await dialog.getByLabel("End date").fill("2026-10-02");
+  await dialog.getByRole("button", { name: "Create trip" }).click();
+  await page.getByLabel("Choose itinerary spreadsheet").setInputFiles({
+    name: "overnight.xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: overnightItineraryFile(),
+  });
+  await expect(page.getByRole("status")).toContainText("3 itinerary rows imported");
+  await expect(page.getByLabel("Thursday 1 October itinerary")).toContainText("October first stop");
+  await expect(page.getByLabel("Thursday 1 October itinerary")).not.toContainText("Narita Tobu");
+  await page.getByRole("button", { name: "Friday 2 October", exact: true }).click();
+  const second = page.getByLabel("Friday 2 October itinerary");
+  await expect(second).toContainText("Narita Tobu Hotel Airport");
+  await expect(second).toContainText("NRT - BKK (Thai VietJet Air)");
+  await page.reload();
+  await page.getByRole("button", { name: "Friday 2 October", exact: true }).click();
+  await expect(page.getByLabel("Friday 2 October itinerary")).toContainText("Narita Tobu");
+});
+
 test("imports day order, links only verified pins, and keeps the chosen alternative", async ({
   page,
 }) => {

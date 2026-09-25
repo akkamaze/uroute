@@ -24,6 +24,8 @@ const MAX_TOTAL_XML_BYTES = 32 * 1024 * 1024;
 const MAX_XML_FILES = 70;
 const DATABASE_NAME = "uroute-trip-itineraries";
 const DATE_SHEET = /^D(\d+)-(\d+)(?:\s+([ABX]))?$/i;
+const DATE_ROW = /^(\d{1,2})\s+([A-Z]{3})\s+(\d{4})(?:\s+\([A-Z]{3}\))?$/i;
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const TRAIN =
   /(?:railway|subway|metro|train|express|shinkansen|bus|flight|airport transfer|^jr\s)/i;
 
@@ -157,6 +159,24 @@ function entryKind(title: string): ItineraryEntry["kind"] {
   return "note";
 }
 
+function explicitRowDate(value: string): string | null {
+  const match = DATE_ROW.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const month = MONTHS.indexOf(match[2]!.toUpperCase());
+  if (month < 0) {
+    return null;
+  }
+  const year = Number(match[3]);
+  const day = Number(match[1]);
+  const date = new Date(Date.UTC(year, month, day));
+
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === day
+    ? date.toISOString().slice(0, 10)
+    : null;
+}
+
 export async function parseItinerarySheet(
   file: File,
   tripId: string,
@@ -236,6 +256,7 @@ export async function parseItinerarySheet(
     dayOptions.add(dayOption);
     foundDays += 1;
     let area = "";
+    let currentDate = date;
     for (const { number, values: row } of dayRows) {
       if (number < 3 || !Number.isInteger(number)) {
         continue;
@@ -243,6 +264,7 @@ export async function parseItinerarySheet(
       area = row.get(2) ?? row.get(1) ?? area;
       const title = row.get(4)?.trim() ?? "";
       if (!title) {
+        currentDate = explicitRowDate(row.get(3) ?? "") ?? currentDate;
         continue;
       }
       const kind = entryKind(title);
@@ -251,7 +273,7 @@ export async function parseItinerarySheet(
       result.push({
         id: `${tripId}:${sheetName}:${number}`,
         tripId,
-        day: date,
+        day: currentDate,
         variant,
         order: number,
         time: row.get(3)?.split("\n")[0] ?? "",
