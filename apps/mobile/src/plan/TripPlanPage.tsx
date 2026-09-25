@@ -581,13 +581,6 @@ export function TripPlanPage(): React.JSX.Element {
           />
         </label>
       ) : null}
-      <button
-        className="day-plan__browse-maps"
-        onClick={() => void navigate({ to: "/maps", search: { trip: tripId, day } })}
-        type="button"
-      >
-        Browse imported maps
-      </button>
       {stopSwipe.openId === null && removedRows.length === 0 ? (
         <button
           aria-label={`Add a place to ${dayHeading(day)}`}

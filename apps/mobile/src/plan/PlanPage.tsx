@@ -459,15 +459,6 @@ export function PlanPage(): React.JSX.Element {
           <p>Add your first place when you are ready.</p>
         </div>
       )}
-      <button
-        className="day-plan__browse-maps"
-        onClick={() =>
-          void navigate({ to: "/maps", search: { trip: "kyoto", day: `2026-11-${selectedDay}` } })
-        }
-        type="button"
-      >
-        Browse imported maps
-      </button>
       {removal === null && stopSwipe.openId === null ? (
         <button
           aria-label={`Add a place to ${dayLabel}`}
