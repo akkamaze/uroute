@@ -5,7 +5,8 @@ import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { Hotel, Plus, TrainFront, Utensils, Wallet, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { loadCreatedTrips, type CreatedTrip } from "../trips/trip-store";
+import { type CreatedTrip } from "../trips/trip-store";
+import { useRealTrips } from "../trips/use-real-trips";
 import { TripHeader } from "./TripHeader";
 import "./expenses.css";
 
@@ -393,7 +394,14 @@ export function ExpensesPage(): React.JSX.Element {
 
 export function CreatedTripExpensesPage(): React.JSX.Element {
   const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId/expenses" });
-  const trip = loadCreatedTrips().find((item) => item.id === tripId);
+  const realTrips = useRealTrips();
+  const trip = realTrips.trips.find((item) => item.id === tripId);
 
-  return trip ? <ExpenseScreen trip={trip} /> : <section>Trip not found.</section>;
+  return trip ? (
+    <ExpenseScreen trip={trip} />
+  ) : realTrips.loading ? (
+    <section role="status">Loading trip…</section>
+  ) : (
+    <section>Trip not found.</section>
+  );
 }

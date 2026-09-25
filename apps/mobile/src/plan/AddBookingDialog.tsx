@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAppMode } from "../app-mode";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
-import { loadCreatedTrips } from "../trips/trip-store";
+import { useRealTrips } from "../trips/use-real-trips";
 import { trips, type TripSummary } from "../trips/trips-data";
 import type { Booking } from "./bookings-data";
 import {
@@ -88,10 +88,11 @@ export function AddBookingDialog({
   onAdded,
 }: AddBookingDialogProps): React.JSX.Element {
   const mode = useAppMode();
+  const realTrips = useRealTrips();
   const availableTrips: readonly TripSummary[] =
     mode === "mock"
       ? trips
-      : loadCreatedTrips().map((created) => ({
+      : realTrips.trips.map((created) => ({
           id: created.id,
           name: created.name,
           startDay: created.startDate,

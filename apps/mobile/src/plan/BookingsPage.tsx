@@ -18,7 +18,8 @@ import { useEffect, useRef, useState } from "react";
 import { useAppMode } from "../app-mode";
 import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { trips, type TripSummary } from "../trips/trips-data";
-import { loadCreatedTrips, type CreatedTrip } from "../trips/trip-store";
+import { type CreatedTrip } from "../trips/trip-store";
+import { useRealTrips } from "../trips/use-real-trips";
 import { AddBookingDialog } from "./AddBookingDialog";
 import { addManualBooking, useBookings } from "./booking-store";
 import {
@@ -237,7 +238,8 @@ function BookingScreen({
   const bookingState = useBookings();
   const route = scope === "all" ? "/bookings" : "/plan/bookings";
   const activeTrip = createdTrip ? createdTripSummary(createdTrip) : PLAN_TRIP;
-  const realTripIds = new Set(loadCreatedTrips().map((trip) => trip.id));
+  const realTrips = useRealTrips();
+  const realTripIds = new Set(realTrips.trips.map((trip) => trip.id));
   const scopedBookings =
     scope === "all"
       ? bookingState.bookings.filter((booking) =>
@@ -708,10 +710,13 @@ export function TripBookingsPage(): React.JSX.Element {
 
 export function CreatedTripBookingsPage(): React.JSX.Element {
   const { tripId } = useParams({ from: "/mobile-shell/plan/trip/$tripId/bookings" });
-  const trip = loadCreatedTrips().find((item) => item.id === tripId);
+  const realTrips = useRealTrips();
+  const trip = realTrips.trips.find((item) => item.id === tripId);
 
   return trip ? (
     <BookingScreen createdTrip={trip} scope="trip" />
+  ) : realTrips.loading ? (
+    <section role="status">Loading trip…</section>
   ) : (
     <section>Trip not found.</section>
   );

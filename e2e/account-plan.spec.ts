@@ -455,3 +455,39 @@ test("a server trip plan hides the app navigation and folds its day chrome while
   await expect(days).toBeVisible();
   await expect(sections).toBeVisible();
 });
+
+test("a server trip opens its bookings and expenses and accepts a flight booking", async ({
+  page,
+}) => {
+  const trip = {
+    id: tripId,
+    name: "Kanto",
+    startDate: "2026-09-26",
+    endDate: "2026-10-02",
+    version: "1",
+  };
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}/bookings`);
+  await page.getByRole("button", { name: "Add booking" }).click();
+  await page
+    .getByRole("dialog", { name: "Add booking" })
+    .getByRole("button", { name: "Flight" })
+    .click();
+  await expect(page.getByRole("dialog", { name: "Trip & dates" })).toContainText("Kanto");
+  await page.getByRole("button", { name: "Close add booking" }).click();
+
+  await page.goto(`/plan/trip/${tripId}/expenses`);
+  await expect(page.getByRole("heading", { name: "Kanto" })).toBeVisible();
+});
