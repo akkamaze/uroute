@@ -204,4 +204,13 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await expect(page.getByText(/1 saved draft copied/)).toBeVisible();
   expect(copiedDraft).toMatchObject({ revision: "1", visits: [{ notes: "After lunch" }] });
   expect(accountDraft).toMatchObject({ revision: "2" });
+  accountEntries = [];
+  accountVersion = "3";
+  await page.getByRole("button", { name: "Copy to account" }).click();
+  await page
+    .getByRole("dialog", { name: "Copy Lisbon to your account?" })
+    .getByRole("button", { name: "Copy trip" })
+    .click();
+  await expect(page.getByText(/different itinerary on your account/)).toBeVisible();
+  expect(accountEntries).toHaveLength(0);
 });

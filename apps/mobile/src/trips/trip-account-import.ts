@@ -33,6 +33,14 @@ interface LocalDraft {
   visits: PlannedVisit[];
 }
 
+interface DraftAction {
+  key: string;
+  path: string;
+  known: { visits: PlannedVisit[]; revision: string } | null;
+  local: LocalDraft | null;
+  digest: string;
+}
+
 interface AccountCopyMarker {
   entriesDigest: string;
   drafts: Record<string, { digest: string; revision: string }>;
@@ -286,7 +294,10 @@ export async function importLocalTripToAccount(
   });
   const remote = await remoteEntries(saved.id);
   const remoteDigest = await digest(remote.entries.map(selectEntry));
-  if (!sameEntries(remote.entries, entries) && remote.entries.length > 0) {
+  if (
+    !sameEntries(remote.entries, entries) &&
+    (remote.entries.length > 0 || marker.entriesDigest !== "")
+  ) {
     if (marker.entriesDigest !== remoteDigest) {
       throw new AccountImportError(
         "This trip already has a different itinerary on your account. Nothing was overwritten.",
@@ -294,51 +305,32 @@ export async function importLocalTripToAccount(
       );
     }
   }
-  let version = remote.version;
-  if (!sameEntries(remote.entries, entries)) {
-    const updated = await request<{ tripVersion: string }>(
-      `/api/trips/${encodeURIComponent(saved.id)}/entries`,
-      {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ version, entries }),
-      },
-    );
-    version = updated.tripVersion;
-  }
-  marker.entriesDigest = await digest(entries.map(selectEntry));
-  writeMarker(ownerId, trip.id, marker);
+  // Preflight all drafts before changing itinerary rows. CAS still catches races later.
+  const actions: DraftAction[] = [];
   for (const draft of drafts) {
     const draftKey = `${draft.day}:${draft.variant}`;
     const path = `/api/trips/${encodeURIComponent(saved.id)}/drafts/${draft.day}/${draft.variant}`;
     const known = await getRemoteDraft(path);
     const localDigest = await digest(draft.visits);
+    const previous = marker.drafts[draftKey];
     if (known) {
       const knownDigest = await digest(known.visits);
-      if (knownDigest === localDigest) {
-        marker.drafts[draftKey] = { digest: localDigest, revision: known.revision };
-        writeMarker(ownerId, trip.id, marker);
-        continue;
-      }
-      const previous = marker.drafts[draftKey];
-      if (!previous || previous.digest !== knownDigest || previous.revision !== known.revision) {
+      if (
+        knownDigest !== localDigest &&
+        (!previous || previous.digest !== knownDigest || previous.revision !== known.revision)
+      ) {
         throw new AccountImportError(
           "A different draft already exists on your account. Nothing was overwritten.",
           409,
         );
       }
+    } else if (previous) {
+      throw new AccountImportError(
+        "A draft was removed from your account. Nothing was overwritten.",
+        409,
+      );
     }
-    const updated = await request<{ revision: string }>(path, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        baseVersion: version,
-        revision: known?.revision ?? null,
-        visits: draft.visits,
-      }),
-    });
-    marker.drafts[draftKey] = { digest: localDigest, revision: updated.revision };
-    writeMarker(ownerId, trip.id, marker);
+    actions.push({ key: draftKey, path, known, local: draft, digest: localDigest });
   }
   const localDraftKeys = new Set(drafts.map((draft) => `${draft.day}:${draft.variant}`));
   for (const [draftKey, previous] of Object.entries(marker.drafts)) {
@@ -357,11 +349,60 @@ export async function importLocalTripToAccount(
     ) {
       throw new AccountImportError("A draft changed on your account. Nothing was deleted.", 409);
     }
-    if (known) {
-      await request(`${path}?revision=${encodeURIComponent(known.revision)}`, { method: "DELETE" });
+    actions.push({ key: draftKey, path, known, local: null, digest: "" });
+  }
+
+  let wroteAccountData = false;
+  try {
+    let version = remote.version;
+    if (!sameEntries(remote.entries, entries)) {
+      const updated = await request<{ tripVersion: string }>(
+        `/api/trips/${encodeURIComponent(saved.id)}/entries`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ version, entries }),
+        },
+      );
+      version = updated.tripVersion;
+      wroteAccountData = true;
     }
-    delete marker.drafts[draftKey];
+    marker.entriesDigest = await digest(entries.map(selectEntry));
     writeMarker(ownerId, trip.id, marker);
+    for (const action of actions) {
+      if (action.local === null) {
+        if (action.known) {
+          await request(`${action.path}?revision=${encodeURIComponent(action.known.revision)}`, {
+            method: "DELETE",
+          });
+          wroteAccountData = true;
+        }
+        delete marker.drafts[action.key];
+      } else if (action.known && (await digest(action.known.visits)) === action.digest) {
+        marker.drafts[action.key] = { digest: action.digest, revision: action.known.revision };
+      } else {
+        const updated = await request<{ revision: string }>(action.path, {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            baseVersion: version,
+            revision: action.known?.revision ?? null,
+            visits: action.local.visits,
+          }),
+        });
+        wroteAccountData = true;
+        marker.drafts[action.key] = { digest: action.digest, revision: updated.revision };
+      }
+      writeMarker(ownerId, trip.id, marker);
+    }
+  } catch (error) {
+    if (wroteAccountData) {
+      throw new AccountImportError(
+        "Some account data was updated before the copy stopped. Your local trip is safe; retry to finish or review the account copy.",
+        error instanceof AccountImportError ? error.status : 0,
+      );
+    }
+    throw error;
   }
 
   return { entries: entries.length, drafts: drafts.length };

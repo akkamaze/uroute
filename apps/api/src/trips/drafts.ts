@@ -37,6 +37,8 @@ export interface TripDraftRepository {
 
 const COLUMNS = `day::text AS day, variant, base_version::text AS "baseVersion",
   revision::text AS revision, visits, updated_at::text AS "updatedAt"`;
+const JOIN_COLUMNS = `d.day::text AS day, d.variant, d.base_version::text AS "baseVersion",
+  d.revision::text AS revision, d.visits, d.updated_at::text AS "updatedAt"`;
 
 export class PgTripDraftRepository implements TripDraftRepository {
   constructor(private readonly database: Pool) {}
@@ -48,7 +50,7 @@ export class PgTripDraftRepository implements TripDraftRepository {
     variant: string,
   ): Promise<TripDraft | null> {
     const result = await this.database.query<TripDraft>(
-      `SELECT ${COLUMNS} FROM trip_draft d
+      `SELECT ${JOIN_COLUMNS} FROM trip_draft d
        JOIN trip t ON t.id = d.trip_id
        WHERE t.owner_id = $1 AND t.deleted_at IS NULL AND d.trip_id = $2
          AND d.day = $3::date AND d.variant = $4`,
@@ -92,16 +94,23 @@ export class PgTripDraftRepository implements TripDraftRepository {
 
         return "conflict";
       }
-      const saved = await client.query<TripDraft>(
-        `INSERT INTO trip_draft (trip_id, day, variant, base_version, visits)
-         VALUES ($1, $2::date, $3, $4::bigint, $5::jsonb)
-         ON CONFLICT (trip_id, day, variant) DO UPDATE SET
-           base_version = EXCLUDED.base_version, visits = EXCLUDED.visits,
-           revision = trip_draft.revision + 1, updated_at = now()
-         WHERE trip_draft.revision = $6::bigint
-         RETURNING ${COLUMNS}`,
-        [tripId, day, variant, baseVersion, JSON.stringify(visits), expectedRevision],
-      );
+      const saved =
+        expectedRevision === null
+          ? await client.query<TripDraft>(
+              `INSERT INTO trip_draft (trip_id, day, variant, base_version, visits)
+           VALUES ($1, $2::date, $3, $4::bigint, $5::jsonb)
+           ON CONFLICT (trip_id, day, variant) DO NOTHING
+           RETURNING ${COLUMNS}`,
+              [tripId, day, variant, baseVersion, JSON.stringify(visits)],
+            )
+          : await client.query<TripDraft>(
+              `UPDATE trip_draft SET base_version = $4::bigint, visits = $5::jsonb,
+             revision = revision + 1, updated_at = now()
+           WHERE trip_id = $1 AND day = $2::date AND variant = $3
+             AND revision = $6::bigint
+           RETURNING ${COLUMNS}`,
+              [tripId, day, variant, baseVersion, JSON.stringify(visits), expectedRevision],
+            );
       if (!saved.rows[0]) {
         await client.query("ROLLBACK");
 

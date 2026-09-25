@@ -528,7 +528,8 @@ export function TripsPage(): React.JSX.Element {
         <p>
           This copies trip details, visible itinerary rows and current unsaved drafts. KML map pins,
           removed rows and version history stay on this device for now. Later edits are not synced
-          automatically yet. Existing account rows will never be overwritten.
+          automatically yet. Copying again can refresh only rows and drafts this device previously
+          copied; changes from another device will be rejected.
         </p>
         <div>
           <button disabled={importingToAccount} onClick={() => setTripToImport(null)} type="button">
