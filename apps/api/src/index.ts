@@ -3,6 +3,7 @@ import { clientAddress } from "./auth/client-address";
 import { createAuth } from "./auth/create-auth";
 import { readConfig } from "./config";
 import { createDatabase } from "./database";
+import { PgTripRepository } from "./trips/repository";
 
 const config = readConfig(Bun.env);
 const database = createDatabase(config.databaseURL);
@@ -13,7 +14,11 @@ database.on("error", () => {
 
 const auth = createAuth(database, config.auth);
 let resolveAddress: (request: Request) => string | null = () => null;
-const app = createApp(auth, (request) => resolveAddress(request)).listen({
+const app = createApp(
+  auth,
+  (request) => resolveAddress(request),
+  new PgTripRepository(database),
+).listen({
   hostname: config.hostname,
   port: config.port,
 });
