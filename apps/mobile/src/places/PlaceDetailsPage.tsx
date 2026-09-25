@@ -624,9 +624,12 @@ export function PlaceDetailsPage(): React.JSX.Element {
         <TripMap
           key={search.search === "results" ? "plan-search-map" : "plan-map"}
           bottomInset={
-            sheetHidden || visibleSheetSnap === "expanded"
+            sheetHidden
               ? 0
-              : getSheetVisibleHeight(visibleSheetSnap, layoutHeight)
+              : getSheetVisibleHeight(
+                  visibleSheetSnap === "expanded" ? "middle" : visibleSheetSnap,
+                  layoutHeight,
+                )
           }
           controlsBottomInset={sheetHidden ? 0 : Math.max(0, layoutHeight - sheetTop)}
           expanded={mapExpanded}
