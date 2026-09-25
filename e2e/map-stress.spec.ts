@@ -2,6 +2,37 @@ import type { Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({ contentType: "application/json", body: "null" }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+  });
+  await page.goto("/plan?day=13");
+  await page.evaluate(() => {
+    window.localStorage.clear();
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+    window.localStorage.setItem(
+      "uroute.mock.kyoto-plan.v1",
+      JSON.stringify({
+        days: {
+          12: [],
+          13: [
+            { placeId: "kiyomizu", time: "09:00", notes: "" },
+            { placeId: "arabica", time: "11:00", notes: "" },
+            { placeId: "nishiki", time: "12:30", notes: "" },
+          ],
+          14: [],
+          15: [],
+          16: [],
+        },
+      }),
+    );
+  });
+  await page.reload();
+});
+
 interface MapSnapshot {
   center: { latitude: number; longitude: number };
   clusterLayerReady: boolean;
@@ -154,7 +185,7 @@ test("keeps the selected place and its photo visible after zooming out into clus
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
-  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(12);
   await page.getByRole("button", { name: "Expand map" }).click();
   await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
   const canvas = page.locator(".trip-map__canvas");
@@ -200,7 +231,7 @@ test("switches between photo exploration and only the current day's ordered stop
     "aria-pressed",
     "true",
   );
-  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(1);
   await page.getByRole("button", { name: "Day order", exact: true }).click();
   await expect
     .poll(async () => (await readMapSnapshot(page))?.numberedPlaces)
@@ -226,7 +257,7 @@ test("switches between photo exploration and only the current day's ordered stop
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
     .toContain("nishiki");
-  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(2);
+  await expect.poll(async () => (await readMapSnapshot(page))?.featureCount).toBe(12);
   await expect.poll(async () => (await readMapSnapshot(page))?.clusteringEnabled).toBe(true);
   await page.goto("/places?place=nishiki&day=15");
   await page.getByRole("button", { name: "Day order", exact: true }).click();
@@ -285,13 +316,14 @@ test("shows non-overlapping names as soon as clusters dissolve", async ({ page }
 });
 
 test("shows every available place photo across normal and selected layers", async ({ page }) => {
-  await page.goto("/places?place=nishiki&day=13");
+  await page.goto("/plan?day=13");
+  await page.getByRole("button", { name: "Map view", exact: true }).click();
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedPhotoIds.sort())
-    .toEqual(["arabica", "kiyomizu"]);
+    .toEqual(["arabica", "nishiki"]);
   await expect
     .poll(async () => (await readMapSnapshot(page))?.renderedSelectedIds)
-    .toContain("nishiki");
+    .toContain("kiyomizu");
   const lines = await page.evaluate(async () => {
     const moduleUrl = "/src/plan/map-markers.ts";
     const markerModule = (await import(/* @vite-ignore */ moduleUrl)) as {

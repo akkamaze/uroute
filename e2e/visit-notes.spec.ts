@@ -1,5 +1,12 @@
 import { expect, test } from "./fixtures";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({ contentType: "application/json", body: "null" }),
+  );
+  await page.addInitScript(() => localStorage.setItem("uroute.app-mode.v1", "mock"));
+});
+
 test("reads and edits notes independently for each visit day without changing times", async ({
   page,
 }) => {

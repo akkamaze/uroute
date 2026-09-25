@@ -14,6 +14,37 @@ interface StoredPlan {
 
 const PLAN_STORAGE_KEY = "uroute.mock.kyoto-plan.v1";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({ contentType: "application/json", body: "null" }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+  });
+  await page.goto("/plan?day=13");
+  await page.evaluate((key) => {
+    window.localStorage.clear();
+    window.localStorage.setItem("uroute.app-mode.v1", "mock");
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        days: {
+          12: [],
+          13: [
+            { placeId: "kiyomizu", time: "09:00", notes: "" },
+            { placeId: "arabica", time: "11:00", notes: "" },
+            { placeId: "nishiki", time: "12:30", notes: "" },
+          ],
+          14: [],
+          15: [],
+          16: [],
+        },
+      }),
+    );
+  }, PLAN_STORAGE_KEY);
+  await page.reload();
+});
+
 async function readStoredPlan(page: Page): Promise<StoredPlan> {
   return page.evaluate((storageKey) => {
     const stored = window.localStorage.getItem(storageKey);
