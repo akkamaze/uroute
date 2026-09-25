@@ -72,7 +72,7 @@ test("a signed-in traveler explicitly copies one local trip without overwriting 
 test("account import includes the current unsaved Edit Plan draft", async ({ page }) => {
   let accountEntries: unknown[] = [];
   let accountVersion = "1";
-  let accountDraft: { revision: string; visits: unknown } | null = null;
+  let accountDraft: { baseVersion: string; revision: string; visits: unknown } | null = null;
   let copiedDraft: {
     baseVersion?: string;
     revision?: string | null;
@@ -98,6 +98,12 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
       body: JSON.stringify({ ...input, version: "1" }),
     });
   });
+  await page.route("**/api/trips/*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ version: accountVersion }),
+    }),
+  );
   await page.route("**/api/trips/*/entries?*", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -130,12 +136,18 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
           : { status: 404, contentType: "application/json", body: "{}" },
       );
     }
+    if (route.request().method() === "DELETE") {
+      accountDraft = null;
+
+      return route.fulfill({ contentType: "application/json", body: '{"deleted":true}' });
+    }
     const payload: unknown = route.request().postDataJSON();
     if (typeof payload !== "object" || payload === null || !("visits" in payload)) {
       throw new Error("Expected draft object");
     }
     copiedDraft = payload;
     accountDraft = {
+      baseVersion: String("baseVersion" in payload ? payload.baseVersion : accountVersion),
       revision: String(Number(accountDraft?.revision ?? "0") + 1),
       visits: payload.visits,
     };
@@ -193,6 +205,27 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
   await page.getByRole("button", { name: "Edit time and note for Market" }).click();
   await page.getByRole("dialog", { name: "Market" }).getByLabel("Visit note").fill("After lunch");
   await page.getByRole("dialog", { name: "Market" }).getByRole("button", { name: "Apply" }).click();
+  await expect
+    .poll(() => (accountDraft?.visits as Array<{ notes: string }> | undefined)?.[0]?.notes)
+    .toBe("After lunch");
+  await page.getByRole("button", { name: "Back to Plan" }).click();
+  await expect(page).toHaveURL(/\/plan\/trip\//);
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("uroute.created-edit-plan.v1.")) {
+        localStorage.removeItem(key);
+      }
+    }
+  });
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Edit time and note for Market" }).click();
+  await expect(page.getByRole("dialog", { name: "Market" }).getByLabel("Visit note")).toHaveValue(
+    "After lunch",
+  );
+  await page
+    .getByRole("dialog", { name: "Market" })
+    .getByRole("button", { name: "Cancel" })
+    .click();
   await page.getByRole("button", { name: "Back to Plan" }).click();
   await expect(page).toHaveURL(/\/plan\/trip\//);
   await page.goto("/trips");
@@ -213,4 +246,15 @@ test("account import includes the current unsaved Edit Plan draft", async ({ pag
     .click();
   await expect(page.getByText(/different itinerary on your account/)).toBeVisible();
   expect(accountEntries).toHaveLength(0);
+  await page.getByRole("link", { name: "Open Lisbon trip plan" }).click();
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => accountDraft).toBeNull();
+  await page.getByRole("button", { name: "Edit plan for Sunday 10 January" }).click();
+  await page.getByRole("button", { name: "Edit time and note for Market" }).click();
+  await page.getByRole("dialog", { name: "Market" }).getByLabel("Visit note").fill("Dinner");
+  await page.getByRole("dialog", { name: "Market" }).getByRole("button", { name: "Apply" }).click();
+  await expect
+    .poll(() => (accountDraft?.visits as Array<{ notes: string }> | undefined)?.[0]?.notes)
+    .toBe("Dinner");
 });

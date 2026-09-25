@@ -92,6 +92,14 @@ function markerKey(ownerId: string, tripId: string): string {
   return `uroute.account-copy.v1.${ownerId}.${tripId}`;
 }
 
+export function hasConfirmedAccountCopy(ownerId: string, tripId: string): boolean {
+  try {
+    return localStorage.getItem(markerKey(ownerId, tripId)) !== null;
+  } catch {
+    return false;
+  }
+}
+
 function readMarker(ownerId: string, tripId: string): AccountCopyMarker {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(markerKey(ownerId, tripId)) ?? "null");
@@ -122,6 +130,15 @@ function readMarker(ownerId: string, tripId: string): AccountCopyMarker {
   } catch {
     return { entriesDigest: "", drafts: {} };
   }
+}
+
+export function accountCopiedDraftProof(
+  ownerId: string,
+  tripId: string,
+  day: string,
+  variant: string,
+): { digest: string; revision: string } | null {
+  return readMarker(ownerId, tripId).drafts[`${day}:${variant}`] ?? null;
 }
 
 function writeMarker(ownerId: string, tripId: string, marker: AccountCopyMarker): void {

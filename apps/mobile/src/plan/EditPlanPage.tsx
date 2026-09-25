@@ -5,6 +5,7 @@ import {
   useRouterState,
   useSearch,
 } from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -31,8 +32,15 @@ import { importedPointAsStop } from "../imports/imported-stop";
 import { loadItinerary, type ItineraryEntry } from "../imports/itinerary-sheet";
 import type { ImportedPoint } from "../imports/parse-place-file";
 import { loadCreatedTrips, setTripPlanRows, type CreatedTrip } from "../trips/trip-store";
+import { hasConfirmedAccountCopy } from "../trips/trip-account-import";
 
 import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
+import {
+  restoreAccountDraft,
+  retryAccountDraftDeletion,
+  scheduleAccountDraftDeletion,
+  scheduleAccountDraftUpload,
+} from "./created-draft-sync";
 import {
   addCreatedEditVersion,
   clearCreatedEditDraft,
@@ -93,7 +101,8 @@ export interface PlanEditorAdapter {
   stops: Map<string, PlannedStop>;
   loadDraft: (signature: string) => EditPlanDraft | null;
   saveDraft: (signature: string, visits: readonly PlannedVisit[]) => boolean;
-  clearDraft: () => void;
+  clearDraft: (forceRemote?: boolean) => void;
+  retryDraft?: (signature: string, visits: readonly PlannedVisit[], dirty: boolean) => void;
   loadVersions: () => EditPlanVersion[];
   addVersion: (visits: readonly PlannedVisit[], summary: string) => EditPlanVersion[];
   restoreVersion: (
@@ -493,8 +502,12 @@ function CreatedTripEditPlanLoader({
   date: string;
   option?: string;
 }): React.JSX.Element {
+  const account = useAccount();
   const [data, setData] = useState<CreatedEditorData | null>(null);
   const [loadError, setLoadError] = useState(false);
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
+  const ownerId = account.user?.id ?? null;
+  const accountCopy = ownerId !== null && hasConfirmedAccountCopy(ownerId, tripId);
 
   useEffect(() => {
     let active = true;
@@ -568,6 +581,17 @@ function CreatedTripEditPlanLoader({
       notes: row.detail,
     }));
     const stops = new Map(allRows.map((row) => [row.id, createdRowAsStop(row)]));
+    const accountDraft =
+      accountCopy && ownerId
+        ? {
+            ownerId,
+            tripId,
+            date,
+            option: selectedOption,
+            editorKey,
+            baseSignature: visitsSignature(savedVisits),
+          }
+        : null;
     const savePlan = (visits: readonly PlannedVisit[]): Promise<boolean> => {
       const knownIds = new Set(allRows.map((row) => row.id));
       const orderedIds = visits.map((visit) => visit.placeId);
@@ -607,8 +631,35 @@ function CreatedTripEditPlanLoader({
       savedVisits,
       stops,
       loadDraft: (signature) => loadCreatedEditDraft(editorKey, signature),
-      saveDraft: (signature, visits) => saveCreatedEditDraft(editorKey, signature, visits),
-      clearDraft: () => clearCreatedEditDraft(editorKey),
+      saveDraft: (signature, visits) => {
+        const saved = saveCreatedEditDraft(editorKey, signature, visits);
+        if (saved && accountDraft) {
+          scheduleAccountDraftUpload(accountDraft, visits);
+        }
+
+        return saved;
+      },
+      clearDraft: (forceRemote = false) => {
+        const hadDraft = loadCreatedEditDraft(editorKey, visitsSignature(savedVisits)) !== null;
+        clearCreatedEditDraft(editorKey);
+        if ((hadDraft || forceRemote) && accountDraft) {
+          scheduleAccountDraftDeletion(accountDraft);
+        }
+      },
+      ...(accountDraft
+        ? {
+            retryDraft: (signature: string, visits: readonly PlannedVisit[], dirty: boolean) => {
+              if (dirty) {
+                const saved = saveCreatedEditDraft(editorKey, signature, visits);
+                if (saved) {
+                  scheduleAccountDraftUpload(accountDraft, visits);
+                }
+              } else {
+                retryAccountDraftDeletion(accountDraft);
+              }
+            },
+          }
+        : {}),
       loadVersions: () => loadCreatedEditVersions(editorKey),
       addVersion: (visits, summary) => addCreatedEditVersion(editorKey, visits, summary),
       savePlan,
@@ -624,12 +675,44 @@ function CreatedTripEditPlanLoader({
         return result;
       },
     };
-  }, [data, date, option, tripId]);
+  }, [accountCopy, data, date, option, ownerId, tripId]);
+
+  const expectedHydrationKey = adapter
+    ? `${ownerId ?? "local"}:${adapter.tripId}:${adapter.date}:${adapter.option}`
+    : null;
+  useEffect(() => {
+    if (!adapter || account.loading || !expectedHydrationKey) {
+      return;
+    }
+    let active = true;
+    const finish = (): void => {
+      if (active) {
+        setHydratedKey(expectedHydrationKey);
+      }
+    };
+    if (accountCopy && ownerId) {
+      const address = {
+        ownerId,
+        tripId: adapter.tripId,
+        date: adapter.date,
+        option: adapter.option,
+        editorKey: createdEditorKey(adapter.tripId, adapter.date, adapter.option),
+        baseSignature: visitsSignature(adapter.savedVisits),
+      };
+      void restoreAccountDraft(address, new Set(adapter.stops.keys()), () => active).then(finish);
+    } else {
+      finish();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [account.loading, accountCopy, adapter, expectedHydrationKey, ownerId]);
 
   if (loadError) {
     return <section className="edit-plan">Trip plan not found.</section>;
   }
-  if (!adapter) {
+  if (!adapter || account.loading || hydratedKey !== expectedHydrationKey) {
     return <section aria-busy="true" className="edit-plan" />;
   }
 
@@ -1045,7 +1128,7 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
 
   function discardDraftAndExit(): void {
     if (adapter) {
-      adapter.clearDraft();
+      adapter.clearDraft(true);
     } else {
       clearEditPlanDraft(day);
     }
@@ -1074,7 +1157,7 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
       : addEditPlanVersion(day, draft, describeChange(initialVisitsRef.current, draft));
     setVersions(nextVersions);
     if (adapter) {
-      adapter.clearDraft();
+      adapter.clearDraft(true);
     } else {
       clearEditPlanDraft(day);
     }
@@ -1493,6 +1576,13 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
 
     return () => window.removeEventListener("pagehide", flushDraft);
   }, [adapter, baseSignature, day, dirty, draft]);
+
+  useEffect(() => {
+    const retry = (): void => adapter?.retryDraft?.(baseSignature, draft, dirty);
+    window.addEventListener("online", retry);
+
+    return () => window.removeEventListener("online", retry);
+  }, [adapter, baseSignature, dirty, draft]);
 
   useEffect(() => {
     if (notice === null || notice.persistent) {
