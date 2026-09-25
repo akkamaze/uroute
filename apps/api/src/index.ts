@@ -3,6 +3,7 @@ import { clientAddress } from "./auth/client-address";
 import { createAuth } from "./auth/create-auth";
 import { readConfig } from "./config";
 import { createDatabase } from "./database";
+import { PgTripEntryRepository } from "./trips/entries";
 import { PgTripRepository } from "./trips/repository";
 
 const config = readConfig(Bun.env);
@@ -18,6 +19,7 @@ const app = createApp(
   auth,
   (request) => resolveAddress(request),
   new PgTripRepository(database),
+  new PgTripEntryRepository(database),
 ).listen({
   hostname: config.hostname,
   port: config.port,

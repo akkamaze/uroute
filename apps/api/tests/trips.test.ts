@@ -7,6 +7,7 @@ import { getMigrations } from "better-auth/db/migration";
 import { createApp } from "../src/app";
 import { createAuth, createAuthOptions, type AuthService } from "../src/auth/create-auth";
 import type { AuthConfig } from "../src/config";
+import type { EntryInput, EntryPage, EntryRecord, TripEntryRepository } from "../src/trips/entries";
 import type { TripInput, TripRecord, TripRepository } from "../src/trips/repository";
 
 const config: AuthConfig = {
@@ -21,6 +22,7 @@ const ID = "2f0802ba-d889-4493-8a1d-87b07b92f021";
 let database: Database;
 let auth: AuthService;
 let trips: MemoryTripRepository;
+let entries: MemoryEntryRepository;
 
 class MemoryTripRepository implements TripRepository {
   private readonly records = new Map<string, TripRecord & { ownerId: string }>();
@@ -77,11 +79,64 @@ class MemoryTripRepository implements TripRepository {
   }
 }
 
+class MemoryEntryRepository implements TripEntryRepository {
+  private readonly records = new Map<string, EntryRecord[]>();
+
+  constructor(private readonly trips: MemoryTripRepository) {}
+
+  async list(
+    ownerId: string,
+    tripId: string,
+    day: string | null,
+    limit: number,
+    offset: number,
+  ): Promise<EntryPage | null> {
+    const trip = await this.trips.get(ownerId, tripId);
+    if (!trip) {
+      return null;
+    }
+
+    return {
+      entries: (this.records.get(tripId) ?? [])
+        .filter((entry) => day === null || entry.day === day)
+        .slice(offset, offset + limit),
+      tripVersion: trip.version,
+    };
+  }
+
+  async replace(
+    ownerId: string,
+    tripId: string,
+    version: string,
+    input: readonly EntryInput[],
+  ): Promise<EntryPage | "not-found" | "conflict" | "out-of-range"> {
+    const trip = await this.trips.get(ownerId, tripId);
+    if (!trip) {
+      return "not-found" as const;
+    }
+    if (trip.version !== version) {
+      return "conflict" as const;
+    }
+    if (input.some((entry) => entry.day < trip.startDate || entry.day > trip.endDate)) {
+      return "out-of-range" as const;
+    }
+    const updated = await this.trips.update(ownerId, tripId, version, trip);
+    if (typeof updated === "string") {
+      return "conflict" as const;
+    }
+    const saved = input.map((entry) => ({ ...entry, id: crypto.randomUUID() }));
+    this.records.set(tripId, saved);
+
+    return { entries: saved, tripVersion: updated.version };
+  }
+}
+
 beforeEach(async () => {
   database = new Database(":memory:");
   await (await getMigrations(createAuthOptions(database, config))).runMigrations();
   auth = createAuth(database, config);
   trips = new MemoryTripRepository();
+  entries = new MemoryEntryRepository(trips);
 });
 
 afterEach(() => database.close());
@@ -116,7 +171,7 @@ function request(
     headers["content-type"] = "application/json";
   }
 
-  return createApp(auth, undefined, trips).handle(
+  return createApp(auth, undefined, trips, entries).handle(
     new Request(config.baseURL + path, {
       method,
       headers,
@@ -178,4 +233,67 @@ test("trip input and page bounds reject malformed data", async () => {
   ).toBe(400);
   expect((await request("/api/trips?limit=1000", "GET", undefined, owner)).status).toBe(400);
   expect((await request(`/api/trips/not-a-uuid`, "GET", undefined, owner)).status).toBe(400);
+});
+
+const entry: EntryInput = {
+  sourceKey: "sheet:D1:3",
+  day: "2026-09-27",
+  variant: "A",
+  position: 3,
+  kind: "place",
+  title: "Senso-ji",
+  timeLabel: "09:00",
+  detail: "Morning visit",
+  area: "Asakusa",
+  placeId: null,
+};
+
+test("daily entries preserve order, owner scope, and trip version", async () => {
+  const owner = await cookie("owner@example.test");
+  const other = await cookie("other@example.test");
+  expect((await request("/api/trips", "POST", input, owner)).status).toBe(200);
+  const result = await request(
+    `/api/trips/${ID}/entries`,
+    "PUT",
+    { version: "1", entries: [entry, { ...entry, sourceKey: "sheet:D1:4", position: 4 }] },
+    owner,
+  );
+  expect(result.status).toBe(200);
+  expect(await result.json()).toMatchObject({
+    tripVersion: "2",
+    entries: [entry, { ...entry, sourceKey: "sheet:D1:4", position: 4 }],
+  });
+  expect((await request(`/api/trips/${ID}/entries`, "GET", undefined, other)).status).toBe(404);
+  const page = await request(`/api/trips/${ID}/entries?day=2026-09-27`, "GET", undefined, owner);
+  expect(await page.json()).toMatchObject({
+    tripVersion: "2",
+    entries: [entry, { ...entry, sourceKey: "sheet:D1:4", position: 4 }],
+  });
+  expect(
+    (await request(`/api/trips/${ID}/entries`, "PUT", { version: "1", entries: [] }, owner)).status,
+  ).toBe(409);
+});
+
+test("entry batch rejects duplicate keys, bad bounds, and days outside the trip", async () => {
+  const owner = await cookie("owner@example.test");
+  expect((await request("/api/trips", "POST", input, owner)).status).toBe(200);
+  const path = `/api/trips/${ID}/entries`;
+  expect(
+    (await request(path, "PUT", { version: "1", entries: [entry, entry] }, owner)).status,
+  ).toBe(400);
+  expect(
+    (await request(path, "PUT", { version: "1", entries: [{ ...entry, position: -1 }] }, owner))
+      .status,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        path,
+        "PUT",
+        { version: "1", entries: [{ ...entry, day: "2026-10-02" }] },
+        owner,
+      )
+    ).status,
+  ).toBe(400);
+  expect((await request(`${path}?limit=501`, "GET", undefined, owner)).status).toBe(400);
 });
