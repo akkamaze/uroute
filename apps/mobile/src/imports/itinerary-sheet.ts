@@ -23,7 +23,7 @@ const MAX_XML_BYTES = 16 * 1024 * 1024;
 const MAX_TOTAL_XML_BYTES = 32 * 1024 * 1024;
 const MAX_XML_FILES = 70;
 const DATABASE_NAME = "uroute-trip-itineraries";
-const DATE_SHEET = /^D(\d+)-(\d+)(?:\s+([AB]))?$/i;
+const DATE_SHEET = /^D(\d+)-(\d+)(?:\s+([ABX]))?$/i;
 const TRAIN =
   /(?:railway|subway|metro|train|express|shinkansen|bus|flight|airport transfer|^jr\s)/i;
 
@@ -84,9 +84,20 @@ function normalizeName(name: string): string {
     .toLocaleLowerCase();
 }
 
+function normalizeFullName(name: string): string {
+  return name
+    .normalize("NFKC")
+    .replace(/\s*\([^)]*\d+\.\d+[^)]*\)\s*$/u, "")
+    .replace(/\bsky\s+tree\b/gi, "skytree")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
 function matchPlace(
   title: string,
   points: readonly ImportedPoint[],
+  subtitle = "",
 ): {
   placeId?: string;
   match: ItineraryEntry["match"];
@@ -100,7 +111,16 @@ function matchPlace(
     return { placeId: exact[0]!.id, match: "matched" };
   }
 
-  return { match: exact.length > 1 ? "ambiguous" : "unmatched" };
+  // The spreadsheet often puts a venue and floor on the next line while the
+  // matching KML pin keeps that context on one line. Use it only for a unique
+  // full-name match; a shared short name must never choose an arbitrary pin.
+  const fullName = normalizeFullName(subtitle ? `${title} ${subtitle}` : title);
+  const contextual = points.filter((point) => normalizeFullName(point.name) === fullName);
+  if (contextual.length === 1) {
+    return { placeId: contextual[0]!.id, match: "matched" };
+  }
+
+  return { match: exact.length > 1 || contextual.length > 1 ? "ambiguous" : "unmatched" };
 }
 
 export function reconcileItineraryMatches(
@@ -117,7 +137,9 @@ export function reconcileItineraryMatches(
     const withoutLink = { ...entry };
     delete withoutLink.placeId;
 
-    return { ...withoutLink, ...matchPlace(entry.title, points) };
+    const subtitle = entry.detail.startsWith("(") ? entry.detail.split(" · ")[0] : "";
+
+    return { ...withoutLink, ...matchPlace(entry.title, points, subtitle) };
   });
 }
 
@@ -186,6 +208,7 @@ export async function parseItinerarySheet(
   const start = Date.parse(`${startDate}T12:00:00Z`);
   const result: ItineraryEntry[] = [];
   let foundDays = 0;
+  const dayOptions = new Set<string>();
   for (const sheet of elements(workbook, "sheet")) {
     const sheetName = sheet.getAttribute("name") ?? "";
     const matchedName = DATE_SHEET.exec(sheetName);
@@ -196,7 +219,8 @@ export async function parseItinerarySheet(
     if (dayIndex < 1 || dayIndex > 60) {
       continue;
     }
-    const variant = matchedName[3]?.toUpperCase() ?? "A";
+    const option = matchedName[3]?.toUpperCase();
+    const variant = option === "X" ? "B" : (option ?? "A");
     const relationshipId = sheet.getAttributeNS(
       "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
       "id",
@@ -205,6 +229,11 @@ export async function parseItinerarySheet(
     const path = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\.\//, "")}`;
     const dayRows = rows(xml(archive[path], sheetName), sharedStrings);
     const date = new Date(start + (dayIndex - 1) * 86_400_000).toISOString().slice(0, 10);
+    const dayOption = `${date}:${variant}`;
+    if (dayOptions.has(dayOption)) {
+      throw new Error(`More than one spreadsheet tab maps to ${dayOption}.`);
+    }
+    dayOptions.add(dayOption);
     foundDays += 1;
     let area = "";
     for (const { number, values: row } of dayRows) {

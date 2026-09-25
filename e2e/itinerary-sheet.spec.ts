@@ -6,7 +6,7 @@ function sheet(rows: string[]): string {
 }
 
 function itineraryFile(includeOptionB = true): Buffer {
-  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="D1-27" sheetId="1" r:id="rId1"/><sheet name="D2-28 A" sheetId="2" r:id="rId2"/><sheet name="D2-28 B" sheetId="3" r:id="rId3"/></sheets></workbook>`;
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="D1-27" sheetId="1" r:id="rId1"/><sheet name="D2-28 A" sheetId="2" r:id="rId2"/><sheet name="D2-28 X" sheetId="3" r:id="rId3"/></sheets></workbook>`;
   const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/></Relationships>`;
 
   return Buffer.from(
