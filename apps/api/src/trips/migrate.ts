@@ -2,7 +2,7 @@ import { readConfig } from "../config";
 import { createDatabase } from "../database";
 
 const migrations = await Promise.all(
-  ["001_trip_core", "002_trip_draft"].map(async (version) => ({
+  ["001_trip_core", "002_trip_draft", "003_trip_source_place"].map(async (version) => ({
     version,
     up: await Bun.file(new URL(`../../migrations/${version}.up.sql`, import.meta.url)).text(),
     down: await Bun.file(new URL(`../../migrations/${version}.down.sql`, import.meta.url)).text(),

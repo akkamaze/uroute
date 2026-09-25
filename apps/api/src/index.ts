@@ -6,6 +6,7 @@ import { createDatabase } from "./database";
 import { PgTripEntryRepository } from "./trips/entries";
 import { PgTripDraftRepository } from "./trips/drafts";
 import { PgTripRepository } from "./trips/repository";
+import { PgTripPlanRepository } from "./trips/plan";
 
 const config = readConfig(Bun.env);
 const database = createDatabase(config.databaseURL);
@@ -25,6 +26,7 @@ const app = createApp(
   async () => {
     await database.query("SELECT 1");
   },
+  new PgTripPlanRepository(database),
 ).listen({
   hostname: config.hostname,
   port: config.port,

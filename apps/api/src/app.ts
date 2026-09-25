@@ -5,6 +5,7 @@ import type { AuthService } from "./auth/create-auth";
 import type { EntryInput, TripEntryRepository } from "./trips/entries";
 import type { DraftVisit, TripDraftRepository } from "./trips/drafts";
 import type { TripInput, TripRepository } from "./trips/repository";
+import type { TripPlanRepository } from "./trips/plan";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -130,6 +131,7 @@ export function createApp(
   entries?: TripEntryRepository,
   drafts?: TripDraftRepository,
   checkDatabase: () => Promise<void> = async () => {},
+  plans?: TripPlanRepository,
 ) {
   const app = new Elysia()
     .onRequest(({ request, set, status }) => {
@@ -374,15 +376,62 @@ export function createApp(
       }
     });
 
+  const planRoutes = plans
+    ? entryRoutes
+        .get("/api/trips/:id/plan", async ({ request, params, status }) => {
+          const day = new URL(request.url).searchParams.get("day");
+          if (!UUID.test(params.id) || !day || !validDay(day)) {
+            return status(400, { error: "A valid trip and day are required." });
+          }
+          try {
+            const ownerId = await sessionOwner(auth, request);
+            if (!ownerId) return status(401, { error: "Sign in to continue." });
+            const [trip, plan] = await Promise.all([
+              trips.get(ownerId, params.id),
+              plans.day(ownerId, params.id, day),
+            ]);
+            if (!trip || !plan) return status(404, { error: "Trip not found." });
+            if (day < trip.startDate || day > trip.endDate) {
+              return status(400, { error: "Day is outside this trip." });
+            }
+            return { trip, ...plan };
+          } catch {
+            return status(503, { error: "Plan service is temporarily unavailable." });
+          }
+        })
+        .put("/api/trips/:id/plan", async ({ request, params, body, status }) => {
+          const day = new URL(request.url).searchParams.get("day");
+          const payload = body as { version?: unknown; entries?: unknown } | null;
+          if (!UUID.test(params.id) || !day || !validDay(day) ||
+            !payload || typeof payload.version !== "string" || !VERSION.test(payload.version) ||
+            !Array.isArray(payload.entries) || payload.entries.length > 2_000 ||
+            !payload.entries.every(validEntry) ||
+            new Set(payload.entries.map((entry: EntryInput) => entry.sourceKey)).size !== payload.entries.length) {
+            return status(400, { error: "Invalid plan." });
+          }
+          try {
+            const ownerId = await sessionOwner(auth, request);
+            if (!ownerId) return status(401, { error: "Sign in to continue." });
+            const result = await plans.replaceDay(ownerId, params.id, day, payload.version, payload.entries);
+            if (result === "not-found") return status(404, { error: "Trip not found." });
+            if (result === "conflict") return status(409, { error: "Trip changed on another device." });
+            if (result === "out-of-range") return status(400, { error: "Day is outside this trip." });
+            return result;
+          } catch {
+            return status(503, { error: "Plan service is temporarily unavailable." });
+          }
+        })
+    : entryRoutes;
+
   if (!drafts) {
-    return entryRoutes;
+    return planRoutes;
   }
 
   function validDraftRoute(id: string, day: string, variant: string): boolean {
     return UUID.test(id) && validDay(day) && /^[A-Z]$/.test(variant);
   }
 
-  return entryRoutes
+  return planRoutes
     .get("/api/trips/:id/drafts/:day/:variant", async ({ request, params, status }) => {
       if (!validDraftRoute(params.id, params.day, params.variant)) {
         return status(400, { error: "Invalid draft address." });
