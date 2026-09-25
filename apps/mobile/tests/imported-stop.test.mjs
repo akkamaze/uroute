@@ -30,6 +30,12 @@ test("verified KML icon styles select uroute categories without using place name
   expect(categoryFromKmlStyle(sourceKey, "#icon-1534-558B2F")).toBe("coffee");
   expect(categoryFromKmlStyle(sourceKey, "#icon-1684-558B2F")).toBe("shopping");
   expect(categoryFromKmlStyle(sourceKey, "#icon-1535-558B2F")).toBe("sightseeing");
+  expect(
+    categoryFromKmlStyle(
+      "807513820c134b8cd355e9462e023f604d510822503b25098cfe9dc88497cc1b:7",
+      "#icon-1684-558B2F",
+    ),
+  ).toBe("shopping");
   expect(categoryFromKmlStyle(sourceKey, "#icon-1498-558B2F")).toBe("unknown");
   expect(categoryFromKmlStyle("another-document:7", "#icon-1534-558B2F")).toBe("unknown");
 });

@@ -28,7 +28,11 @@ export const PLACE_CATEGORY_LABELS: Record<PlaceCategory, string> = {
 
 // These style IDs were checked against the embedded icon images in this exact KML document.
 // Style IDs are local to a document, so applying them to unrelated imports would misclassify places.
-const VERIFIED_KANTO_KML_HASH = "b3f7f5f9e05e114881231d5441c8c0448dea6a487e0314f209d9fde70a46b170";
+const VERIFIED_KANTO_KML_HASHES = new Set([
+  "b3f7f5f9e05e114881231d5441c8c0448dea6a487e0314f209d9fde70a46b170",
+  // The earlier KML has the same 22 icon image binaries and style IDs.
+  "807513820c134b8cd355e9462e023f604d510822503b25098cfe9dc88497cc1b",
+]);
 const VERIFIED_STYLE_CATEGORIES: Readonly<Record<string, PlaceCategory>> = {
   "1504": "transport",
   "1528": "temple",
@@ -50,7 +54,7 @@ export function isPlaceCategory(value: unknown): value is PlaceCategory {
 }
 
 export function categoryFromKmlStyle(sourceKey: string, styleRef: string): PlaceCategory {
-  if (!sourceKey.startsWith(`${VERIFIED_KANTO_KML_HASH}:`)) {
+  if (!VERIFIED_KANTO_KML_HASHES.has(sourceKey.split(":", 1)[0] ?? "")) {
     return "unknown";
   }
 
