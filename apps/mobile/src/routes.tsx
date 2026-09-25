@@ -60,7 +60,7 @@ export function MobileShell(): React.JSX.Element {
     }
   }, [pathname, expandedMap]);
 
-  const focused = /^\/plan\/trip\/[^/]+$/.test(pathname);
+  const focused = /^\/plan\/trip\/[^/]+(?:\/bookings|\/expenses)?$/.test(pathname);
 
   return (
     <div className={`mobile-shell${focused ? " mobile-shell--focused" : ""}`}>

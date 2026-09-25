@@ -480,6 +480,8 @@ test("a server trip opens its bookings and expenses and accepts a flight booking
   );
 
   await page.goto(`/plan/trip/${tripId}/bookings`);
+  await expect(page.getByRole("navigation", { name: "Trip sections" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
   await page.getByRole("button", { name: "Add booking" }).click();
   await page
     .getByRole("dialog", { name: "Add booking" })
@@ -490,6 +492,7 @@ test("a server trip opens its bookings and expenses and accepts a flight booking
 
   await page.goto(`/plan/trip/${tripId}/expenses`);
   await expect(page.getByRole("heading", { name: "Kanto" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
 });
 
 test("a cached server trip plan appears before the account API answers", async ({ page }) => {
