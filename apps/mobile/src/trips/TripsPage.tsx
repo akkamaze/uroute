@@ -3,12 +3,14 @@ import { beginDialogDismissal } from "../keyboard/dismiss-dialog";
 import { advanceFormField } from "../keyboard/advance-form-field";
 import "../keyboard/keyboard-dialog.css";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { useAccount } from "@uroute/auth/useAccount";
 import { ChevronRight, ClipboardCheck, MapPin, Plus, Search, Tickets, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import { createTrip, loadCreatedTrips, type CreatedTrip } from "./trip-store";
+import { importLocalTripToAccount } from "./trip-account-import";
 import "./trips.css";
 
 interface TripCardProps {
@@ -68,7 +70,13 @@ function FeaturedTrip({ trip }: TripCardProps): React.JSX.Element {
   );
 }
 
-function CreatedFeaturedTrip({ trip }: { trip: CreatedTrip }): React.JSX.Element {
+function CreatedFeaturedTrip({
+  trip,
+  onImport,
+}: {
+  trip: CreatedTrip;
+  onImport?: (() => void) | undefined;
+}): React.JSX.Element {
   const days =
     Math.round(
       (Date.parse(`${trip.endDate}T12:00:00Z`) - Date.parse(`${trip.startDate}T12:00:00Z`)) /
@@ -99,7 +107,13 @@ function CreatedFeaturedTrip({ trip }: { trip: CreatedTrip }): React.JSX.Element
         </p>
       </Link>
       <div className="featured-trip__members">
-        <span>Your plan</span>
+        {onImport ? (
+          <button className="trip-account-action" onClick={onImport} type="button">
+            Copy to account
+          </button>
+        ) : (
+          <span>Your plan</span>
+        )}
         <Link params={{ tripId: trip.id }} to="/plan/trip/$tripId">
           Open plan
         </Link>
@@ -166,6 +180,7 @@ function BeforeYouGo({
   );
 }
 export function TripsPage(): React.JSX.Element {
+  const account = useAccount();
   const navigate = useNavigate();
   const search = useSearch({ from: "/mobile-shell/trips" });
   const packingOpen = search.packing === "open";
@@ -196,6 +211,10 @@ export function TripsPage(): React.JSX.Element {
   const [period, setPeriod] = useState<TripPeriod>("upcoming");
   const [query, setQuery] = useState("");
   const [createdTrips, setCreatedTrips] = useState<CreatedTrip[]>(loadCreatedTrips);
+  const [tripToImport, setTripToImport] = useState<CreatedTrip | null>(null);
+  const [importingToAccount, setImportingToAccount] = useState(false);
+  const [accountMessage, setAccountMessage] = useState("");
+  const accountDialogRef = useRef<HTMLDialogElement>(null);
   const newTripOpen = search.newTrip === "open";
   const newTripButtonRef = useRef<HTMLButtonElement>(null);
   const newTripOpenedHereRef = useRef(false);
@@ -217,6 +236,35 @@ export function TripsPage(): React.JSX.Element {
       trip.name.toLocaleLowerCase().includes(normalizedQuery) &&
       (period === "upcoming") === trip.endDate >= new Date().toISOString().slice(0, 10),
   );
+
+  useEffect(() => {
+    const dialog = accountDialogRef.current;
+    if (dialog !== null && tripToImport !== null && !dialog.open) {
+      dialog.showModal();
+    } else if (dialog !== null && tripToImport === null && dialog.open) {
+      dialog.close();
+    }
+  }, [tripToImport]);
+
+  async function confirmAccountImport(): Promise<void> {
+    if (!tripToImport || importingToAccount || !account.user) {
+      return;
+    }
+    setImportingToAccount(true);
+    setAccountMessage("");
+    try {
+      const count = await importLocalTripToAccount(tripToImport);
+      setAccountMessage(
+        `${tripToImport.name} and ${count} visible itinerary ${count === 1 ? "row" : "rows"} copied to your account. Imported map pins and edit history remain on this device.`,
+      );
+      setTripToImport(null);
+    } catch (error) {
+      setAccountMessage(error instanceof Error ? error.message : "Could not copy this trip.");
+      setTripToImport(null);
+    } finally {
+      setImportingToAccount(false);
+    }
+  }
 
   useEffect(() => {
     const dialog = newTripDialogRef.current;
@@ -374,6 +422,12 @@ export function TripsPage(): React.JSX.Element {
         ))}
       </div>
 
+      {accountMessage ? (
+        <p aria-live="polite" className="trip-account-message">
+          {accountMessage}
+        </p>
+      ) : null}
+
       <div
         className={
           resultsScrollable
@@ -385,27 +439,43 @@ export function TripsPage(): React.JSX.Element {
         <div aria-live="polite" className="trip-results">
           {[...visibleCreatedTrips].reverse().map((trip, index) => {
             if (index === 0 && period === "upcoming" && normalizedQuery.length === 0) {
-              return <CreatedFeaturedTrip key={trip.id} trip={trip} />;
+              return (
+                <CreatedFeaturedTrip
+                  key={trip.id}
+                  trip={trip}
+                  {...(account.user ? { onImport: () => setTripToImport(trip) } : {})}
+                />
+              );
             }
             const start = new Date(`${trip.startDate}T12:00:00Z`);
             const end = new Date(`${trip.endDate}T12:00:00Z`);
             const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
 
             return (
-              <Link
-                className="imported-trip-link"
-                key={trip.id}
-                to="/plan/trip/$tripId"
-                params={{ tripId: trip.id }}
-              >
-                <span>
-                  <strong>{trip.name}</strong>
-                  <small>
-                    {formatDateRange(start, end)} · {duration} {duration === 1 ? "day" : "days"}
-                  </small>
-                </span>
-                <ChevronRight aria-hidden="true" size={20} />
-              </Link>
+              <div className="trip-account-card" key={trip.id}>
+                <Link
+                  className="imported-trip-link"
+                  to="/plan/trip/$tripId"
+                  params={{ tripId: trip.id }}
+                >
+                  <span>
+                    <strong>{trip.name}</strong>
+                    <small>
+                      {formatDateRange(start, end)} · {duration} {duration === 1 ? "day" : "days"}
+                    </small>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={20} />
+                </Link>
+                {account.user ? (
+                  <button
+                    className="trip-account-action"
+                    onClick={() => setTripToImport(trip)}
+                    type="button"
+                  >
+                    Copy to account
+                  </button>
+                ) : null}
+              </div>
             );
           })}
           {visibleTrips.length === 0 && visibleCreatedTrips.length === 0 ? (
@@ -441,6 +511,38 @@ export function TripsPage(): React.JSX.Element {
       </div>
 
       <PackingListDialog onClose={closePacking} open={packingOpen} />
+
+      <dialog
+        aria-labelledby="trip-account-title"
+        className="trip-account-dialog"
+        onCancel={(event) => {
+          if (importingToAccount) {
+            event.preventDefault();
+          } else {
+            setTripToImport(null);
+          }
+        }}
+        ref={accountDialogRef}
+      >
+        <h2 id="trip-account-title">Copy {tripToImport?.name} to your account?</h2>
+        <p>
+          This copies trip details and visible itinerary rows. KML map pins, removed rows and
+          version history stay on this device for now. Existing account rows will never be
+          overwritten.
+        </p>
+        <div>
+          <button disabled={importingToAccount} onClick={() => setTripToImport(null)} type="button">
+            Cancel
+          </button>
+          <button
+            disabled={importingToAccount}
+            onClick={() => void confirmAccountImport()}
+            type="button"
+          >
+            {importingToAccount ? "Copying…" : "Copy trip"}
+          </button>
+        </div>
+      </dialog>
 
       <dialog
         aria-labelledby="new-trip-title"

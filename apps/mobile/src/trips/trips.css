@@ -224,6 +224,77 @@
   text-decoration: none;
 }
 
+.trip-account-action {
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--color-active);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+}
+
+.trip-account-card > .trip-account-action {
+  display: block;
+  margin: -10px 16px 12px auto;
+}
+
+.trip-account-message {
+  flex: none;
+  margin: 0 0 8px;
+  color: var(--color-muted);
+  font-size: var(--type-body-sm-size);
+  line-height: 1.4;
+}
+
+.trip-account-dialog {
+  width: calc(100% - 24px);
+  max-width: 390px;
+  margin: auto auto max(12px, env(safe-area-inset-bottom, 0px));
+  padding: 20px;
+  color: var(--color-text);
+  border: 0;
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: 0 20px 64px rgb(32 33 36 / 18%);
+}
+
+.trip-account-dialog::backdrop {
+  background: rgb(32 33 36 / 34%);
+}
+
+.trip-account-dialog h2 {
+  margin: 0;
+  font-size: var(--type-heading-size);
+}
+
+.trip-account-dialog p {
+  margin: 10px 0 18px;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+.trip-account-dialog > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.trip-account-dialog button {
+  min-height: 48px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+}
+
+.trip-account-dialog button:last-child {
+  color: var(--color-on-accent);
+  border-color: var(--color-active);
+  background: var(--color-active);
+}
+
 .compact-trip {
   display: flex;
   min-height: 86px;
