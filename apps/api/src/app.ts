@@ -3,10 +3,41 @@ import { Elysia } from "elysia";
 import { withClientAddress } from "./auth/client-address";
 import type { AuthService } from "./auth/create-auth";
 import type { EntryInput, TripEntryRepository } from "./trips/entries";
+import type { DraftVisit, TripDraftRepository } from "./trips/drafts";
 import type { TripInput, TripRepository } from "./trips/repository";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const VERSION = /^[1-9]\d{0,17}$/;
+
+function validDraftVisits(value: unknown): value is DraftVisit[] {
+  if (!Array.isArray(value) || value.length > 2_000) {
+    return false;
+  }
+  const ids = new Set<string>();
+
+  return value.every((item) => {
+    if (typeof item !== "object" || item === null) {
+      return false;
+    }
+    const visit = item as Partial<DraftVisit>;
+    if (
+      typeof visit.placeId !== "string" ||
+      visit.placeId.length === 0 ||
+      visit.placeId.length > 300 ||
+      ids.has(visit.placeId) ||
+      typeof visit.time !== "string" ||
+      !/^(?:[01]\d|2[0-3]):[0-5]\d$|^$/.test(visit.time) ||
+      typeof visit.notes !== "string" ||
+      visit.notes.length > 5_000
+    ) {
+      return false;
+    }
+    ids.add(visit.placeId);
+
+    return true;
+  });
+}
 
 function validTripInput(value: unknown): value is TripInput {
   if (typeof value !== "object" || value === null) {
@@ -73,7 +104,7 @@ function validEntry(value: unknown): value is EntryInput {
     typeof entry.timeLabel === "string" &&
     entry.timeLabel.length <= 80 &&
     typeof entry.detail === "string" &&
-    entry.detail.length <= 1_500 &&
+    entry.detail.length <= 5_000 &&
     typeof entry.area === "string" &&
     entry.area.length <= 160 &&
     (entry.placeId === null || (typeof entry.placeId === "string" && entry.placeId.length <= 240))
@@ -97,6 +128,7 @@ export function createApp(
   resolveAddress: (request: Request) => string | null = () => null,
   trips?: TripRepository,
   entries?: TripEntryRepository,
+  drafts?: TripDraftRepository,
 ) {
   const app = new Elysia()
     .onRequest(({ request, set, status }) => {
@@ -258,7 +290,7 @@ export function createApp(
     return tripRoutes;
   }
 
-  return tripRoutes
+  const entryRoutes = tripRoutes
     .get("/api/trips/:id/entries", async ({ request, params, status }) => {
       if (!UUID.test(params.id)) {
         return status(400, { error: "Invalid trip ID." });
@@ -329,6 +361,113 @@ export function createApp(
         return result;
       } catch {
         return status(503, { error: "Itinerary service is temporarily unavailable." });
+      }
+    });
+
+  if (!drafts) {
+    return entryRoutes;
+  }
+
+  function validDraftRoute(id: string, day: string, variant: string): boolean {
+    return UUID.test(id) && validDay(day) && /^[A-Z]$/.test(variant);
+  }
+
+  return entryRoutes
+    .get("/api/trips/:id/drafts/:day/:variant", async ({ request, params, status }) => {
+      if (!validDraftRoute(params.id, params.day, params.variant)) {
+        return status(400, { error: "Invalid draft address." });
+      }
+      try {
+        const ownerId = await sessionOwner(auth, request);
+        if (!ownerId) {
+          return status(401, { error: "Sign in to continue." });
+        }
+        const draft = await drafts.get(ownerId, params.id, params.day, params.variant);
+
+        return draft ?? status(404, { error: "Draft not found." });
+      } catch {
+        return status(503, { error: "Draft service is temporarily unavailable." });
+      }
+    })
+    .put("/api/trips/:id/drafts/:day/:variant", async ({ request, params, body, status }) => {
+      if (!validDraftRoute(params.id, params.day, params.variant)) {
+        return status(400, { error: "Invalid draft address." });
+      }
+      const input: unknown = body;
+      if (typeof input !== "object" || input === null) {
+        return status(400, { error: "Invalid draft." });
+      }
+      const payload = input as { baseVersion?: unknown; revision?: unknown; visits?: unknown };
+      if (
+        typeof payload.baseVersion !== "string" ||
+        !VERSION.test(payload.baseVersion) ||
+        !(
+          payload.revision === null ||
+          (typeof payload.revision === "string" && VERSION.test(payload.revision))
+        ) ||
+        !validDraftVisits(payload.visits)
+      ) {
+        return status(400, { error: "Invalid draft." });
+      }
+      try {
+        const ownerId = await sessionOwner(auth, request);
+        if (!ownerId) {
+          return status(401, { error: "Sign in to continue." });
+        }
+        const result = await drafts.put(
+          ownerId,
+          params.id,
+          params.day,
+          params.variant,
+          payload.baseVersion,
+          payload.revision,
+          payload.visits,
+        );
+        if (result === "not-found") {
+          return status(404, { error: "Trip not found." });
+        }
+        if (result === "out-of-range") {
+          return status(400, { error: "Draft date is outside the trip." });
+        }
+        if (result === "conflict") {
+          return status(409, { error: "Draft or saved plan changed on another device." });
+        }
+
+        return result;
+      } catch {
+        return status(503, { error: "Draft service is temporarily unavailable." });
+      }
+    })
+    .delete("/api/trips/:id/drafts/:day/:variant", async ({ request, params, status }) => {
+      if (!validDraftRoute(params.id, params.day, params.variant)) {
+        return status(400, { error: "Invalid draft address." });
+      }
+      const revision = new URL(request.url).searchParams.get("revision");
+      if (!revision || !VERSION.test(revision)) {
+        return status(400, { error: "A draft revision is required." });
+      }
+      try {
+        const ownerId = await sessionOwner(auth, request);
+        if (!ownerId) {
+          return status(401, { error: "Sign in to continue." });
+        }
+        const result = await drafts.delete(
+          ownerId,
+          params.id,
+          params.day,
+          params.variant,
+          revision,
+        );
+        if (result === "not-found") {
+          return status(404, { error: "Draft not found." });
+        }
+        if (result === "conflict") {
+          return status(409, { error: "Draft changed on another device." });
+        }
+
+        return { deleted: true };
+      } catch {
+        return status(503, { error: "Draft service is temporarily unavailable." });
       }
     });
 }

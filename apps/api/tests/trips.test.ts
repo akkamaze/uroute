@@ -8,6 +8,7 @@ import { createApp } from "../src/app";
 import { createAuth, createAuthOptions, type AuthService } from "../src/auth/create-auth";
 import type { AuthConfig } from "../src/config";
 import type { EntryInput, EntryPage, EntryRecord, TripEntryRepository } from "../src/trips/entries";
+import type { DraftVisit, TripDraft, TripDraftRepository } from "../src/trips/drafts";
 import type { TripInput, TripRecord, TripRepository } from "../src/trips/repository";
 
 const config: AuthConfig = {
@@ -23,6 +24,7 @@ let database: Database;
 let auth: AuthService;
 let trips: MemoryTripRepository;
 let entries: MemoryEntryRepository;
+let drafts: MemoryDraftRepository;
 
 class MemoryTripRepository implements TripRepository {
   private readonly records = new Map<string, TripRecord & { ownerId: string }>();
@@ -131,12 +133,88 @@ class MemoryEntryRepository implements TripEntryRepository {
   }
 }
 
+class MemoryDraftRepository implements TripDraftRepository {
+  private readonly records = new Map<string, TripDraft>();
+
+  constructor(private readonly trips: MemoryTripRepository) {}
+
+  async get(
+    ownerId: string,
+    tripId: string,
+    day: string,
+    variant: string,
+  ): Promise<TripDraft | null> {
+    if (!(await this.trips.get(ownerId, tripId))) {
+      return null;
+    }
+
+    return this.records.get(`${tripId}:${day}:${variant}`) ?? null;
+  }
+
+  async put(
+    ownerId: string,
+    tripId: string,
+    day: string,
+    variant: string,
+    baseVersion: string,
+    expectedRevision: string | null,
+    visits: readonly DraftVisit[],
+  ): Promise<TripDraft | "not-found" | "out-of-range" | "conflict"> {
+    const trip = await this.trips.get(ownerId, tripId);
+    if (!trip) {
+      return "not-found";
+    }
+    if (day < trip.startDate || day > trip.endDate) {
+      return "out-of-range";
+    }
+    if (trip.version !== baseVersion) {
+      return "conflict";
+    }
+    const key = `${tripId}:${day}:${variant}`;
+    const current = this.records.get(key);
+    if ((current?.revision ?? null) !== expectedRevision) {
+      return "conflict";
+    }
+    const draft: TripDraft = {
+      day,
+      variant,
+      baseVersion,
+      revision: String(Number(current?.revision ?? 0) + 1),
+      visits: visits.map((visit) => ({ ...visit })),
+      updatedAt: "now",
+    };
+    this.records.set(key, draft);
+
+    return draft;
+  }
+
+  async delete(
+    ownerId: string,
+    tripId: string,
+    day: string,
+    variant: string,
+    expectedRevision: string,
+  ): Promise<"deleted" | "not-found" | "conflict"> {
+    const current = await this.get(ownerId, tripId, day, variant);
+    if (!current) {
+      return "not-found";
+    }
+    if (current.revision !== expectedRevision) {
+      return "conflict";
+    }
+    this.records.delete(`${tripId}:${day}:${variant}`);
+
+    return "deleted";
+  }
+}
+
 beforeEach(async () => {
   database = new Database(":memory:");
   await (await getMigrations(createAuthOptions(database, config))).runMigrations();
   auth = createAuth(database, config);
   trips = new MemoryTripRepository();
   entries = new MemoryEntryRepository(trips);
+  drafts = new MemoryDraftRepository(trips);
 });
 
 afterEach(() => database.close());
@@ -171,7 +249,7 @@ function request(
     headers["content-type"] = "application/json";
   }
 
-  return createApp(auth, undefined, trips, entries).handle(
+  return createApp(auth, undefined, trips, entries, drafts).handle(
     new Request(config.baseURL + path, {
       method,
       headers,
@@ -296,4 +374,77 @@ test("entry batch rejects duplicate keys, bad bounds, and days outside the trip"
     ).status,
   ).toBe(400);
   expect((await request(`${path}?limit=501`, "GET", undefined, owner)).status).toBe(400);
+});
+
+test("drafts are owner-scoped, revisioned and independent from the saved plan", async () => {
+  const owner = await cookie("owner@example.test");
+  const other = await cookie("other@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const path = `/api/trips/${ID}/drafts/2026-09-27/A`;
+  const visits = [{ placeId: "stop-1", time: "09:30", notes: "Arrive early" }];
+  expect((await request(path, "GET", undefined, other)).status).toBe(404);
+  expect(
+    (await request(path, "PUT", { baseVersion: "1", revision: null, visits }, other)).status,
+  ).toBe(404);
+  const first = await request(path, "PUT", { baseVersion: "1", revision: null, visits }, owner);
+  expect(first.status).toBe(200);
+  expect(await first.json()).toMatchObject({ revision: "1", visits });
+  expect(
+    (await request(path, "PUT", { baseVersion: "1", revision: null, visits }, owner)).status,
+  ).toBe(409);
+  const second = await request(
+    path,
+    "PUT",
+    { baseVersion: "1", revision: "1", visits: [{ ...visits[0]!, notes: "Updated" }] },
+    owner,
+  );
+  expect(second.status).toBe(200);
+  expect(await second.json()).toMatchObject({ revision: "2" });
+  expect(
+    await request(`/api/trips/${ID}`, "GET", undefined, owner).then((response) => response.json()),
+  ).toMatchObject({ version: "1" });
+  expect((await request(`${path}?revision=1`, "DELETE", undefined, owner)).status).toBe(409);
+  expect((await request(`${path}?revision=2`, "DELETE", undefined, owner)).status).toBe(200);
+  expect((await request(path, "GET", undefined, owner)).status).toBe(404);
+});
+
+test("draft validation rejects malformed visits and stale saved-plan versions", async () => {
+  const owner = await cookie("owner@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const path = `/api/trips/${ID}/drafts/2026-09-27/A`;
+  const visit = { placeId: "stop-1", time: "09:30", notes: "" };
+  expect(
+    (
+      await request(
+        path,
+        "PUT",
+        { baseVersion: "1", revision: null, visits: [visit, visit] },
+        owner,
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        path,
+        "PUT",
+        { baseVersion: "1", revision: null, visits: [{ ...visit, time: "25:00" }] },
+        owner,
+      )
+    ).status,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        `/api/trips/${ID}/drafts/2026-10-02/A`,
+        "PUT",
+        { baseVersion: "1", revision: null, visits: [] },
+        owner,
+      )
+    ).status,
+  ).toBe(400);
+  await request(`/api/trips/${ID}`, "PUT", { ...input, version: "1" }, owner);
+  expect(
+    (await request(path, "PUT", { baseVersion: "1", revision: null, visits: [] }, owner)).status,
+  ).toBe(409);
 });
