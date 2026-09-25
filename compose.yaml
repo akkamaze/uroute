@@ -1,15 +1,32 @@
 services:
+  database:
+    image: postgres:17.6-alpine
+    env_file:
+      - path: ${DATABASE_ENV_FILE:-./deploy/database.env}
+        required: true
+    volumes:
+      - database-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
   api:
     build:
       context: .
       target: api
     env_file:
-      - path: ${APP_ENV_FILE:-./deploy/.env}
+      - path: ${APP_ENV_FILE:-./deploy/app.env}
         required: true
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: "3001"
+    depends_on:
+      database:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:
@@ -33,7 +50,10 @@ services:
       - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:80"
     restart: unless-stopped
     healthcheck:
-      test: [CMD, wget, -q, --spider, 'http://127.0.0.1/health']
+      test: [CMD, wget, -q, --spider, "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  database-data:

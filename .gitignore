@@ -15,6 +15,7 @@ AGENTS.md
 .env
 .env.*
 !.env.example
+*.env
 !apps/mobile/.env.test-device
 *.local
 .DS_Store
