@@ -10,6 +10,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/_kml_images\//, "/hostedimage/"),
       },
+      "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
+    },
+  },
+  preview: {
+    proxy: {
+      "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
     },
   },
   build: {
