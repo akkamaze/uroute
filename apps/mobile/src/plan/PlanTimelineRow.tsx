@@ -78,7 +78,7 @@ export function PlanTimelineRow({
         >
           <button
             aria-pressed={selected}
-            className="timeline__stop"
+            className={`timeline__stop${image ? "" : " timeline__stop--no-photo"}`}
             data-stop-id={id}
             onClick={onOpen}
             ref={buttonRef}

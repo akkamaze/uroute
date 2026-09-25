@@ -1112,6 +1112,16 @@ a,
   cursor: pointer;
 }
 
+.timeline__stop--no-photo {
+  grid-template-columns: 44px 32px minmax(0, 1fr);
+}
+
+.timeline__stop--no-photo .timeline__info strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
 .timeline__time {
   font-size: var(--type-subtitle-size);
   font-variant-numeric: tabular-nums;
