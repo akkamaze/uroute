@@ -332,18 +332,16 @@
   font-size: var(--type-label-size);
 }
 
-.edit-plan__edit-details {
-  display: inline-flex;
-  width: fit-content;
-  min-height: 24px;
-  gap: 4px;
+.edit-plan__time-button {
+  display: flex;
+  min-height: 44px;
   align-items: center;
   padding: 0;
-  color: var(--color-active);
   border: 0;
   background: transparent;
-  font-size: var(--type-label-size);
-  font-weight: 600;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .edit-plan__visit-dialog label {

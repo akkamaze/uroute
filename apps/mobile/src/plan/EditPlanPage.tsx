@@ -16,7 +16,6 @@ import {
   FileText,
   GripVertical,
   History,
-  Pencil,
   Plus,
   Redo2,
   Trash2,
@@ -2472,23 +2471,20 @@ function EditPlanCore({ adapter }: { adapter?: PlanEditorAdapter }): React.JSX.E
                       >
                         <GripVertical aria-hidden="true" size={19} strokeWidth={1.8} />
                       </button>
-                      <VisitTime className="edit-plan__time" time={visit.time} />
+                      <button
+                        aria-label={`Edit time and note for ${stop.name}`}
+                        className="edit-plan__time-button"
+                        onClick={() => openVisitEditor(visit)}
+                        type="button"
+                      >
+                        <VisitTime className="edit-plan__time" time={visit.time} />
+                      </button>
                       <span className={`edit-plan__icon edit-plan__icon--${stop.category}`}>
                         <PlaceCategoryIcon category={stop.category} />
                       </span>
                       <span className="edit-plan__place">
                         <strong>{stop.name}</strong>
                         <span>{stop.type}</span>
-                        <button
-                          aria-label={`Edit time and note for ${stop.name}`}
-                          className="edit-plan__edit-details"
-                          onClick={() => openVisitEditor(visit)}
-                          onPointerDown={(event) => event.stopPropagation()}
-                          type="button"
-                        >
-                          <Pencil aria-hidden="true" size={15} strokeWidth={1.8} />
-                          Time / note
-                        </button>
                       </span>
                       {stop.image ? <img alt="" src={stop.image} /> : null}
                     </>

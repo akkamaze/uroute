@@ -65,6 +65,11 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
   }
   const start = box.x + box.width - 20;
   const y = box.y + box.height / 2;
+  const placeBox = await row.locator(".edit-plan__place").boundingBox();
+  if (placeBox === null) {
+    throw new Error("Expected place name");
+  }
+  const placeStart = placeBox.x + 8;
   await touch("touchStart", start, y);
   for (let dx = 10; dx <= 80; dx += 10) {
     await touch("touchMove", start - dx, y);
@@ -82,7 +87,7 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
   expect(await storedFridayIds(page)).toEqual(original);
   // Deliberate swipes commit in either direction without a reveal stage.
   for (const direction of [-1, 1]) {
-    const sx = direction < 0 ? start : 105;
+    const sx = direction < 0 ? start : placeStart;
     await touch("touchStart", sx, y);
     for (let dx = 10; dx <= box.width * 0.5; dx += 10) {
       await touch("touchMove", sx + direction * dx, y);
@@ -105,7 +110,7 @@ test("touch swipe tracks the finger, removes a draft place and supports back nav
   }
   // Fast, short flicks must delete in both directions rather than stop at Remove.
   for (const direction of [-1, 1]) {
-    const sx = direction < 0 ? start : 105;
+    const sx = direction < 0 ? start : placeStart;
     await touch("touchStart", sx, y);
     for (const dx of [40, 80, 120]) {
       await touch("touchMove", sx + direction * dx, y);
