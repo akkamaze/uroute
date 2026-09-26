@@ -4,7 +4,16 @@ import { advanceFormField } from "../keyboard/advance-form-field";
 import "../keyboard/keyboard-dialog.css";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useAccount } from "@uroute/auth/useAccount";
-import { ChevronRight, ClipboardCheck, MapPin, Plus, Search, Tickets, X } from "lucide-react";
+import {
+  Camera,
+  ChevronRight,
+  ClipboardCheck,
+  MapPin,
+  Plus,
+  Search,
+  Tickets,
+  X,
+} from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useAppMode } from "../app-mode";
@@ -12,6 +21,7 @@ import { PackingListDialog } from "./PackingListDialog";
 import { trips, type TripPeriod, type TripSummary } from "./trips-data";
 import { createTrip, loadCreatedTrips, type CreatedTrip } from "./trip-store";
 import { importLocalTripToAccount } from "./trip-account-import";
+import { tripCoverUrl, uploadTripCover } from "./trip-cover";
 import { createAccountTrip, loadAccountTrips, type AccountTrip } from "../plan/account-plan";
 import "./trips.css";
 
@@ -72,13 +82,79 @@ function FeaturedTrip({ trip }: TripCardProps): React.JSX.Element {
   );
 }
 
+function TripCoverButton({
+  tripId,
+  onCoverChange,
+}: {
+  tripId: string;
+  onCoverChange: (tripId: string, coverVersion: string) => void;
+}): React.JSX.Element {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function chooseCover(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) {
+      return;
+    }
+    setUploading(true);
+    setMessage("");
+    try {
+      onCoverChange(tripId, await uploadTripCover(tripId, file));
+    } catch {
+      setMessage("Could not update the cover photo.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        aria-label="Change cover photo"
+        className="trip-cover-button"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+        type="button"
+      >
+        <Camera aria-hidden="true" size={18} strokeWidth={1.8} />
+      </button>
+      <input
+        accept="image/*"
+        aria-hidden="true"
+        className="sr-only"
+        onChange={(event) => void chooseCover(event)}
+        ref={inputRef}
+        tabIndex={-1}
+        type="file"
+      />
+      {message ? (
+        <span className="sr-only" role="status">
+          {message}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function tripCover(trip: CreatedTrip | AccountTrip): string | null {
+  return "coverVersion" in trip && trip.coverVersion
+    ? tripCoverUrl(trip.id, trip.coverVersion)
+    : null;
+}
+
 function CreatedFeaturedTrip({
   trip,
   onImport,
+  onCoverChange,
 }: {
-  trip: CreatedTrip;
+  trip: CreatedTrip | AccountTrip;
   onImport?: (() => void) | undefined;
+  onCoverChange?: ((tripId: string, coverVersion: string) => void) | undefined;
 }): React.JSX.Element {
+  const cover = tripCover(trip);
   const days =
     Math.round(
       (Date.parse(`${trip.endDate}T12:00:00Z`) - Date.parse(`${trip.startDate}T12:00:00Z`)) /
@@ -91,8 +167,15 @@ function CreatedFeaturedTrip({
 
   return (
     <article className="featured-trip">
-      <div aria-hidden="true" className="featured-trip__created-cover">
-        <MapPin size={42} strokeWidth={1.4} />
+      <div className="featured-trip__cover">
+        {cover ? (
+          <img alt={`${trip.name} cover`} className="featured-trip__image" src={cover} />
+        ) : (
+          <div aria-hidden="true" className="featured-trip__created-cover">
+            <MapPin size={42} strokeWidth={1.4} />
+          </div>
+        )}
+        {onCoverChange ? <TripCoverButton onCoverChange={onCoverChange} tripId={trip.id} /> : null}
       </div>
       <Link
         aria-label={`Open ${trip.name} trip plan`}
@@ -150,10 +233,13 @@ function CompactTrip({ trip }: TripCardProps): React.JSX.Element {
 function CreatedCompactTrip({
   trip,
   onImport,
+  onCoverChange,
 }: {
-  trip: CreatedTrip;
+  trip: CreatedTrip | AccountTrip;
   onImport?: (() => void) | undefined;
+  onCoverChange?: ((tripId: string, coverVersion: string) => void) | undefined;
 }): React.JSX.Element {
+  const cover = tripCover(trip);
   const start = new Date(`${trip.startDate}T12:00:00Z`);
   const end = new Date(`${trip.endDate}T12:00:00Z`);
   const duration = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
@@ -161,9 +247,13 @@ function CreatedCompactTrip({
   return (
     <div className="created-compact-trip">
       <Link className="compact-trip" params={{ tripId: trip.id }} to="/plan/trip/$tripId">
-        <span aria-hidden="true" className="compact-trip__placeholder">
-          <MapPin size={24} strokeWidth={1.7} />
-        </span>
+        {cover ? (
+          <img alt={`${trip.name} cover`} src={cover} />
+        ) : (
+          <span aria-hidden="true" className="compact-trip__placeholder">
+            <MapPin size={24} strokeWidth={1.7} />
+          </span>
+        )}
         <span className="compact-trip__copy">
           <strong>{trip.name}</strong>
           <span>
@@ -171,6 +261,7 @@ function CreatedCompactTrip({
           </span>
         </span>
       </Link>
+      {onCoverChange ? <TripCoverButton onCoverChange={onCoverChange} tripId={trip.id} /> : null}
       {onImport ? (
         <button className="trip-account-action" onClick={onImport} type="button">
           Copy to account
@@ -324,6 +415,12 @@ export function TripsPage(): React.JSX.Element {
       dialog.close();
     }
   }, [tripToImport]);
+
+  function changeCover(tripId: string, coverVersion: string): void {
+    setAccountTrips((current) =>
+      current.map((trip) => (trip.id === tripId ? { ...trip, coverVersion } : trip)),
+    );
+  }
 
   async function confirmAccountImport(): Promise<void> {
     if (!tripToImport || importingToAccount || !account.user) {
@@ -533,6 +630,9 @@ export function TripsPage(): React.JSX.Element {
                   {...(account.user && !accountTrips.some((remote) => remote.id === trip.id)
                     ? { onImport: () => setTripToImport(trip) }
                     : {})}
+                  {...(account.user && accountTrips.some((remote) => remote.id === trip.id)
+                    ? { onCoverChange: changeCover }
+                    : {})}
                 />
               );
             }
@@ -543,6 +643,9 @@ export function TripsPage(): React.JSX.Element {
                 trip={trip}
                 {...(account.user && !accountTrips.some((remote) => remote.id === trip.id)
                   ? { onImport: () => setTripToImport(trip) }
+                  : {})}
+                {...(account.user && accountTrips.some((remote) => remote.id === trip.id)
+                  ? { onCoverChange: changeCover }
                   : {})}
               />
             );

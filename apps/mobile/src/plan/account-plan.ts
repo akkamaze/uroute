@@ -7,6 +7,7 @@ import type { CreatedTrip } from "../trips/trip-store";
 
 export interface AccountTrip extends CreatedTrip {
   version: string;
+  coverVersion?: string | null;
 }
 
 export interface AccountPlanEntry {
