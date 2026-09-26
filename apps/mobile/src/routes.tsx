@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
 import { attachKeyboardViewport } from "./keyboard/keyboard-viewport";
 import { useSwipeBack } from "./navigation/use-swipe-back";
-import { allowAnyOrientation, preferPortraitOrientation } from "./orientation";
+import { preferPortraitOrientation } from "./orientation";
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
@@ -53,11 +53,7 @@ export function MobileShell(): React.JSX.Element {
       new URLSearchParams(state.location.searchStr).get("map") === "full",
   });
   useEffect(() => {
-    if (expandedMap) {
-      allowAnyOrientation();
-    } else {
-      preferPortraitOrientation();
-    }
+    preferPortraitOrientation();
   }, [pathname, expandedMap]);
 
   const focused = /^\/plan\/trip\/[^/]+(?:\/bookings|\/expenses)?$/.test(pathname);

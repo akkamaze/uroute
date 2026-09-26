@@ -59,7 +59,7 @@ export default defineConfig({
         ],
         id: "/",
         name: "uroute",
-        orientation: "any",
+        orientation: "portrait",
         scope: "/",
         short_name: "uroute",
         start_url: "/",

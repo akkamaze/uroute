@@ -95,7 +95,7 @@ test("loads, clusters, and interacts with 1,200 map points", async ({ page }) =>
   );
   await page.getByRole("button", { name: "Expand map" }).click();
   await expect(page).toHaveURL(/map=full/);
-  await expect(page.locator("html")).toHaveAttribute("data-orientation-policy", "any");
+  await expect(page.locator("html")).toHaveAttribute("data-orientation-policy", "portrait");
   await expect.poll(async () => (await readMapSnapshot(page))?.moving).toBe(false);
   await page.evaluate(
     () =>

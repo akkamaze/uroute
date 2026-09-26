@@ -12,7 +12,7 @@ import {
 import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { useEffect, useRef, useState } from "react";
 
-import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
+import { preferPortraitOrientation } from "../orientation";
 import { MapLoading } from "./MapLoading";
 import { KYOTO_CENTER, type MapGeometryCollection, type PlaceCollection } from "./map-data";
 import {
@@ -1335,11 +1335,7 @@ export function TripMap({
       return;
     }
     setLocalExpanded(next);
-    if (next) {
-      allowAnyOrientation();
-    } else if (variant === "planner") {
-      preferPortraitOrientation();
-    }
+    preferPortraitOrientation();
   }
 
   return (

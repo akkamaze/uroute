@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { allowAnyOrientation, preferPortraitOrientation } from "../orientation";
+import { preferPortraitOrientation } from "../orientation";
 import { createSamplePlaces, createOrderedPlaces } from "../plan/map-data";
 import { FRIDAY_STOPS, type PlannedStop } from "../plan/plan-data";
 import { TripMap } from "../plan/TripMap";
@@ -178,13 +178,7 @@ export function PlaceDetailsPage(): React.JSX.Element {
   }, [search.search, submittedQuery]);
 
   useEffect(() => {
-    if (mapExpanded) {
-      allowAnyOrientation();
-    } else {
-      preferPortraitOrientation();
-    }
-
-    return preferPortraitOrientation;
+    preferPortraitOrientation();
   }, [mapExpanded]);
 
   useLayoutEffect(() => {
