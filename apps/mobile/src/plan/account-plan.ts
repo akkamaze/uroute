@@ -242,3 +242,23 @@ export function accountPlanItinerary(
     match: entry.place ? ("matched" as const) : ("unmatched" as const),
   }));
 }
+
+export function transitArrivalIds(entries: readonly AccountPlanEntry[]): Set<string> {
+  const ordered = [...entries].sort(
+    (left, right) => left.variant.localeCompare(right.variant) || left.position - right.position,
+  );
+  const ids = new Set<string>();
+  ordered.forEach((entry, index) => {
+    const previous = ordered[index - 1];
+    if (
+      entry.kind === "transport" &&
+      entry.place !== null &&
+      previous?.kind === "transport" &&
+      previous.variant === entry.variant
+    ) {
+      ids.add(entry.place.sourceKey);
+    }
+  });
+
+  return ids;
+}

@@ -203,7 +203,10 @@ test("opening a server trip stop shows its details with directions", async ({ pa
     page.getByRole("link", {
       name: "Directions to Senso-ji in Google Maps (opens another app or tab)",
     }),
-  ).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796");
+  ).toHaveAttribute(
+    "href",
+    "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796&travelmode=walking",
+  );
   await page.getByRole("button", { name: "Category: Temple / Shrine. Change category" }).click();
   await page
     .getByRole("group", { name: "Choose place category" })
@@ -549,4 +552,67 @@ test("a cached server trip plan appears before the account API answers", async (
   slow = true;
   await page.reload();
   await expect(itinerary).toContainText("Senso-ji", { timeout: 1_500 });
+});
+
+test("directions walk to a departure station and ride to the arrival station", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const station = (
+    index: number,
+    title: string,
+    latitude: number,
+  ): Record<string, unknown> & { place: Record<string, unknown> } => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "transport",
+    title,
+    timeLabel: `0${8 + index}:00`,
+    detail: "",
+    area: "",
+    placeId: `station-${index}`,
+    place: {
+      sourceKey: `station-${index}`,
+      name: title,
+      latitude,
+      longitude: 139.8,
+      category: "transport",
+      imageUrl: null,
+      notes: null,
+    },
+  });
+  const entries = [station(0, "Oshiage Station", 35.71), station(1, "Asakusa Station", 35.709)];
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+
+  await page.goto(`/maps?trip=${tripId}&day=${day}&place=station-0`);
+  await expect(page.getByRole("link", { name: /Directions to Oshiage Station/ })).toHaveAttribute(
+    "href",
+    /travelmode=walking$/,
+  );
+  await page.goto(`/maps?trip=${tripId}&day=${day}&place=station-1`);
+  await expect(page.getByRole("link", { name: /Directions to Asakusa Station/ })).toHaveAttribute(
+    "href",
+    /travelmode=transit$/,
+  );
 });

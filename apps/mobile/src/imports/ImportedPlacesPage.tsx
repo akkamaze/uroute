@@ -46,6 +46,7 @@ import {
   loadAccountPlanDay,
   loadAccountTrips,
   saveAccountPlaceCategory,
+  transitArrivalIds,
 } from "../plan/account-plan";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
 import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
@@ -318,6 +319,13 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [libraryPlaces, setPlaces] = useState<ImportedPoint[]>([]);
+  const [transitIds, setTransitIds] = useState<Set<string>>(() => {
+    const trip = requested.get("trip");
+    const day = requested.get("day");
+    const cached = trip && day ? cachedAccountPlanDay(accountUserId, trip, day) : null;
+
+    return cached ? transitArrivalIds(cached.entries) : new Set();
+  });
   const [tripPoints, setTripPoints] = useState<ImportedPoint[]>(() => {
     const trip = requested.get("trip");
     const day = requested.get("day");
@@ -415,6 +423,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
     const cached = cachedAccountPlanDay(accountUserId, requestedTrip, requestedDay);
     if (cached) {
       setTripPoints(accountPlanPoints(cached.entries));
+      setTransitIds(transitArrivalIds(cached.entries));
     }
     let active = true;
     void loadAccountPlanDay(requestedTrip, requestedDay)
@@ -422,6 +431,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
         if (active) {
           cacheAccountPlanDay(accountUserId, requestedTrip, requestedDay, plan);
           setTripPoints(accountPlanPoints(plan.entries));
+          setTransitIds(transitArrivalIds(plan.entries));
         }
       })
       .catch(() => {
@@ -1773,7 +1783,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                         <a
                           aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
                           className="imported-page__selected-secondary"
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}`}
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}&travelmode=${transitIds.has(selectedPlace.id) ? "transit" : "walking"}`}
                           rel="noopener noreferrer"
                           target="_blank"
                         >
