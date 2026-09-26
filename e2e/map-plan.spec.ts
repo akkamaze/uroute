@@ -4,7 +4,7 @@ const tripId = "7fb9672e-3f50-41f7-99e7-05c2b9030d8f";
 const day = "2026-10-01";
 
 async function mockTrip(page: Page): Promise<void> {
-  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-06", version: "1" };
   const entries = Array.from({ length: 14 }, (_, index) => ({
     id: `entry-${index}`,
     sourceKey: `entry:${index}`,
@@ -63,7 +63,13 @@ test("the Maps plan shows a read-only day plan and returns to the same place", a
   await expect(itinerary).toContainText("Stop 13");
   await expect(itinerary.getByRole("button", { name: /Stop 0/ })).toBeInViewport();
   await expect(plan.getByRole("button", { name: /Remove/ })).toHaveCount(0);
-  await expect(plan.getByRole("group", { name: "Trip days" })).toBeVisible();
+  const days = plan.getByRole("group", { name: "Trip days" });
+  await expect(days).toBeVisible();
+  const [first, second] = await Promise.all([
+    days.getByRole("button", { name: "Thursday 1 October" }).boundingBox(),
+    days.getByRole("button", { name: "Tuesday 6 October" }).boundingBox(),
+  ]);
+  expect(second!.y).toBe(first!.y);
 
   const sheet = page.locator(".imported-page__content");
   await page.getByRole("button", { name: "Expand place details" }).click();

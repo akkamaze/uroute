@@ -586,12 +586,14 @@ a,
   font-weight: 700;
 }
 
-.trip-plan .day-strip {
+.trip-plan .day-strip,
+.map-plan .day-strip {
   display: flex;
   overflow-x: auto;
 }
 
-.trip-plan .day-strip__day {
+.trip-plan .day-strip__day,
+.map-plan .day-strip__day {
   min-width: max(56px, calc((100% - 1.5rem) / 5));
   flex: 1 0 auto;
 }
