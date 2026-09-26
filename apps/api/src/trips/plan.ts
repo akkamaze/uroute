@@ -15,6 +15,7 @@ export interface PlanPlace {
 export interface PlanEntry extends EntryInput {
   id: string;
   place: PlanPlace | null;
+  visitedAt: string | null;
 }
 
 export interface PlanDay {
@@ -25,6 +26,12 @@ export interface PlanDay {
 export interface TripPlanRepository {
   day(ownerId: string, tripId: string, day: string): Promise<PlanDay | null>;
   upsertPlace(ownerId: string, tripId: string, place: PlanPlace): Promise<PlanPlace | null>;
+  setVisited(
+    ownerId: string,
+    tripId: string,
+    sourceKey: string,
+    visited: boolean,
+  ): Promise<{ sourceKey: string; visitedAt: string | null } | null>;
   replaceDay(
     ownerId: string,
     tripId: string,
@@ -40,9 +47,11 @@ const SELECT_ENTRIES = `SELECT e.id::text AS id, e.source_key AS "sourceKey",
   CASE WHEN p.source_key IS NULL THEN NULL ELSE json_build_object(
     'sourceKey', p.source_key, 'name', p.name, 'latitude', p.latitude,
     'longitude', p.longitude, 'category', p.category,
-    'imageUrl', p.image_url, 'notes', p.notes) END AS place
+    'imageUrl', p.image_url, 'notes', p.notes) END AS place,
+  to_char(v.visited_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "visitedAt"
   FROM trip_entry e
   LEFT JOIN trip_source_place p ON p.trip_id = e.trip_id AND p.source_key = e.place_id
+  LEFT JOIN trip_entry_visit v ON v.trip_id = e.trip_id AND v.source_key = e.source_key
   WHERE e.trip_id = $1 AND e.day = $2::date
   ORDER BY e.variant, e.position, e.id`;
 
@@ -89,6 +98,37 @@ export class PgTripPlanRepository implements TripPlanRepository {
     );
 
     return result.rows[0] ?? null;
+  }
+
+  async setVisited(
+    ownerId: string,
+    tripId: string,
+    sourceKey: string,
+    visited: boolean,
+  ): Promise<{ sourceKey: string; visitedAt: string | null } | null> {
+    const owned = await this.database.query(
+      `SELECT 1 FROM trip WHERE id = $1 AND owner_id = $2 AND deleted_at IS NULL`,
+      [tripId, ownerId],
+    );
+    if (owned.rowCount === 0) {
+      return null;
+    }
+    if (!visited) {
+      await this.database.query(
+        `DELETE FROM trip_entry_visit WHERE trip_id = $1 AND source_key = $2`,
+        [tripId, sourceKey],
+      );
+
+      return { sourceKey, visitedAt: null };
+    }
+    const result = await this.database.query<{ visitedAt: string }>(
+      `INSERT INTO trip_entry_visit (trip_id, source_key) VALUES ($1, $2)
+       ON CONFLICT (trip_id, source_key) DO UPDATE SET visited_at = trip_entry_visit.visited_at
+       RETURNING to_char(visited_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "visitedAt"`,
+      [tripId, sourceKey],
+    );
+
+    return { sourceKey, visitedAt: result.rows[0]!.visitedAt };
   }
 
   async replaceDay(

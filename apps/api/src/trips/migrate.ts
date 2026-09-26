@@ -2,11 +2,13 @@ import { readConfig } from "../config";
 import { createDatabase } from "../database";
 
 const migrations = await Promise.all(
-  ["001_trip_core", "002_trip_draft", "003_trip_source_place"].map(async (version) => ({
-    version,
-    up: await Bun.file(new URL(`../../migrations/${version}.up.sql`, import.meta.url)).text(),
-    down: await Bun.file(new URL(`../../migrations/${version}.down.sql`, import.meta.url)).text(),
-  })),
+  ["001_trip_core", "002_trip_draft", "003_trip_source_place", "004_trip_entry_visit"].map(
+    async (version) => ({
+      version,
+      up: await Bun.file(new URL(`../../migrations/${version}.up.sql`, import.meta.url)).text(),
+      down: await Bun.file(new URL(`../../migrations/${version}.down.sql`, import.meta.url)).text(),
+    }),
+  ),
 );
 
 if (!process.argv.includes("--apply") && !process.argv.includes("--rollback")) {

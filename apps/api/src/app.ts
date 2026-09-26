@@ -409,6 +409,36 @@ export function createApp(
 
   const planRoutes = plans
     ? entryRoutes
+        .put("/api/trips/:id/visits", async ({ request, params, body, status }) => {
+          const visit = body as { sourceKey?: unknown; visited?: unknown } | null;
+          if (
+            !UUID.test(params.id) ||
+            typeof visit !== "object" ||
+            visit === null ||
+            typeof visit.sourceKey !== "string" ||
+            visit.sourceKey.length === 0 ||
+            visit.sourceKey.length > 240 ||
+            typeof visit.visited !== "boolean"
+          ) {
+            return status(400, { error: "Invalid visit." });
+          }
+          try {
+            const ownerId = await sessionOwner(auth, request);
+            if (!ownerId) {
+              return status(401, { error: "Sign in to continue." });
+            }
+            const result = await plans.setVisited(
+              ownerId,
+              params.id,
+              visit.sourceKey,
+              visit.visited,
+            );
+
+            return result ?? status(404, { error: "Trip not found." });
+          } catch {
+            return status(503, { error: "Plan service is temporarily unavailable." });
+          }
+        })
         .post("/api/trips/:id/places", async ({ request, params, body, status }) => {
           if (!UUID.test(params.id) || !validPlanPlace(body)) {
             return status(400, { error: "Invalid plan place." });

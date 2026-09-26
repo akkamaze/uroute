@@ -31,6 +31,7 @@ let plans: MemoryPlanRepository;
 class MemoryPlanRepository implements TripPlanRepository {
   private readonly records = new Map<string, PlanDay["entries"]>();
   private readonly places = new Map<string, PlanPlace>();
+  private readonly visits = new Map<string, string>();
 
   constructor(private readonly trips: MemoryTripRepository) {}
 
@@ -45,8 +46,28 @@ class MemoryPlanRepository implements TripPlanRepository {
       entries: (this.records.get(`${tripId}:${day}`) ?? []).map((entry) => ({
         ...entry,
         place: entry.placeId ? (this.places.get(`${tripId}:${entry.placeId}`) ?? null) : null,
+        visitedAt: this.visits.get(`${tripId}:${entry.sourceKey}`) ?? null,
       })),
     };
+  }
+
+  async setVisited(
+    ownerId: string,
+    tripId: string,
+    sourceKey: string,
+    visited: boolean,
+  ): Promise<{ sourceKey: string; visitedAt: string | null } | null> {
+    if (!(await this.trips.get(ownerId, tripId))) {
+      return null;
+    }
+    const key = `${tripId}:${sourceKey}`;
+    if (visited) {
+      this.visits.set(key, this.visits.get(key) ?? "2026-09-27T01:00:00Z");
+    } else {
+      this.visits.delete(key);
+    }
+
+    return { sourceKey, visitedAt: this.visits.get(key) ?? null };
   }
 
   async upsertPlace(ownerId: string, tripId: string, place: PlanPlace): Promise<PlanPlace | null> {
@@ -79,7 +100,12 @@ class MemoryPlanRepository implements TripPlanRepository {
     if (typeof updated === "string") {
       return "conflict";
     }
-    const rows = input.map((row) => ({ ...row, id: crypto.randomUUID(), place: null }));
+    const rows = input.map((row) => ({
+      ...row,
+      id: crypto.randomUUID(),
+      place: null,
+      visitedAt: null,
+    }));
     this.records.set(`${tripId}:${day}`, rows);
 
     return { version: updated.version, entries: rows };
@@ -448,6 +474,32 @@ test("plan pin metadata is owner-scoped and joined to the saved day", async () =
   );
   const plan = await request(`/api/trips/${ID}/plan?day=2026-09-27`, "GET", undefined, owner);
   expect(await plan.json()).toMatchObject({ entries: [{ place }] });
+});
+
+test("visit status is owner-scoped and survives replacing the day plan", async () => {
+  const owner = await cookie("visit-owner@example.test");
+  const other = await cookie("visit-other@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const day = `/api/trips/${ID}/plan?day=2026-09-27`;
+  await request(day, "PUT", { version: "1", entries: [entry] }, owner);
+  const path = `/api/trips/${ID}/visits`;
+  expect(
+    (await request(path, "PUT", { sourceKey: entry.sourceKey, visited: true }, other)).status,
+  ).toBe(404);
+  expect((await request(path, "PUT", { sourceKey: "", visited: true }, owner)).status).toBe(400);
+  expect((await request(path, "PUT", { sourceKey: entry.sourceKey }, owner)).status).toBe(400);
+  const marked = await request(path, "PUT", { sourceKey: entry.sourceKey, visited: true }, owner);
+  expect(marked.status).toBe(200);
+  const visitedAt = ((await marked.json()) as { visitedAt: string }).visitedAt;
+  expect(visitedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  await request(day, "PUT", { version: "2", entries: [{ ...entry, position: 2 }] }, owner);
+  expect(await (await request(day, "GET", undefined, owner)).json()).toMatchObject({
+    entries: [{ sourceKey: entry.sourceKey, visitedAt }],
+  });
+  await request(path, "PUT", { sourceKey: entry.sourceKey, visited: false }, owner);
+  expect(await (await request(day, "GET", undefined, owner)).json()).toMatchObject({
+    entries: [{ sourceKey: entry.sourceKey, visitedAt: null }],
+  });
 });
 
 test("daily entries preserve order, owner scope, and trip version", async () => {
