@@ -3,6 +3,7 @@ import { useAccount } from "@uroute/auth/useAccount";
 import {
   ArrowLeft,
   Bookmark,
+  CalendarDays,
   Check,
   ChevronDown,
   Clock3,
@@ -15,7 +16,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { attachContentSheetDrag } from "../places/content-sheet-drag";
 import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
@@ -39,17 +40,26 @@ import { MapLoading } from "../plan/MapLoading";
 import { TripMap, type MapViewport } from "../plan/TripMap";
 import { selectSearchMapItems } from "../plan/search-map-places";
 import { addPlaceToKyotoDay } from "../plan/plan-store";
-import { cacheAccountPlanDay, cachedAccountPlanDay } from "../plan/account-plan-cache";
 import {
+  cacheAccountPlanDay,
+  cachedAccountPlanDay,
+  cachedAccountTrip,
+} from "../plan/account-plan-cache";
+import {
+  accountPlanItinerary,
   accountPlanPoints,
   addAccountPlanPlace,
   loadAccountPlanDay,
   loadAccountTrips,
   saveAccountPlaceCategory,
   transitArrivalIds,
+  type AccountPlanEntry,
+  type AccountTrip,
 } from "../plan/account-plan";
+import { buildCreatedPlanRows, type CreatedPlanRow } from "../plan/created-plan-rows";
+import { MapPlanPanel } from "./MapPlanPanel";
 import { toggleSavedPlace, useSavedPlaceIds } from "../saved/saved-store";
-import { loadCreatedTrips, setTripPlanRows } from "../trips/trip-store";
+import { loadCreatedTrips, setTripPlanRows, tripDays } from "../trips/trip-store";
 import { ImportLayerMenu } from "./ImportLayerMenu";
 import { ImportedPlaceGallery } from "./ImportedPlaceGallery";
 import { MapPlanForm } from "./MapPlanForm";
@@ -302,6 +312,58 @@ function placeIdentity(place: ImportedPoint): string {
   return `${place.name.trim().toLocaleLowerCase()}|${place.latitude.toFixed(6)}|${place.longitude.toFixed(6)}`;
 }
 
+const MAP_PLAN_KEY = "uroute.maps-plan.v1";
+
+interface MapPlanState {
+  open: boolean;
+  trip: string | null;
+  day: string | null;
+  scrollTop: number;
+  returnTo: boolean;
+  selectedId: string | null;
+}
+
+function loadMapPlanState(): MapPlanState {
+  const empty: MapPlanState = {
+    open: false,
+    trip: null,
+    day: null,
+    scrollTop: 0,
+    returnTo: false,
+    selectedId: null,
+  };
+  try {
+    const stored: unknown = JSON.parse(window.localStorage.getItem(MAP_PLAN_KEY) ?? "null");
+    if (typeof stored !== "object" || stored === null) {
+      return empty;
+    }
+    const state = stored as Partial<MapPlanState>;
+
+    return {
+      open: state.open === true,
+      trip: typeof state.trip === "string" ? state.trip : null,
+      day: typeof state.day === "string" ? state.day : null,
+      scrollTop: typeof state.scrollTop === "number" ? state.scrollTop : 0,
+      returnTo: state.returnTo === true,
+      selectedId: typeof state.selectedId === "string" ? state.selectedId : null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function saveMapPlanState(state: MapPlanState): void {
+  try {
+    window.localStorage.setItem(MAP_PLAN_KEY, JSON.stringify(state));
+  } catch {
+    return;
+  }
+}
+
+function accountTripId(id: string | null): id is string {
+  return id !== null && id !== "kyoto" && id !== "kanto";
+}
+
 export function ImportedPlacesPage(): React.JSX.Element {
   const navigate = useNavigate();
   const account = useAccount();
@@ -319,20 +381,33 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const searchWasOpenRef = useRef(savedMapsState.searchWasOpen ?? false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const [libraryPlaces, setPlaces] = useState<ImportedPoint[]>([]);
-  const [transitIds, setTransitIds] = useState<Set<string>>(() => {
+  const [storedPlan] = useState(() =>
+    globalMaps && requested.get("place") === null ? loadMapPlanState() : null,
+  );
+  const [planTrip, setPlanTrip] = useState<string | null>(() => {
     const trip = requested.get("trip");
-    const day = requested.get("day");
-    const cached = trip && day ? cachedAccountPlanDay(accountUserId, trip, day) : null;
 
-    return cached ? transitArrivalIds(cached.entries) : new Set();
+    return accountTripId(trip) ? trip : (storedPlan?.trip ?? null);
   });
-  const [tripPoints, setTripPoints] = useState<ImportedPoint[]>(() => {
-    const trip = requested.get("trip");
-    const day = requested.get("day");
-    const cached = trip && day ? cachedAccountPlanDay(accountUserId, trip, day) : null;
+  const [planDay, setPlanDay] = useState<string | null>(() =>
+    accountTripId(requested.get("trip")) ? requested.get("day") : (storedPlan?.day ?? null),
+  );
+  const [planOpen, setPlanOpen] = useState(storedPlan?.open ?? false);
+  const [planReturn, setPlanReturn] = useState(storedPlan?.returnTo ?? false);
+  const planScrollRef = useRef(storedPlan?.scrollTop ?? 0);
+  const pendingPlanScrollRef = useRef<number | null>(
+    storedPlan?.open ? planScrollRef.current : null,
+  );
+  const [accountTripList, setAccountTripList] = useState<AccountTrip[]>([]);
+  const [planEntries, setPlanEntries] = useState<AccountPlanEntry[]>(() => {
+    const cached =
+      planTrip && planDay ? cachedAccountPlanDay(accountUserId, planTrip, planDay) : null;
 
-    return cached ? accountPlanPoints(cached.entries) : [];
+    return cached?.entries ?? [];
   });
+  const [planLoading, setPlanLoading] = useState(false);
+  const transitIds = useMemo(() => transitArrivalIds(planEntries), [planEntries]);
+  const tripPoints = useMemo(() => accountPlanPoints(planEntries), [planEntries]);
   const places = useMemo(() => {
     const libraryIds = new Set(libraryPlaces.map((place) => place.id));
     const trip = tripPoints.filter((point) => !libraryIds.has(point.id));
@@ -340,15 +415,16 @@ export function ImportedPlacesPage(): React.JSX.Element {
 
     return [...libraryPlaces.filter((place) => !tripKeys.has(placeIdentity(place))), ...trip];
   }, [libraryPlaces, tripPoints]);
-  const requestedTrip = requested.get("trip");
-  const requestedDay = requested.get("day");
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [geometries, setGeometries] = useState<ImportedGeometry[]>([]);
   const [visits, setVisits] = useState<ImportedVisit[]>([]);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const requestedPlace = requested.get("place");
   const [selectedId, setSelectedId] = useState<string | null>(
-    requestedPlace ?? savedMapsState.selectedId ?? null,
+    requestedPlace ??
+      (storedPlan?.returnTo ? storedPlan.selectedId : null) ??
+      savedMapsState.selectedId ??
+      null,
   );
   const previousSelectedIdRef = useRef(selectedId);
   const [focusSelectedId, setFocusSelectedId] = useState<string | null>(requestedPlace);
@@ -391,6 +467,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
           return;
         }
         setAccountMapTrips(trips);
+        setAccountTripList(trips);
         refreshAccountDestinations((current) => current + 1);
         const params = new URLSearchParams(window.location.search);
         const candidate = { trip: params.get("trip"), day: params.get("day") };
@@ -408,42 +485,33 @@ export function ImportedPlacesPage(): React.JSX.Element {
   }, [accountUserId, globalMaps]);
 
   useEffect(() => {
-    if (
-      !globalMaps ||
-      !accountUserId ||
-      requestedTrip === null ||
-      requestedDay === null ||
-      requestedTrip === "kyoto" ||
-      requestedTrip === "kanto"
-    ) {
-      setTripPoints([]);
+    if (!globalMaps || !accountUserId || planTrip === null || planDay === null) {
+      setPlanEntries([]);
 
       return;
     }
-    const cached = cachedAccountPlanDay(accountUserId, requestedTrip, requestedDay);
-    if (cached) {
-      setTripPoints(accountPlanPoints(cached.entries));
-      setTransitIds(transitArrivalIds(cached.entries));
-    }
+    const cached = cachedAccountPlanDay(accountUserId, planTrip, planDay);
+    setPlanEntries(cached?.entries ?? []);
+    setPlanLoading(cached === null);
     let active = true;
-    void loadAccountPlanDay(requestedTrip, requestedDay)
+    void loadAccountPlanDay(planTrip, planDay)
       .then((plan) => {
         if (active) {
-          cacheAccountPlanDay(accountUserId, requestedTrip, requestedDay, plan);
-          setTripPoints(accountPlanPoints(plan.entries));
-          setTransitIds(transitArrivalIds(plan.entries));
+          cacheAccountPlanDay(accountUserId, planTrip, planDay, plan);
+          setPlanEntries(plan.entries);
         }
       })
-      .catch(() => {
-        if (active && !cached) {
-          setTripPoints([]);
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) {
+          setPlanLoading(false);
         }
       });
 
     return () => {
       active = false;
     };
-  }, [accountUserId, globalMaps, requestedDay, requestedTrip]);
+  }, [accountUserId, globalMaps, planDay, planTrip]);
   const [selectedDay, setSelectedDay] = useState<KantoDay>(KANTO_DAYS[0].date);
   const [folder, setFolder] = useState(savedMapsState.folder ?? "All folders");
   const [query, setQuery] = useState(requestedPlace ? "" : (savedMapsState.query ?? ""));
@@ -746,7 +814,117 @@ export function ImportedPlacesPage(): React.JSX.Element {
   const selectedSourceLinks = (selectedPlace?.mediaReferences ?? []).filter(
     (url) => !isImageMediaUrl(url),
   );
-  const sheetOpen = globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined);
+  const planVisible =
+    globalMaps && planOpen && selectedPlace === undefined && !searchOpen && !searchEditing;
+  const planTripRecord =
+    accountTripList.find((trip) => trip.id === planTrip) ??
+    (planTrip ? (cachedAccountTrip(accountUserId, planTrip) ?? undefined) : undefined);
+  const planRows = useMemo<CreatedPlanRow[]>(() => {
+    if (planTrip === null || planDay === null) {
+      return [];
+    }
+    const itinerary = accountPlanItinerary(planTrip, planEntries);
+    const variant =
+      [...new Set(itinerary.filter((entry) => entry.day === planDay).map((entry) => entry.variant))]
+        .sort()
+        .at(0) ?? "A";
+
+    return buildCreatedPlanRows(planTrip, planDay, variant, tripPoints, itinerary, []);
+  }, [planDay, planEntries, planTrip, tripPoints]);
+  const planVisitedKeys = useMemo(
+    () => new Set(planEntries.filter((entry) => entry.visitedAt).map((entry) => entry.sourceKey)),
+    [planEntries],
+  );
+  const sheetOpen =
+    globalMaps && !searchEditing && (searchOpen || selectedPlace !== undefined || planVisible);
+
+  useEffect(() => {
+    if (!globalMaps) {
+      return;
+    }
+    saveMapPlanState({
+      open: planOpen,
+      trip: planTrip,
+      day: planDay,
+      scrollTop: planScrollRef.current,
+      returnTo: planReturn,
+      selectedId: planReturn ? selectedId : null,
+    });
+  }, [globalMaps, planDay, planOpen, planReturn, planTrip, selectedId]);
+
+  useLayoutEffect(() => {
+    if (!planVisible || pendingPlanScrollRef.current === null || sheetRef.current === null) {
+      return;
+    }
+    if (planRows.length === 0) {
+      return;
+    }
+    const top = pendingPlanScrollRef.current;
+    pendingPlanScrollRef.current = null;
+    sheetScrollTopRef.current = top;
+    sheetRef.current.scrollTop = top;
+  });
+
+  function openPlan(): void {
+    let trip = planTrip;
+    if (!trip || !accountTripList.some((item) => item.id === trip)) {
+      trip = trip ?? accountTripList[0]?.id ?? null;
+    }
+    if (trip === null) {
+      setError("Sign in and create an account trip to see its plan here.");
+
+      return;
+    }
+    const record = accountTripList.find((item) => item.id === trip);
+    const days = record ? tripDays(record).map((item) => item.day) : [];
+    const today = new Date().toISOString().slice(0, 10);
+    if (trip !== planTrip || planDay === null) {
+      setPlanTrip(trip);
+      setPlanDay(days.includes(today) ? today : (days[0] ?? null));
+      planScrollRef.current = 0;
+    }
+    pendingPlanScrollRef.current = planScrollRef.current;
+    setSelectedId(null);
+    setFocusSelectedId(null);
+    setSearchOpen(false);
+    setPlanReturn(false);
+    setSheetCollapsed(false);
+    setPlanOpen(true);
+  }
+
+  function togglePlan(): void {
+    if (planVisible) {
+      setPlanOpen(false);
+    } else {
+      openPlan();
+    }
+  }
+
+  function changePlanDay(day: string): void {
+    planScrollRef.current = 0;
+    pendingPlanScrollRef.current = 0;
+    setPlanDay(day);
+  }
+
+  function openPlanRow(row: CreatedPlanRow): void {
+    const point = row.point;
+    if (!point) {
+      return;
+    }
+    planScrollRef.current = sheetRef.current?.scrollTop ?? planScrollRef.current;
+    setPlanReturn(true);
+    setSelectedId(point.id);
+    setFocusSelectedId(point.id);
+    setSheetCollapsed(false);
+  }
+
+  function backToPlan(): void {
+    pendingPlanScrollRef.current = planScrollRef.current;
+    setPlanReturn(false);
+    setSelectedId(null);
+    setFocusSelectedId(null);
+    setPlanOpen(true);
+  }
   const detailSheet = globalMaps && selectedPlace !== undefined && !searchOpen;
   const sheetSnap: SheetSnap = sheetCollapsed ? "collapsed" : sheetExpanded ? "expanded" : "middle";
   const visibleSheetSnap = destinationOpen ? "expanded" : sheetSnap;
@@ -1009,14 +1187,18 @@ export function ImportedPlacesPage(): React.JSX.Element {
   useEffect(() => {
     if (!globalMaps && selectedId !== null) {
       selectedRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    } else if (globalMaps && selectedId !== previousSelectedIdRef.current) {
+    } else if (
+      globalMaps &&
+      selectedId !== previousSelectedIdRef.current &&
+      !(selectedId === null && planOpen)
+    ) {
       sheetScrollTopRef.current = 0;
       persistMapsSheetScroll(0);
       sheetRef.current?.scrollTo({ top: 0 });
     }
     previousSelectedIdRef.current = selectedId;
     setCategoryPickerOpen(false);
-  }, [globalMaps, selectedId]);
+  }, [globalMaps, planOpen, selectedId]);
 
   async function chooseCategory(categoryOverride: PlaceCategory | null): Promise<void> {
     if (selectedPlace === undefined || categorySaving) {
@@ -1025,14 +1207,14 @@ export function ImportedPlacesPage(): React.JSX.Element {
     setCategorySaving(true);
     setError("");
     try {
-      if (tripPoints.includes(selectedPlace) && requestedTrip !== null) {
-        const updated = await saveAccountPlaceCategory(
-          requestedTrip,
-          selectedPlace,
-          categoryOverride,
-        );
-        setTripPoints((current) =>
-          current.map((point) => (point.id === updated.id ? updated : point)),
+      if (tripPoints.includes(selectedPlace) && planTrip !== null) {
+        const updated = await saveAccountPlaceCategory(planTrip, selectedPlace, categoryOverride);
+        setPlanEntries((current) =>
+          current.map((entry) =>
+            entry.place?.sourceKey === updated.id
+              ? { ...entry, place: { ...entry.place, category: categoryOverride } }
+              : entry,
+          ),
         );
       } else {
         const updated = await saveImportedPlaceCategory(selectedPlace.id, categoryOverride);
@@ -1247,6 +1429,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
               setDraftQuery(query);
               setSearchEditing(true);
               setSearchOpen(false);
+              setPlanOpen(false);
             }
           }}
           onChange={(event) => {
@@ -1543,7 +1726,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
         <div className="imported-page__library-loading">
           <MapLoading />
         </div>
-      ) : places.length === 0 && geometries.length === 0 ? (
+      ) : places.length === 0 && geometries.length === 0 && accountTripList.length === 0 ? (
         <div className="imported-page__empty">
           <MapPin aria-hidden="true" size={30} />
           <h2>Bring your places onto the map</h2>
@@ -1621,6 +1804,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 setFocusSelectedId(id);
                 setSheetCollapsed(false);
                 setSearchOpen(false);
+                setPlanOpen(false);
+                setPlanReturn(false);
               }}
               onViewportChange={(next) => {
                 setViewport(next);
@@ -1640,6 +1825,17 @@ export function ImportedPlacesPage(): React.JSX.Element {
             {globalMaps && !searchEditing && !destinationOpen && mapControlsVisible
               ? layersButton
               : null}
+            {globalMaps && !searchEditing && !destinationOpen && mapControlsVisible ? (
+              <button
+                aria-label="Trip plan"
+                aria-pressed={planVisible}
+                className="imported-page__plan-button"
+                onClick={togglePlan}
+                type="button"
+              >
+                <CalendarDays aria-hidden="true" size={21} />
+              </button>
+            ) : null}
           </div>
           <div
             data-dragging={sheetDragOffset === 0 ? undefined : "true"}
@@ -1649,6 +1845,17 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 ? (event) => {
                     sheetScrollTopRef.current = event.currentTarget.scrollTop;
                     persistMapsSheetScroll(event.currentTarget.scrollTop);
+                    if (planVisible && pendingPlanScrollRef.current === null) {
+                      planScrollRef.current = event.currentTarget.scrollTop;
+                      saveMapPlanState({
+                        open: planOpen,
+                        trip: planTrip,
+                        day: planDay,
+                        scrollTop: planScrollRef.current,
+                        returnTo: planReturn,
+                        selectedId: null,
+                      });
+                    }
                   }
                 : undefined
             }
@@ -1684,6 +1891,17 @@ export function ImportedPlacesPage(): React.JSX.Element {
                 type="button"
               />
             ) : null}
+            {planVisible ? (
+              <MapPlanPanel
+                day={planDay ?? ""}
+                loading={planLoading}
+                onDayChange={changePlanDay}
+                onOpenRow={openPlanRow}
+                rows={planRows}
+                trip={planTripRecord}
+                visitedKeys={planVisitedKeys}
+              />
+            ) : null}
             {!globalMaps && view === "places" ? placeFilters : null}
             {!globalMaps ? (
               <div className="imported-page__days" role="group" aria-label="Plan day">
@@ -1702,6 +1920,16 @@ export function ImportedPlacesPage(): React.JSX.Element {
             {selectedPlace === undefined || (globalMaps && searchOpen) ? null : (
               <article className="imported-page__selected" ref={selectedRef}>
                 <header className="imported-page__selected-header">
+                  {globalMaps && planReturn ? (
+                    <button
+                      aria-label="Back to plan"
+                      className="imported-page__selected-back"
+                      onClick={backToPlan}
+                      type="button"
+                    >
+                      <ArrowLeft aria-hidden="true" size={20} />
+                    </button>
+                  ) : null}
                   <div>
                     <h2>{selectedHeading?.title}</h2>
                     {selectedHeading?.subtitle ? <p>{selectedHeading.subtitle}</p> : null}
@@ -1733,6 +1961,8 @@ export function ImportedPlacesPage(): React.JSX.Element {
                           setSelectedId(null);
                           setFocusSelectedId(null);
                           setSheetCollapsed(false);
+                          setPlanOpen(false);
+                          setPlanReturn(false);
                           if (globalMaps && normalizedQuery !== "") {
                             const resultCount = visiblePlaces.filter((place) =>
                               isImportLayerVisible(place, hiddenLayers),
