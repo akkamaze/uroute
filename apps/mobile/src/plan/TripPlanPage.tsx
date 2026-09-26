@@ -38,6 +38,7 @@ import type { PlaceCollection } from "./map-data";
 import { buildCreatedPlanRows, startTime, type CreatedPlanRow } from "./created-plan-rows";
 import { PlanWorkspace } from "./PlanWorkspace";
 import { PlanTimelineRow } from "./PlanTimelineRow";
+import { travelEstimate } from "./travel-estimate";
 import {
   accountPlanItinerary,
   accountPlanPoints,
@@ -773,11 +774,7 @@ export function TripPlanPage(): React.JSX.Element {
                   onEnd: stopSwipe.end,
                   onCancel: stopSwipe.clear,
                 }}
-                travel={
-                  index < rows.length - 1 && row.point && rows[index + 1]?.point
-                    ? "Route not calculated yet"
-                    : undefined
-                }
+                travel={rows[index + 1] ? travelEstimate(row, rows[index + 1]!) : undefined}
               >
                 {row.detail ? <p className="trip-plan__detail">{row.detail}</p> : null}
               </PlanTimelineRow>

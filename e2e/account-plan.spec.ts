@@ -495,6 +495,98 @@ test("a server trip opens its bookings and expenses and accepts a flight booking
   await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
 });
 
+test("a server trip plan estimates rides between stations and walks between places", async ({
+  page,
+}) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  function place(
+    position: number,
+    title: string,
+    latitude: number,
+    longitude: number,
+  ): Record<string, unknown> {
+    return {
+      id: `entry-${position}`,
+      sourceKey: `entry:${position}`,
+      day,
+      variant: "A",
+      position,
+      kind: "place",
+      title,
+      timeLabel: "",
+      detail: "",
+      area: "Asakusa",
+      placeId: `pin-${position}`,
+      place: {
+        sourceKey: `pin-${position}`,
+        name: title,
+        latitude,
+        longitude,
+        category: "temple",
+        imageUrl: null,
+        notes: null,
+      },
+    };
+  }
+  function station(
+    position: number,
+    leg: string,
+    title: string,
+    timeLabel: string,
+  ): Record<string, unknown> {
+    return {
+      id: `entry-${position}`,
+      sourceKey: `kanto:transit:1:1:${leg}`,
+      day,
+      variant: "A",
+      position,
+      kind: "transport",
+      title,
+      timeLabel,
+      detail: "",
+      area: "Tokyo",
+      placeId: null,
+      place: null,
+    };
+  }
+  const entries = [
+    station(0, "dep", "Tokyo Station", "08:40"),
+    station(1, "arr", "Asakusa Station", "08:56"),
+    place(2, "Senso-ji", 35.715, 139.796),
+    place(3, "Kaminarimon", 35.7111, 139.7963),
+  ];
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const itinerary = page.getByLabel(/Thursday 1 October itinerary/);
+  await expect(itinerary).toContainText("Kaminarimon");
+  await expect(itinerary.locator(".timeline__travel")).toHaveText([
+    "16 min ride",
+    "Walk about 8 min · 560 m",
+  ]);
+  await expect(itinerary).not.toContainText("Route not calculated yet");
+});
+
 test("a cached server trip plan appears before the account API answers", async ({ page }) => {
   const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
   const entries = [
