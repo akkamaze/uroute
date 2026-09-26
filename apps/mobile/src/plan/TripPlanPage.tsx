@@ -44,6 +44,7 @@ import {
   loadAccountPlanDay,
   loadAccountTrip,
   saveAccountPlanDay,
+  setAccountEntryVisited,
   updateAccountTrip,
   type AccountPlanEntry,
   type AccountTrip,
@@ -131,7 +132,7 @@ function savePlanScroll(): void {
   }
 }
 
-function restorePlanScroll(): void {
+function restorePlanScroll(): boolean {
   try {
     const saved: unknown = JSON.parse(sessionStorage.getItem(PLAN_SCROLL_KEY) ?? "null");
     if (
@@ -139,17 +140,21 @@ function restorePlanScroll(): void {
       saved === null ||
       (saved as { entry?: unknown }).entry !== historyEntryKey()
     ) {
-      return;
+      return false;
     }
     const scroller = planScroller();
     const top = (saved as { top?: unknown }).top;
     if (scroller !== null && typeof top === "number") {
       sessionStorage.removeItem(PLAN_SCROLL_KEY);
       scroller.scrollTop = top;
+
+      return true;
     }
   } catch {
-    return;
+    return false;
   }
+
+  return false;
 }
 
 export function TripPlanPage(): React.JSX.Element {
@@ -372,11 +377,66 @@ export function TripPlanPage(): React.JSX.Element {
   );
   const places = useMemo(() => mapPlaces(rows), [rows]);
 
+  const visitedKeys = useMemo(
+    () => new Set(remoteEntries.filter((entry) => entry.visitedAt).map((entry) => entry.sourceKey)),
+    [remoteEntries],
+  );
+  const [statusRow, setStatusRow] = useState<CreatedPlanRow | null>(null);
+  const focusedDayRef = useRef("");
+
   useEffect(() => {
-    if (rows.length > 0) {
-      restorePlanScroll();
+    if (rows.length === 0) {
+      return;
     }
-  }, [rows.length]);
+    const restored = restorePlanScroll();
+    if (restored || focusedDayRef.current === day || remoteEntries.length === 0) {
+      focusedDayRef.current = day;
+
+      return;
+    }
+    focusedDayRef.current = day;
+    const lastVisited = rows.reduce(
+      (latest, row, index) => (visitedKeys.has(row.id) ? index : latest),
+      -1,
+    );
+    if (lastVisited < 0) {
+      return;
+    }
+    const next = rows.slice(lastVisited + 1).find((row) => !visitedKeys.has(row.id));
+    if (next) {
+      document
+        .querySelector(`[data-plan-stop-id="${CSS.escape(next.id)}"]`)
+        ?.scrollIntoView({ block: "start" });
+    }
+  }, [day, remoteEntries.length, rows, visitedKeys]);
+
+  async function changeVisited(row: CreatedPlanRow, visited: boolean): Promise<void> {
+    setStatusRow(null);
+    const previous = remoteEntries;
+    const next = remoteEntries.map((entry) =>
+      entry.sourceKey === row.id
+        ? { ...entry, visitedAt: visited ? new Date().toISOString() : null }
+        : entry,
+    );
+    setRemoteEntries(next);
+    try {
+      const saved = await setAccountEntryVisited(tripId, row.id, visited);
+      const confirmed = next.map((entry) =>
+        entry.sourceKey === saved.sourceKey ? { ...entry, visitedAt: saved.visitedAt } : entry,
+      );
+      setRemoteEntries(confirmed);
+      if (accountUserId) {
+        cacheAccountPlanDay(accountUserId, tripId, day, {
+          version: remoteVersion,
+          entries: confirmed,
+        });
+      }
+      setError("");
+    } catch {
+      setRemoteEntries(previous);
+      setError("Could not update the visit status. Please try again.");
+    }
+  }
   const legacyCount = visits.filter(
     (visit) =>
       visit.tripId === undefined &&
@@ -757,6 +817,15 @@ export function TripPlanPage(): React.JSX.Element {
                   void removeRow(row);
                 }}
                 removeLabel={`Remove ${row.title} from ${dayHeading(day)}`}
+                visited={visitedKeys.has(row.id)}
+                onLongPress={
+                  remoteTrip
+                    ? () => {
+                        stopSwipe.close();
+                        setStatusRow(row);
+                      }
+                    : undefined
+                }
                 selected={row.point?.id === selectedId}
                 subtitle={
                   stop
@@ -791,6 +860,42 @@ export function TripPlanPage(): React.JSX.Element {
           <p>Add your first place when you are ready.</p>
         </div>
       )}
+      {statusRow ? (
+        <div
+          className="visit-sheet"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setStatusRow(null);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setStatusRow(null);
+            }
+          }}
+          role="presentation"
+        >
+          <div
+            aria-label={`Visit status for ${statusRow.title}`}
+            aria-modal="true"
+            className="visit-sheet__panel"
+            role="dialog"
+          >
+            <strong>{statusRow.title}</strong>
+            <button
+              autoFocus
+              className="visit-sheet__primary"
+              onClick={() => void changeVisited(statusRow, !visitedKeys.has(statusRow.id))}
+              type="button"
+            >
+              {visitedKeys.has(statusRow.id) ? "Mark as not visited" : "Mark as visited"}
+            </button>
+            <button onClick={() => setStatusRow(null)} type="button">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
       {!remoteTrip && itinerary.length === 0 ? (
         <label className="trip-plan__upload">
           <Upload aria-hidden="true" size={18} />{" "}

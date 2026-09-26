@@ -203,7 +203,10 @@ test("opening a server trip stop shows its details with directions", async ({ pa
     page.getByRole("link", {
       name: "Directions to Senso-ji in Google Maps (opens another app or tab)",
     }),
-  ).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796");
+  ).toHaveAttribute(
+    "href",
+    "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796",
+  );
   await page.getByRole("button", { name: "Category: Temple / Shrine. Change category" }).click();
   await page
     .getByRole("group", { name: "Choose place category" })
@@ -549,4 +552,134 @@ test("a cached server trip plan appears before the account API answers", async (
   slow = true;
   await page.reload();
   await expect(itinerary).toContainText("Senso-ji", { timeout: 1_500 });
+});
+
+test("long pressing a server trip stop marks it visited and back again", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = ["Senso-ji", "Kaminarimon", "Ueno Park"].map((title, index) => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "place",
+    title,
+    timeLabel: `0${9 + index}:00`.slice(-5),
+    detail: "",
+    area: "Tokyo",
+    placeId: null,
+    place: null,
+    visitedAt: null as string | null,
+  }));
+  const visits: unknown[] = [];
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+  await page.route(`**/api/trips/${tripId}/visits`, (route) => {
+    const body = route.request().postDataJSON() as { sourceKey: string; visited: boolean };
+    visits.push(body);
+    const visitedAt = body.visited ? "2026-10-01T01:00:00Z" : null;
+    const target = entries.find((entry) => entry.sourceKey === body.sourceKey)!;
+    target.visitedAt = visitedAt;
+
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ sourceKey: body.sourceKey, visitedAt }),
+    });
+  });
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const stop = page.locator('[data-stop-id="entry:0"]');
+  await stop.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  const sheet = page.getByRole("dialog", { name: "Visit status for Senso-ji" });
+  await sheet.getByRole("button", { name: "Mark as visited" }).click();
+  await expect(page.locator('[data-plan-stop-id="entry:0"]')).toHaveClass(
+    /timeline__entry--visited/,
+  );
+  await expect(stop).toContainText("Visited");
+  await expect(page).toHaveURL(new RegExp(`/plan/trip/${tripId}`));
+
+  await page.reload();
+  await expect(page.locator('[data-plan-stop-id="entry:0"]')).toHaveClass(
+    /timeline__entry--visited/,
+  );
+
+  await stop.hover();
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await sheet.getByRole("button", { name: "Mark as not visited" }).click();
+  await expect(page.locator('[data-plan-stop-id="entry:0"]')).not.toHaveClass(
+    /timeline__entry--visited/,
+  );
+  expect(visits).toEqual([
+    { sourceKey: "entry:0", visited: true },
+    { sourceKey: "entry:0", visited: false },
+  ]);
+});
+
+test("opening a server trip day jumps to the next stop not yet visited", async ({ page }) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = Array.from({ length: 14 }, (_, index) => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "place",
+    title: `Stop ${index}`,
+    timeLabel: "09:00",
+    detail: "A place to visit during the day",
+    area: "Tokyo",
+    placeId: null,
+    place: null,
+    visitedAt: index < 10 ? "2026-10-01T01:00:00Z" : null,
+  }));
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const next = page.locator('[data-plan-stop-id="entry:10"]');
+  await expect(next).toBeInViewport();
+  await expect(page.locator('[data-plan-stop-id="entry:0"]')).not.toBeInViewport();
 });

@@ -30,6 +30,7 @@ export interface AccountPlanEntry {
     imageUrl: string | null;
     notes: string | null;
   } | null;
+  visitedAt?: string | null;
 }
 
 export interface AccountPlanDay {
@@ -38,7 +39,21 @@ export interface AccountPlanDay {
   entries: AccountPlanEntry[];
 }
 
-export function accountEntryInput(entry: AccountPlanEntry): Omit<AccountPlanEntry, "id" | "place"> {
+export function setAccountEntryVisited(
+  tripId: string,
+  sourceKey: string,
+  visited: boolean,
+): Promise<{ sourceKey: string; visitedAt: string | null }> {
+  return request(`/api/trips/${encodeURIComponent(tripId)}/visits`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sourceKey, visited }),
+  });
+}
+
+export function accountEntryInput(
+  entry: AccountPlanEntry,
+): Omit<AccountPlanEntry, "id" | "place" | "visitedAt"> {
   return {
     sourceKey: entry.sourceKey,
     day: entry.day,
@@ -152,7 +167,7 @@ export async function saveAccountPlanDay(
   tripId: string,
   day: string,
   version: string,
-  entries: readonly Omit<AccountPlanEntry, "id" | "place">[],
+  entries: readonly Omit<AccountPlanEntry, "id" | "place" | "visitedAt">[],
 ): Promise<{ version: string; entries: AccountPlanEntry[] }> {
   const saved = await request<{ version: string; entries: AccountPlanEntry[] }>(
     `/api/trips/${encodeURIComponent(tripId)}/plan?day=${encodeURIComponent(day)}`,

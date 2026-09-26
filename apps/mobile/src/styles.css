@@ -1208,6 +1208,72 @@ a,
   background: #edf5ff;
 }
 
+.timeline__entry--visited .timeline__icon {
+  position: relative;
+}
+
+.timeline__visited-mark {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  border: 2px solid var(--color-surface);
+  border-radius: 50%;
+  background: #1e9e5a;
+}
+
+.timeline__entry--visited .timeline__info,
+.timeline__entry--visited .timeline__time,
+.timeline__entry--visited .trip-plan__detail {
+  opacity: 0.55;
+}
+
+.visit-sheet {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(15 23 42 / 32%);
+}
+
+.visit-sheet__panel {
+  display: grid;
+  width: min(100%, 414px);
+  gap: 0.5rem;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 18px 18px 0 0;
+  background: var(--color-surface);
+}
+
+.visit-sheet__panel strong {
+  padding: 0.25rem 0.25rem 0.5rem;
+  color: var(--color-text);
+  font-size: var(--type-body-size);
+}
+
+.visit-sheet__panel button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: #f1f5f9;
+  color: var(--color-text);
+  font-size: var(--type-body-size);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.visit-sheet__panel .visit-sheet__primary {
+  color: #ffffff;
+  background: var(--color-active);
+}
+
 .timeline__icon--coffee,
 .timeline__icon--food {
   color: #e87913;

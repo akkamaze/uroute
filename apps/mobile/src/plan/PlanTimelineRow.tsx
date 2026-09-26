@@ -1,5 +1,5 @@
-import { Footprints, Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Footprints, Trash2 } from "lucide-react";
+import { useRef, type ReactNode } from "react";
 
 import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import type { PlaceCategory } from "../places/place-category";
@@ -28,8 +28,13 @@ interface PlanTimelineRowProps {
   removeLabel?: string | undefined;
   swipe?: SwipeControls | undefined;
   travel?: string | undefined;
+  visited?: boolean | undefined;
+  onLongPress?: (() => void) | undefined;
   children?: ReactNode;
 }
+
+const LONG_PRESS_MS = 550;
+const LONG_PRESS_SLOP_PX = 10;
 
 export function PlanTimelineRow({
   id,
@@ -45,10 +50,23 @@ export function PlanTimelineRow({
   removeLabel,
   swipe,
   travel,
+  visited,
+  onLongPress,
   children,
 }: PlanTimelineRowProps): React.JSX.Element {
+  const pressRef = useRef<{ timer: number; x: number; y: number; fired: boolean } | null>(null);
+
+  function cancelPress(): void {
+    if (pressRef.current !== null) {
+      window.clearTimeout(pressRef.current.timer);
+    }
+  }
+
   return (
-    <div className="timeline__entry" data-plan-stop-id={id}>
+    <div
+      className={`timeline__entry${visited ? " timeline__entry--visited" : ""}`}
+      data-plan-stop-id={id}
+    >
       <div className="timeline__swipe-shell" data-swipe-back-ignore="true">
         {onRemove && swipe ? (
           <button
@@ -80,7 +98,47 @@ export function PlanTimelineRow({
             aria-pressed={selected}
             className={`timeline__stop${image ? "" : " timeline__stop--no-photo"}`}
             data-stop-id={id}
-            onClick={onOpen}
+            onClick={() => {
+              if (pressRef.current?.fired) {
+                pressRef.current = null;
+
+                return;
+              }
+              onOpen();
+            }}
+            onContextMenu={(event) => {
+              if (onLongPress) {
+                event.preventDefault();
+              }
+            }}
+            onPointerCancel={cancelPress}
+            onPointerDown={(event) => {
+              if (!onLongPress || event.button !== 0) {
+                return;
+              }
+              cancelPress();
+              const press = {
+                x: event.clientX,
+                y: event.clientY,
+                fired: false,
+                timer: window.setTimeout(() => {
+                  press.fired = true;
+                  onLongPress();
+                }, LONG_PRESS_MS),
+              };
+              pressRef.current = press;
+            }}
+            onPointerLeave={cancelPress}
+            onPointerMove={(event) => {
+              const press = pressRef.current;
+              if (
+                press !== null &&
+                Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP_PX
+              ) {
+                cancelPress();
+              }
+            }}
+            onPointerUp={cancelPress}
             ref={buttonRef}
             type="button"
           >
@@ -91,10 +149,15 @@ export function PlanTimelineRow({
             )}
             <span className={`timeline__icon timeline__icon--${category}`}>
               <PlaceCategoryIcon category={category} />
+              {visited ? (
+                <span aria-hidden="true" className="timeline__visited-mark">
+                  <Check size={11} strokeWidth={3} />
+                </span>
+              ) : null}
             </span>
             <span className="timeline__info">
               <strong>{title}</strong>
-              <span>{subtitle}</span>
+              <span>{visited ? `Visited · ${subtitle}` : subtitle}</span>
             </span>
             {image ? <img alt="" className="timeline__photo" src={image} /> : null}
           </button>
