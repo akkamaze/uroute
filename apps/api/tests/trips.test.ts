@@ -9,7 +9,7 @@ import { createAuth, createAuthOptions, type AuthService } from "../src/auth/cre
 import type { AuthConfig } from "../src/config";
 import type { EntryInput, EntryPage, EntryRecord, TripEntryRepository } from "../src/trips/entries";
 import type { DraftVisit, TripDraft, TripDraftRepository } from "../src/trips/drafts";
-import type { TripInput, TripRecord, TripRepository } from "../src/trips/repository";
+import type { TripCover, TripInput, TripRecord, TripRepository } from "../src/trips/repository";
 import type { PlanDay, PlanPlace, TripPlanRepository } from "../src/trips/plan";
 
 const config: AuthConfig = {
@@ -114,6 +114,8 @@ class MemoryPlanRepository implements TripPlanRepository {
 
 class MemoryTripRepository implements TripRepository {
   private readonly records = new Map<string, TripRecord & { ownerId: string }>();
+  private readonly covers = new Map<string, TripCover>();
+  private coverClock = 0;
 
   list(ownerId: string, limit: number, offset: number): Promise<TripRecord[]> {
     return Promise.resolve(
@@ -141,7 +143,14 @@ class MemoryTripRepository implements TripRepository {
           : null,
       );
     }
-    const trip = { ...input, ownerId, version: "1", createdAt: "now", updatedAt: "now" };
+    const trip = {
+      ...input,
+      ownerId,
+      version: "1",
+      createdAt: "now",
+      updatedAt: "now",
+      coverVersion: null,
+    };
     this.records.set(input.id, trip);
 
     return Promise.resolve(trip);
@@ -164,6 +173,39 @@ class MemoryTripRepository implements TripRepository {
     this.records.set(id, next);
 
     return next;
+  }
+
+  async cover(ownerId: string, id: string): Promise<TripCover | null> {
+    return (await this.get(ownerId, id)) ? (this.covers.get(id) ?? null) : null;
+  }
+
+  async setCover(
+    ownerId: string,
+    id: string,
+    contentType: string,
+    data: Uint8Array,
+  ): Promise<string | null> {
+    const trip = this.records.get(id);
+    if (!trip || !(await this.get(ownerId, id))) {
+      return null;
+    }
+    this.coverClock += 1;
+    const version = String(this.coverClock);
+    this.covers.set(id, { contentType, data, version });
+    this.records.set(id, { ...trip, coverVersion: version });
+
+    return version;
+  }
+
+  async deleteCover(ownerId: string, id: string): Promise<boolean> {
+    const trip = this.records.get(id);
+    if (!trip || !(await this.get(ownerId, id))) {
+      return false;
+    }
+    this.covers.delete(id);
+    this.records.set(id, { ...trip, coverVersion: null });
+
+    return true;
   }
 }
 
@@ -623,4 +665,81 @@ test("draft validation rejects malformed visits and stale saved-plan versions", 
   expect(
     (await request(path, "PUT", { baseVersion: "1", revision: null, visits: [] }, owner)).status,
   ).toBe(409);
+});
+
+function coverRequest(
+  method: string,
+  session: string,
+  body?: Uint8Array,
+  contentType = "image/png",
+): Promise<Response> {
+  return createApp(auth, undefined, trips, entries, drafts, undefined, plans).handle(
+    new Request(`${config.baseURL}/api/trips/${ID}/cover`, {
+      method,
+      headers: {
+        cookie: session,
+        ...(method === "GET"
+          ? {}
+          : { origin: config.trustedOrigins[0] ?? "http://localhost:5180" }),
+        ...(body ? { "content-type": contentType } : {}),
+      },
+      ...(body ? { body } : {}),
+    }),
+  );
+}
+
+test("trip cover photos are owner-scoped, cached, and exposed as a trip version", async () => {
+  const owner = await cookie("cover-owner@example.test");
+  const other = await cookie("cover-other@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const image = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+  expect((await coverRequest("GET", owner)).status).toBe(404);
+  expect((await coverRequest("PUT", other, image)).status).toBe(404);
+  const saved = await coverRequest("PUT", owner, image);
+  expect(saved.status).toBe(200);
+  const { coverVersion } = (await saved.json()) as { coverVersion: string };
+  expect(coverVersion).toBe("1");
+  expect(
+    await request(`/api/trips/${ID}`, "GET", undefined, owner).then((response) => response.json()),
+  ).toMatchObject({ coverVersion: "1" });
+  expect(
+    await request("/api/trips", "GET", undefined, owner).then((response) => response.json()),
+  ).toMatchObject({ trips: [{ coverVersion: "1" }] });
+  const cover = await coverRequest("GET", owner);
+  expect(cover.status).toBe(200);
+  expect(cover.headers.get("content-type")).toBe("image/png");
+  expect(cover.headers.get("cache-control")).toBe("private, max-age=86400");
+  expect(cover.headers.get("etag")).toBe('"1"');
+  expect(new Uint8Array(await cover.arrayBuffer())).toEqual(image);
+  expect((await coverRequest("GET", other)).status).toBe(404);
+  expect((await coverRequest("DELETE", other)).status).toBe(404);
+  expect((await coverRequest("DELETE", owner)).status).toBe(200);
+  expect((await coverRequest("GET", owner)).status).toBe(404);
+  expect(
+    await request(`/api/trips/${ID}`, "GET", undefined, owner).then((response) => response.json()),
+  ).toMatchObject({ coverVersion: null });
+});
+
+test("trip cover uploads reject unsupported types, empty and oversized images", async () => {
+  const owner = await cookie("cover-limits@example.test");
+  await request("/api/trips", "POST", input, owner);
+  const image = new Uint8Array([1, 2, 3]);
+  expect((await coverRequest("PUT", owner, image, "image/gif")).status).toBe(400);
+  expect((await coverRequest("PUT", owner, image, "text/plain")).status).toBe(400);
+  expect((await coverRequest("PUT", owner, new Uint8Array(), "image/jpeg")).status).toBe(400);
+  expect(
+    (await coverRequest("PUT", owner, new Uint8Array(2 * 1024 * 1024 + 1), "image/jpeg")).status,
+  ).toBe(400);
+  expect((await coverRequest("PUT", owner, image, "image/webp")).status).toBe(200);
+  expect(
+    (
+      await createApp(auth, undefined, trips, entries, drafts, undefined, plans).handle(
+        new Request(`${config.baseURL}/api/trips/${ID}/cover`, {
+          method: "PUT",
+          headers: { origin: config.trustedOrigins[0] ?? "", "content-type": "image/jpeg" },
+          body: image,
+        }),
+      )
+    ).status,
+  ).toBe(401);
 });

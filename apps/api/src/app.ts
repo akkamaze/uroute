@@ -10,6 +10,8 @@ import type { PlanPlace, TripPlanRepository } from "./trips/plan";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const VERSION = /^[1-9]\d{0,17}$/;
+const COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const COVER_BYTES = 2 * 1024 * 1024;
 
 function validDraftVisits(value: unknown): value is DraftVisit[] {
   if (!Array.isArray(value) || value.length > 2_000) {
@@ -324,6 +326,88 @@ export function createApp(
         }
 
         return result;
+      } catch {
+        return status(503, { error: "Trip service is temporarily unavailable." });
+      }
+    })
+    .get("/api/trips/:id/cover", async ({ request, params, set, status }) => {
+      if (!UUID.test(params.id)) {
+        return status(400, { error: "Invalid trip ID." });
+      }
+      try {
+        const ownerId = await sessionOwner(auth, request);
+        if (!ownerId) {
+          return status(401, { error: "Sign in to continue." });
+        }
+        const cover = await trips.cover(ownerId, params.id);
+        if (!cover) {
+          return status(404, { error: "Cover photo not found." });
+        }
+        const etag = `"${cover.version}"`;
+        set.headers["cache-control"] = "private, max-age=86400";
+        if (request.headers.get("if-none-match") === etag) {
+          return new Response(null, {
+            status: 304,
+            headers: { "cache-control": "private, max-age=86400", etag },
+          });
+        }
+
+        return new Response(cover.data, {
+          headers: {
+            "cache-control": "private, max-age=86400",
+            "content-type": cover.contentType,
+            etag,
+          },
+        });
+      } catch {
+        return status(503, { error: "Trip service is temporarily unavailable." });
+      }
+    })
+    .put(
+      "/api/trips/:id/cover",
+      async ({ request, params, status }) => {
+        if (!UUID.test(params.id)) {
+          return status(400, { error: "Invalid trip ID." });
+        }
+        const contentType = request.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+        if (!COVER_TYPES.includes(contentType)) {
+          return status(400, { error: "Cover photo must be a JPEG, PNG or WebP image." });
+        }
+        const length = Number(request.headers.get("content-length") ?? 0);
+        if (length > COVER_BYTES) {
+          return status(400, { error: "Cover photo must be 2 MB or smaller." });
+        }
+        const data = new Uint8Array(await request.arrayBuffer());
+        if (data.byteLength === 0 || data.byteLength > COVER_BYTES) {
+          return status(400, { error: "Cover photo must be 2 MB or smaller." });
+        }
+        try {
+          const ownerId = await sessionOwner(auth, request);
+          if (!ownerId) {
+            return status(401, { error: "Sign in to continue." });
+          }
+          const coverVersion = await trips.setCover(ownerId, params.id, contentType, data);
+
+          return coverVersion ? { coverVersion } : status(404, { error: "Trip not found." });
+        } catch {
+          return status(503, { error: "Trip service is temporarily unavailable." });
+        }
+      },
+      { parse: "none" },
+    )
+    .delete("/api/trips/:id/cover", async ({ request, params, status }) => {
+      if (!UUID.test(params.id)) {
+        return status(400, { error: "Invalid trip ID." });
+      }
+      try {
+        const ownerId = await sessionOwner(auth, request);
+        if (!ownerId) {
+          return status(401, { error: "Sign in to continue." });
+        }
+
+        return (await trips.deleteCover(ownerId, params.id))
+          ? { coverVersion: null }
+          : status(404, { error: "Trip not found." });
       } catch {
         return status(503, { error: "Trip service is temporarily unavailable." });
       }
