@@ -61,6 +61,7 @@ test("the Maps plan shows a read-only day plan and returns to the same place", a
   const plan = page.getByRole("region", { name: "Trip plan" });
   const itinerary = plan.getByLabel(/Thursday 1 October itinerary/);
   await expect(itinerary).toContainText("Stop 13");
+  await expect(itinerary.getByRole("button", { name: /Stop 0/ })).toBeInViewport();
   await expect(plan.getByRole("button", { name: /Remove/ })).toHaveCount(0);
   await expect(plan.getByRole("group", { name: "Trip days" })).toBeVisible();
 

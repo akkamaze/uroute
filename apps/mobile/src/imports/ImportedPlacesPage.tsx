@@ -1839,7 +1839,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
           </div>
           <div
             data-dragging={sheetDragOffset === 0 ? undefined : "true"}
-            className={`imported-page__content${globalMaps ? (sheetOpen ? " imported-page__content--open" : " imported-page__content--closed") : ""}${globalMaps && searchOpen ? " imported-page__content--results" : ""}${globalMaps && selectedPlace !== undefined && !searchOpen ? " imported-page__content--detail" : ""}${globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen && !destinationOpen ? " imported-page__content--collapsed" : ""}${globalMaps && (destinationOpen || (sheetExpanded && !sheetCollapsed)) ? " imported-page__content--expanded" : ""}${globalMaps && destinationOpen ? " imported-page__content--adding" : ""}`}
+            className={`imported-page__content${globalMaps ? (sheetOpen ? " imported-page__content--open" : " imported-page__content--closed") : ""}${globalMaps && searchOpen ? " imported-page__content--results" : ""}${planVisible ? " imported-page__content--plan" : ""}${globalMaps && selectedPlace !== undefined && !searchOpen ? " imported-page__content--detail" : ""}${globalMaps && sheetCollapsed && selectedPlace !== undefined && !searchOpen && !destinationOpen ? " imported-page__content--collapsed" : ""}${globalMaps && (destinationOpen || (sheetExpanded && !sheetCollapsed)) ? " imported-page__content--expanded" : ""}${globalMaps && destinationOpen ? " imported-page__content--adding" : ""}`}
             onScroll={
               globalMaps
                 ? (event) => {
