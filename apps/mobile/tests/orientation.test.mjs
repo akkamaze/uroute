@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { allowAnyOrientation, preferPortraitOrientation } from "../src/orientation.ts";
+import {
+  allowAnyOrientation,
+  keepPortrait,
+  preferPortraitOrientation,
+} from "../src/orientation.ts";
 
 const originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
 const originalScreen = Object.getOwnPropertyDescriptor(globalThis, "screen");
@@ -57,4 +61,39 @@ test("orientation locks are requested when the browser supports them", async () 
 
   expect(calls).toEqual(["any", "portrait-primary"]);
   expect(dataset.orientationPolicy).toBe("portrait");
+});
+
+test("portrait lock is retried on each tap until the browser accepts it", async () => {
+  const calls = [];
+  let accept = false;
+  const dataset = installBrowserGlobals({
+    lock(mode) {
+      calls.push(mode);
+
+      return accept ? Promise.resolve() : Promise.reject(new Error("needs a gesture"));
+    },
+  });
+  const listeners = new Map();
+  const target = {
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    removeEventListener(type) {
+      listeners.delete(type);
+    },
+  };
+
+  const stop = keepPortrait(target);
+  await Promise.resolve();
+  expect(dataset.orientationPolicy).toBe("portrait");
+  accept = true;
+  listeners.get("pointerup")();
+  await Promise.resolve();
+  await Promise.resolve();
+  listeners.get("pointerup")();
+  await Promise.resolve();
+
+  expect(calls).toEqual(["portrait-primary", "portrait-primary"]);
+  stop();
+  expect(listeners.has("pointerup")).toBe(false);
 });

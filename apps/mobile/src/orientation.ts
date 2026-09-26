@@ -54,3 +54,32 @@ export function preferPortraitOrientation(): void {
     // The CSS orientation guard remains active when native locking is unavailable.
   }
 }
+
+export function keepPortrait(
+  target: Pick<EventTarget, "addEventListener" | "removeEventListener">,
+): () => void {
+  let locked = false;
+
+  function attempt(): void {
+    setOrientationPolicy("portrait");
+    const orientation = getOrientation();
+    if (locked || typeof orientation?.lock !== "function") {
+      return;
+    }
+    try {
+      void orientation.lock.call(orientation, "portrait-primary").then(
+        () => {
+          locked = true;
+        },
+        () => undefined,
+      );
+    } catch {
+      return;
+    }
+  }
+
+  attempt();
+  target.addEventListener("pointerup", attempt, true);
+
+  return () => target.removeEventListener("pointerup", attempt, true);
+}

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { NavigationIcon, type NavigationIconName } from "./icons/NavigationIcon";
 import { attachKeyboardViewport } from "./keyboard/keyboard-viewport";
 import { useSwipeBack } from "./navigation/use-swipe-back";
-import { preferPortraitOrientation } from "./orientation";
+import { keepPortrait, preferPortraitOrientation } from "./orientation";
 
 const navigationItems = [
   { icon: "trips", label: "Trips", to: "/trips" },
@@ -28,6 +28,7 @@ function isNavigationItemActive(to: string, pathname: string): boolean {
 
 export function AppRoot(): React.JSX.Element {
   useEffect(attachKeyboardViewport, []);
+  useEffect(() => keepPortrait(window), []);
   const { backdropRef, navigationRef } = useSwipeBack();
 
   return (
