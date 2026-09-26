@@ -126,10 +126,29 @@ function savePlanScroll(): void {
   try {
     sessionStorage.setItem(
       PLAN_SCROLL_KEY,
-      JSON.stringify({ entry, top: planScroller()?.scrollTop ?? 0 }),
+      JSON.stringify({
+        entry,
+        top: planScroller()?.scrollTop ?? 0,
+        chromeHidden: document.querySelector(".trip-plan.plan-page--chrome-hidden") !== null,
+      }),
     );
   } catch {
     return;
+  }
+}
+
+function pendingPlanChromeHidden(): boolean {
+  try {
+    const saved: unknown = JSON.parse(sessionStorage.getItem(PLAN_SCROLL_KEY) ?? "null");
+
+    return (
+      typeof saved === "object" &&
+      saved !== null &&
+      (saved as { entry?: unknown }).entry === historyEntryKey() &&
+      (saved as { chromeHidden?: unknown }).chromeHidden === true
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -176,6 +195,7 @@ export function TripPlanPage(): React.JSX.Element {
       plan: cachedDay ? cachedAccountPlanDay(accountUserId, tripId, cachedDay) : null,
     };
   });
+  const [initialChromeHidden] = useState(pendingPlanChromeHidden);
   const [accountTripChecked, setAccountTripChecked] = useState(initialCache.trip !== null);
   const [remoteTrip, setRemoteTrip] = useState<AccountTrip | null>(initialCache.trip);
   const [remoteEntries, setRemoteEntries] = useState<AccountPlanEntry[]>(
@@ -606,6 +626,7 @@ export function TripPlanPage(): React.JSX.Element {
 
   return (
     <PlanWorkspace
+      initialChromeHidden={initialChromeHidden}
       trip={trip}
       onEditTrip={remoteTrip ? undefined : () => setEditingTrip((current) => !current)}
       className="trip-plan"

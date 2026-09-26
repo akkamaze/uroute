@@ -203,10 +203,7 @@ test("opening a server trip stop shows its details with directions", async ({ pa
     page.getByRole("link", {
       name: "Directions to Senso-ji in Google Maps (opens another app or tab)",
     }),
-  ).toHaveAttribute(
-    "href",
-    "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796",
-  );
+  ).toHaveAttribute("href", "https://www.google.com/maps/dir/?api=1&destination=35.715,139.796");
   await page.getByRole("button", { name: "Category: Temple / Shrine. Change category" }).click();
   await page
     .getByRole("group", { name: "Choose place category" })
@@ -774,4 +771,96 @@ test("opening a server trip day jumps to the next stop not yet visited", async (
   const next = page.locator('[data-plan-stop-id="entry:10"]');
   await expect(next).toBeInViewport();
   await expect(page.locator('[data-plan-stop-id="entry:0"]')).not.toBeInViewport();
+});
+
+test("the folded plan chrome stays still at the bottom and after returning from a map place", async ({
+  page,
+}) => {
+  const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
+  const entries = Array.from({ length: 14 }, (_, index) => ({
+    id: `entry-${index}`,
+    sourceKey: `entry:${index}`,
+    day,
+    variant: "A",
+    position: index,
+    kind: "place",
+    title: `Stop ${index}`,
+    timeLabel: "09:00",
+    detail: "A place to visit during the day",
+    area: "Tokyo",
+    placeId: `pin-${index}`,
+    place: {
+      sourceKey: `pin-${index}`,
+      name: `Stop ${index}`,
+      latitude: 35.68 + index / 1000,
+      longitude: 139.76 + index / 1000,
+      category: "sightseeing",
+      imageUrl: null,
+      notes: null,
+    },
+  }));
+  await page.route("**/api/auth/get-session", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "session-1", userId: "owner-1", expiresAt: "2027-01-01T00:00:00.000Z" },
+        user: { id: "owner-1", email: "owner@example.test", name: "Traveler" },
+      }),
+    }),
+  );
+  await page.route("**/api/trips?*", (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify({ trips: [trip] }) }),
+  );
+  await page.route(`**/api/trips/${tripId}`, (route) =>
+    route.fulfill({ contentType: "application/json", body: JSON.stringify(trip) }),
+  );
+  await page.route(`**/api/trips/${tripId}/plan?*`, (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ trip, version: trip.version, entries }),
+    }),
+  );
+  async function watchChrome(): Promise<void> {
+    await page.evaluate(() => {
+      const log: boolean[] = [];
+      (window as Window & { __chromeLog?: boolean[] }).__chromeLog = log;
+      const record = (): void => {
+        const hidden = document.querySelector(".plan-page--chrome-hidden") !== null;
+        if (log.at(-1) !== hidden) {
+          log.push(hidden);
+        }
+      };
+      record();
+      new MutationObserver(record).observe(document.body, {
+        attributes: true,
+        childList: true,
+        subtree: true,
+      });
+    });
+  }
+  const chromeLog = (): Promise<boolean[]> =>
+    page.evaluate(() => (window as Window & { __chromeLog?: boolean[] }).__chromeLog ?? []);
+
+  await page.goto(`/plan/trip/${tripId}?day=${day}`);
+  const scroller = page.locator(".trip-plan .day-plan");
+  await expect(page.getByLabel(/Thursday 1 October itinerary/)).toContainText("Stop 13");
+  await scroller.hover();
+  for (let step = 0; step < 12; step += 1) {
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(40);
+  }
+  await watchChrome();
+  await page.waitForTimeout(1_500);
+  expect(await chromeLog()).toEqual([true]);
+
+  await page
+    .getByLabel(/Thursday 1 October itinerary/)
+    .getByRole("button", { name: /Stop 12/ })
+    .click();
+  await expect(page).toHaveURL(/\/maps\?.*place=pin-12/);
+  await watchChrome();
+  await page.goBack();
+  await expect(page.getByLabel(/Thursday 1 October itinerary/)).toContainText("Stop 12");
+  await page.waitForTimeout(1_000);
+  expect((await chromeLog()).filter((hidden) => !hidden)).toEqual([]);
 });

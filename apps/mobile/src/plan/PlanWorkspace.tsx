@@ -5,6 +5,8 @@ import type { PlaceCollection } from "./map-data";
 import { MapLoading } from "./MapLoading";
 import { TripHeader } from "./TripHeader";
 
+const CHROME_SETTLE_MS = 190;
+
 const DeferredTripMap = lazy(async () => ({ default: (await import("./TripMap")).TripMap }));
 
 export interface PlanDayTab {
@@ -32,6 +34,7 @@ interface PlanWorkspaceProps {
   stressLabel?: string | undefined;
   children: ReactNode;
   overlay?: ReactNode;
+  initialChromeHidden?: boolean | undefined;
 }
 
 export function PlanWorkspace({
@@ -51,20 +54,38 @@ export function PlanWorkspace({
   stressLabel,
   children,
   overlay,
+  initialChromeHidden = false,
 }: PlanWorkspaceProps): React.JSX.Element {
-  const [chromeHidden, setChromeHidden] = useState(false);
+  const [chromeHidden, setChromeHidden] = useState(initialChromeHidden);
   const lastScrollTopRef = useRef(0);
+  const settlingUntilRef = useRef(0);
+
+  function changeChrome(hidden: boolean): void {
+    if (hidden === chromeHidden) {
+      return;
+    }
+    settlingUntilRef.current = performance.now() + CHROME_SETTLE_MS;
+    setChromeHidden(hidden);
+  }
 
   function trackPlanScroll(event: React.UIEvent<HTMLElement>): void {
-    const top = event.currentTarget.scrollTop;
+    const element = event.currentTarget;
+    const top = element.scrollTop;
     const delta = top - lastScrollTopRef.current;
     lastScrollTopRef.current = top;
     if (mapVisible || top < 16) {
-      setChromeHidden(false);
-    } else if (delta > 6) {
-      setChromeHidden(true);
+      changeChrome(false);
+
+      return;
+    }
+    const atBottom = top + element.clientHeight >= element.scrollHeight - 4;
+    if (performance.now() < settlingUntilRef.current || atBottom) {
+      return;
+    }
+    if (delta > 6) {
+      changeChrome(true);
     } else if (delta < -6) {
-      setChromeHidden(false);
+      changeChrome(false);
     }
   }
 
