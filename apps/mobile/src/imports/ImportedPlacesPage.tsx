@@ -49,10 +49,10 @@ import {
   accountPlanItinerary,
   accountPlanPoints,
   addAccountPlanPlace,
+  directionModes,
   loadAccountPlanDay,
   loadAccountTrips,
   saveAccountPlaceCategory,
-  transitArrivalIds,
   type AccountPlanEntry,
   type AccountTrip,
 } from "../plan/account-plan";
@@ -406,7 +406,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
     return cached?.entries ?? [];
   });
   const [planLoading, setPlanLoading] = useState(false);
-  const transitIds = useMemo(() => transitArrivalIds(planEntries), [planEntries]);
+  const directionModeById = useMemo(() => directionModes(planEntries), [planEntries]);
   const tripPoints = useMemo(() => accountPlanPoints(planEntries), [planEntries]);
   const places = useMemo(() => {
     const libraryIds = new Set(libraryPlaces.map((place) => place.id));
@@ -2013,7 +2013,7 @@ export function ImportedPlacesPage(): React.JSX.Element {
                         <a
                           aria-label={`Directions to ${selectedPlace.name} in Google Maps (opens another app or tab)`}
                           className="imported-page__selected-secondary"
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}&travelmode=${transitIds.has(selectedPlace.id) ? "transit" : "walking"}`}
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlace.latitude},${selectedPlace.longitude}&travelmode=${directionModeById.get(selectedPlace.id) ?? "walking"}`}
                           rel="noopener noreferrer"
                           target="_blank"
                         >

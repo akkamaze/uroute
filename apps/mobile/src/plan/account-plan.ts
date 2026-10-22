@@ -4,6 +4,7 @@ import type { ItineraryEntry } from "../imports/itinerary-sheet";
 import { isPlaceCategory, type PlaceCategory } from "../places/place-category";
 import { effectivePlaceCategory } from "../places/place-category";
 import type { CreatedTrip } from "../trips/trip-store";
+import { walkOrDrive } from "./travel-estimate";
 
 export interface AccountTrip extends CreatedTrip {
   version: string;
@@ -259,22 +260,54 @@ export function accountPlanItinerary(
   }));
 }
 
-export function transitArrivalIds(entries: readonly AccountPlanEntry[]): Set<string> {
+export type DirectionMode = "transit" | "walking" | "driving";
+
+type Located = { latitude: number; longitude: number };
+
+function locatedPlace(entry: AccountPlanEntry): Located | null {
+  const latitude = entry.place?.latitude ?? null;
+  const longitude = entry.place?.longitude ?? null;
+
+  return latitude === null || longitude === null ? null : { latitude, longitude };
+}
+
+function isTransitArrival(
+  entry: AccountPlanEntry,
+  previous: AccountPlanEntry | undefined,
+): boolean {
+  return (
+    entry.kind === "transport" &&
+    previous?.kind === "transport" &&
+    previous.variant === entry.variant
+  );
+}
+
+function groundMode(from: Located | null, to: Located | null): DirectionMode {
+  return from && to && walkOrDrive(from, to) === "drive" ? "driving" : "walking";
+}
+
+export function directionModes(entries: readonly AccountPlanEntry[]): Map<string, DirectionMode> {
   const ordered = [...entries].sort(
     (left, right) => left.variant.localeCompare(right.variant) || left.position - right.position,
   );
-  const ids = new Set<string>();
+  const modes = new Map<string, DirectionMode>();
+  let lastLocated: { variant: string; point: Located } | null = null;
+
   ordered.forEach((entry, index) => {
-    const previous = ordered[index - 1];
-    if (
-      entry.kind === "transport" &&
-      entry.place !== null &&
-      previous?.kind === "transport" &&
-      previous.variant === entry.variant
-    ) {
-      ids.add(entry.place.sourceKey);
+    const point = locatedPlace(entry);
+    const from = lastLocated?.variant === entry.variant ? lastLocated.point : null;
+
+    if (entry.place !== null && !modes.has(entry.place.sourceKey)) {
+      modes.set(
+        entry.place.sourceKey,
+        isTransitArrival(entry, ordered[index - 1]) ? "transit" : groundMode(from, point),
+      );
+    }
+
+    if (point) {
+      lastLocated = { variant: entry.variant, point };
     }
   });
 
-  return ids;
+  return modes;
 }

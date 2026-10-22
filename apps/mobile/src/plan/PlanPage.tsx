@@ -445,7 +445,11 @@ export function PlanPage(): React.JSX.Element {
                 }}
                 time={stop.time}
                 title={stop.name}
-                travel={travel === undefined ? undefined : `Walk · ${travel.detail}`}
+                travel={
+                  travel === undefined
+                    ? undefined
+                    : { mode: travel.mode, label: `Walk · ${travel.detail}` }
+                }
               />
             );
           })}

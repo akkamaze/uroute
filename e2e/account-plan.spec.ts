@@ -498,7 +498,7 @@ test("a server trip opens its bookings and expenses and accepts a flight booking
   await expect(page.getByRole("navigation", { name: "Primary" })).toHaveCount(0);
 });
 
-test("a server trip plan estimates rides between stations and walks between places", async ({
+test("a server trip plan rides between stations, walks to near places and drives to far ones", async ({
   page,
 }) => {
   const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
@@ -557,6 +557,7 @@ test("a server trip plan estimates rides between stations and walks between plac
     station(1, "arr", "Asakusa Station", "08:56"),
     place(2, "Senso-ji", 35.715, 139.796),
     place(3, "Kaminarimon", 35.7111, 139.7963),
+    place(4, "Tokyo Skytree", 35.7101, 139.8107),
   ];
   await page.route("**/api/auth/get-session", (route) =>
     route.fulfill({
@@ -586,6 +587,7 @@ test("a server trip plan estimates rides between stations and walks between plac
   await expect(itinerary.locator(".timeline__travel")).toHaveText([
     "16 min ride",
     "Walk about 8 min · 560 m",
+    "Drive about 3 min · 1.7 km",
   ]);
   await expect(itinerary).not.toContainText("Route not calculated yet");
 });
@@ -868,7 +870,9 @@ test("the folded plan chrome stays still at the bottom and after returning from 
   expect((await chromeLog()).filter((hidden) => !hidden)).toEqual([]);
 });
 
-test("directions walk to a departure station and ride to the arrival station", async ({ page }) => {
+test("directions walk to a near station, ride to the arrival station and drive far", async ({
+  page,
+}) => {
   const trip = { id: tripId, name: "Kanto", startDate: day, endDate: "2026-10-02", version: "1" };
   const station = (
     index: number,
@@ -896,7 +900,11 @@ test("directions walk to a departure station and ride to the arrival station", a
       notes: null,
     },
   });
-  const entries = [station(0, "Oshiage Station", 35.71), station(1, "Asakusa Station", 35.709)];
+  const entries = [
+    station(0, "Oshiage Station", 35.71),
+    station(1, "Asakusa Station", 35.709),
+    { ...station(2, "Kasai Rinkai Park", 35.64), kind: "place" },
+  ];
   await page.route("**/api/auth/get-session", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -928,5 +936,10 @@ test("directions walk to a departure station and ride to the arrival station", a
   await expect(page.getByRole("link", { name: /Directions to Asakusa Station/ })).toHaveAttribute(
     "href",
     /travelmode=transit$/,
+  );
+  await page.goto(`/maps?trip=${tripId}&day=${day}&place=station-2`);
+  await expect(page.getByRole("link", { name: /Directions to Kasai Rinkai Park/ })).toHaveAttribute(
+    "href",
+    /travelmode=driving$/,
   );
 });

@@ -1,8 +1,9 @@
-import { Check, Footprints, Trash2 } from "lucide-react";
-import { useRef, type ReactNode } from "react";
+import { Car, Check, Footprints, TrainFront, Trash2, type LucideIcon } from "lucide-react";
+import { createElement, useRef, type ReactNode } from "react";
 
 import { PlaceCategoryIcon } from "../places/PlaceCategoryIcon";
 import type { PlaceCategory } from "../places/place-category";
+import type { TravelLeg, TravelMode } from "./travel-estimate";
 import { VisitTime } from "./VisitTime";
 
 interface SwipeControls {
@@ -27,11 +28,17 @@ interface PlanTimelineRowProps {
   onRemove?: (() => void) | undefined;
   removeLabel?: string | undefined;
   swipe?: SwipeControls | undefined;
-  travel?: string | undefined;
+  travel?: TravelLeg | undefined;
   visited?: boolean | undefined;
   onLongPress?: (() => void) | undefined;
   children?: ReactNode;
 }
+
+const TRAVEL_ICONS: Record<TravelMode, LucideIcon> = {
+  walk: Footprints,
+  drive: Car,
+  ride: TrainFront,
+};
 
 const LONG_PRESS_MS = 550;
 const LONG_PRESS_SLOP_PX = 10;
@@ -168,9 +175,9 @@ export function PlanTimelineRow({
         <div className="timeline__travel">
           <span aria-hidden="true" className="timeline__line" />
           <span aria-hidden="true" className="timeline__travel-marker">
-            <Footprints size={19} strokeWidth={1.8} />
+            {createElement(TRAVEL_ICONS[travel.mode], { size: 19, strokeWidth: 1.8 })}
           </span>
-          <span>{travel}</span>
+          <span>{travel.label}</span>
         </div>
       ) : null}
     </div>
