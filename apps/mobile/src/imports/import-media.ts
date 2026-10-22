@@ -23,7 +23,7 @@ export function importedPlaceImages(point: ImportedPoint): string[] {
 }
 
 export function displayImportedImageUrl(value: string | undefined): string | undefined {
-  if (value === undefined || !import.meta.env.DEV) {
+  if (value === undefined || !URL.canParse(value)) {
     return value;
   }
   const url = new URL(value);

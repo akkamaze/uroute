@@ -2,19 +2,22 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const kmlImageProxy = {
+  target: "https://mymaps.usercontent.google.com",
+  changeOrigin: true,
+  rewrite: (path: string) => path.replace(/^\/_kml_images\//, "/hostedimage/"),
+};
+
 export default defineConfig({
   server: {
     proxy: {
-      "/_kml_images/": {
-        target: "https://mymaps.usercontent.google.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/_kml_images\//, "/hostedimage/"),
-      },
+      "/_kml_images/": kmlImageProxy,
       "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
     },
   },
   preview: {
     proxy: {
+      "/_kml_images/": kmlImageProxy,
       "/api": { changeOrigin: false, target: "http://127.0.0.1:3001" },
     },
   },
@@ -70,7 +73,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{css,html,ico,js,png,svg,webmanifest}"],
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/_kml_images\//],
         runtimeCaching: [],
       },
     }),
